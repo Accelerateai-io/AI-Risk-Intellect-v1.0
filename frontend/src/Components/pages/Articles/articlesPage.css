@@ -1,0 +1,305 @@
+.articlesPage {
+  --page-header-title-color: var(--art-text);
+  --page-header-subtitle-color: var(--art-muted);
+  --art-surface: #0f1419;
+  --art-card: #151b24;
+  --art-border: rgba(148, 163, 184, 0.12);
+  --art-text: #f8fafc;
+  --art-muted: #94a3b8;
+  --art-input-bg: #1e293b;
+  --art-input-border: rgba(148, 163, 184, 0.2);
+  --art-refresh-border: rgba(148, 163, 184, 0.25);
+  --art-refresh-hover: rgba(148, 163, 184, 0.12);
+
+  flex: 1;
+  box-sizing: border-box;
+  min-width: 0;
+  background: var(--art-surface);
+  color: var(--art-text);
+  font-family: var(--app-font-family, "Inter", sans-serif);
+}
+
+/* Shared Jobs filter bar (jobsPage__filters) uses Jobs theme tokens */
+.articlesPage.jobsPage {
+  --jobs-surface: var(--art-surface);
+  --jobs-card: var(--art-card);
+  --jobs-border: var(--art-border);
+  --jobs-text: var(--art-text);
+  --jobs-muted: var(--art-muted);
+  --jobs-input-bg: var(--art-input-bg);
+  --jobs-input-border: var(--art-input-border);
+  --jobs-refresh-border: var(--art-refresh-border);
+  --jobs-refresh-hover: var(--art-refresh-hover);
+}
+
+.articlesPage__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.75rem;
+}
+
+@media (max-width: 900px) {
+  .articlesPage__metrics {
+    grid-template-columns: 1fr;
+  }
+}
+
+.articlesPage__metric {
+  padding: 1.15rem 1.2rem;
+  border-radius: 10px;
+  background: var(--art-card);
+  border: 1px solid var(--art-border);
+  box-sizing: border-box;
+}
+
+.articlesPage__metric--total {
+  border-color: rgba(59, 130, 246, 0.28);
+}
+
+.articlesPage__metric--risks {
+  border-color: rgba(249, 115, 22, 0.4);
+}
+
+.articlesPage__metric--avg {
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+.articlesPage__metricInner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+}
+
+.articlesPage__metricCopy {
+  flex: 1;
+  min-width: 0;
+  padding-top: 0.05rem;
+}
+
+.articlesPage__metricIcon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+}
+
+.articlesPage__metricIcon--blue {
+  background: rgba(59, 130, 246, 0.18);
+  color: #60a5fa;
+}
+
+.articlesPage__metricIcon--orange {
+  background: rgba(249, 115, 22, 0.14);
+  color: #fb923c;
+  box-shadow: inset 0 0 0 1px rgba(249, 115, 22, 0.25);
+}
+
+.articlesPage__metricIcon--slate {
+  background: rgba(148, 163, 184, 0.1);
+  color: #cbd5e1;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.22);
+}
+
+.articlesPage__metricLabel {
+  margin: 0 0 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--art-muted);
+}
+
+.articlesPage__metricValue {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--art-text);
+  line-height: 1.1;
+}
+
+.articlesPage__metricValue--tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.articlesPage__tableSection {
+  min-width: 0;
+}
+
+.articlesPage__tableWrap {
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  border: 1px solid var(--art-border);
+  background: var(--art-card);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.articlesPage__tableScroll {
+  overflow: auto;
+  max-height: min(34rem, 62vh);
+}
+
+.articlesPage__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.articlesPage__th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--art-muted);
+  background: #0f172a;
+  border-bottom: 1px solid var(--art-border);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+.articlesPage__th--narrow {
+  width: 4.5rem;
+  text-align: center;
+}
+
+.articlesPage__th--actions {
+  width: 6.5rem;
+  text-align: right;
+}
+
+.articlesPage__td {
+  padding: 0.95rem 1rem;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--art-border);
+  color: var(--art-text);
+  font-size: 14px;
+}
+
+.articlesPage__td--actions {
+  text-align: right;
+}
+
+.articlesPage__td--center {
+  text-align: center;
+}
+
+.articlesPage__td--title {
+  max-width: 14rem;
+  font-weight: 500;
+}
+
+.articlesPage__td--url {
+  max-width: 18rem;
+}
+
+.articlesPage__td--muted {
+  color: var(--art-muted);
+  white-space: nowrap;
+}
+
+.articlesPage__td--empty {
+  text-align: center;
+  color: var(--art-muted);
+  padding: 2.5rem 1rem;
+  font-size: 14px;
+}
+
+.articlesPage__pager.dtPagination {
+  border-top-color: var(--art-border);
+}
+
+.articlesPage__table tbody tr:last-child .articlesPage__td {
+  border-bottom: none;
+}
+
+.articlesPage__id {
+  font-weight: 600;
+  color: var(--entity-id-color, #22d3ee);
+}
+
+.articlesPage__url {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--art-text);
+  text-decoration: none;
+  vertical-align: bottom;
+}
+
+.articlesPage__url:hover {
+  text-decoration: underline;
+}
+
+.articlesPage__actionLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--main-auth-button-color, #22d3ee);
+  text-decoration: none;
+}
+
+.articlesPage__actionLink:hover {
+  text-decoration: underline;
+}
+
+/* Light theme: match Jobs page */
+html:not(.app-theme-dark) .articlesPage {
+  --art-surface: #fff;
+  --art-card: #f8f8fc;
+  --art-border: rgba(15, 23, 42, 0.08);
+  --art-text: #0f172a;
+  --art-muted: #64748b;
+  --art-input-bg: #fff;
+  --art-input-border: #cbd5e1;
+  --art-refresh-border: #cbd5e1;
+  --art-refresh-hover: rgba(15, 23, 42, 0.04);
+}
+
+html:not(.app-theme-dark) .mainLayout__content.articlesPage {
+  background-color: var(--art-surface);
+}
+
+html:not(.app-theme-dark) .articlesPage__metric {
+  background: #f8f8fc;
+}
+
+html:not(.app-theme-dark) .articlesPage__th {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+html:not(.app-theme-dark) .articlesPage__metric--total {
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+html:not(.app-theme-dark) .articlesPage__metric--risks {
+  border-color: rgba(249, 115, 22, 0.4);
+}
+
+html:not(.app-theme-dark) .articlesPage__metric--avg {
+  border-color: #e2e8f0;
+}
+
+html.app-theme-dark .articlesPage {
+  --art-surface: #0f172a;
+  --art-card: #1e293b;
+}
+
+html.app-theme-dark .mainLayout__content.articlesPage {
+  background-color: var(--art-surface);
+}

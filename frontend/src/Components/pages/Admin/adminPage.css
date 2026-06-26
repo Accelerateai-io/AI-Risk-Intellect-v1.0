@@ -1,0 +1,2667 @@
+.adminPage {
+  --page-header-title-color: var(--adm-text);
+  --page-header-subtitle-color: var(--adm-muted);
+  --adm-surface: #0f1419;
+  --adm-card: #151b24;
+  --adm-border: rgba(148, 163, 184, 0.12);
+  --adm-text: #f8fafc;
+  --adm-muted: #94a3b8;
+  --adm-input-bg: #1e293b;
+  --adm-input-border: rgba(148, 163, 184, 0.22);
+  --adm-outline: rgba(248, 250, 252, 0.35);
+  --adm-primary: var(--main-auth-button-color, #1cb0d4);
+  --adm-primary-strong: var(--main-auth-button-color-strong, #149bb8);
+  --adm-danger: #dc2626;
+  --adm-danger-hover: #b91c1c;
+  --adm-status-ok: #34d399;
+  --adm-status-bad: #f87171;
+
+  flex: 1;
+  box-sizing: border-box;
+  min-width: 0;
+  background: var(--adm-surface);
+  color: var(--adm-text);
+  font-family: var(--app-font-family, "Inter", sans-serif);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.adminPage__tabs {
+  display: inline-flex;
+  align-items: stretch;
+  align-self: flex-start;
+  gap: 0.25rem;
+  max-width: 100%;
+  height: 40px;
+  box-sizing: border-box;
+  padding: 3px;
+  border-radius: 8px;
+  background: rgba(28, 176, 212, 0.08);
+  border: 1px solid var(--adm-border);
+}
+
+.adminPage__tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  height: 100%;
+  min-height: 0;
+  padding: 0 0.85rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--adm-muted);
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color 0.12s ease,
+    background 0.12s ease,
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.adminPage__tab:hover {
+  color: var(--adm-text);
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.adminPage__tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
+}
+
+.adminPage__tab--selected {
+  color: var(--adm-text);
+  background: var(--adm-input-bg);
+  border-color: var(--adm-input-border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.adminPage__tabIcon {
+  flex-shrink: 0;
+  display: block;
+  color: var(--adm-primary);
+  opacity: 0.9;
+}
+
+.adminPage__tab--selected .adminPage__tabIcon {
+  opacity: 1;
+}
+
+.adminPage__tabLabel {
+  display: inline-block;
+  line-height: 1.2;
+}
+
+@media (max-width: 640px) {
+  .adminPage > .adminPage__tabs {
+    width: 100%;
+    height: auto;
+    flex-wrap: wrap;
+  }
+
+  .adminPage > .adminPage__tabs .adminPage__tab {
+    flex: 1 1 calc(33.333% - 0.25rem);
+    min-height: 34px;
+    padding-inline: 0.55rem;
+    font-size: 0.75rem;
+  }
+}
+
+.adminPage__rssPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.adminPage__tabs--sub {
+  height: 36px;
+}
+
+.adminPage__tabs--sub .adminPage__tab {
+  padding-inline: 0.75rem;
+  font-size: 0.78rem;
+}
+
+.adminPage__card--logs {
+  padding-bottom: 1rem;
+}
+
+.adminPage__cardHead--logs {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.adminPage__logsRefreshBtn {
+  flex-shrink: 0;
+  min-height: 36px;
+  padding-inline: 0.75rem;
+}
+
+.adminPage__logsEmpty {
+  margin: 0;
+  padding: 1.25rem 0 0.5rem;
+  font-size: 0.875rem;
+  color: var(--adm-muted);
+  text-align: center;
+}
+
+.adminPage__logsScroll {
+  overflow-x: auto;
+  margin-top: 0.25rem;
+  border-radius: 8px;
+  border: 1px solid var(--adm-border);
+}
+
+.adminPage__logsTable {
+  width: 100%;
+  min-width: 36rem;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.adminPage__logsTable th,
+.adminPage__logsTable td {
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--adm-border);
+  vertical-align: top;
+}
+
+.adminPage__logsTable th {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--adm-muted);
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.adminPage__logsTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.adminPage__logsTable tbody tr:hover {
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.adminPage__logsUrl {
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--adm-text);
+}
+
+.adminPage__logsNote {
+  max-width: 14rem;
+  color: var(--adm-muted);
+  font-size: 0.78rem;
+}
+
+.adminPage__logsStatus {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  border-radius: 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--adm-muted);
+}
+
+.adminPage__logsStatus--pending,
+.adminPage__logsStatus--running {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.adminPage__logsStatus--done {
+  color: var(--adm-status-ok);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.adminPage__logsStatus--error,
+.adminPage__logsStatus--skipped {
+  color: var(--adm-status-bad);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+@keyframes adminPage__spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.adminPage__logsRefreshBtn .pageHeader__refreshIcon--spin {
+  animation: adminPage__spin 0.8s linear infinite;
+}
+
+.adminPage__linksTableWrap {
+  margin-top: 1rem;
+}
+
+.adminPage__linksTable {
+  min-width: 34rem;
+}
+
+.adminPage__linksIdCell {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--adm-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.adminPage__linksCountCell {
+  white-space: nowrap;
+}
+
+.adminPage__itemsToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.4rem;
+  border: none;
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--adm-text);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.adminPage__itemsToggle:hover:not(:disabled) {
+  background: rgba(28, 176, 212, 0.15);
+}
+
+.adminPage__itemsToggle:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.adminPage__linksItemsRow td {
+  padding: 0.5rem 0.75rem 0.85rem;
+  background: rgba(148, 163, 184, 0.04);
+  border-bottom: 1px solid var(--adm-border);
+}
+
+.adminPage__linksItemsHint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--adm-muted);
+}
+
+.adminPage__linksItemsList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.adminPage__linksItemsListItem {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  font-size: 0.78rem;
+}
+
+.adminPage__linksItemsListId {
+  flex-shrink: 0;
+  color: var(--adm-muted);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.adminPage__linksItemsListItem .adminPage__linksUrl {
+  flex: 1;
+  min-width: 0;
+}
+
+.adminPage__linksUrlCell {
+  max-width: 22rem;
+}
+
+.adminPage__urlInput--table {
+  width: 100%;
+  min-width: 12rem;
+}
+
+.adminPage__linksUrl {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--adm-primary);
+  text-decoration: none;
+}
+
+.adminPage__linksUrl:hover {
+  text-decoration: underline;
+}
+
+.adminPage__linksDateCell {
+  white-space: nowrap;
+  color: var(--adm-muted);
+  font-size: 0.78rem;
+}
+
+.adminPage__linksActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.adminPage__linkActionBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.28rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid var(--adm-input-border);
+  background: transparent;
+  color: var(--adm-text);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.adminPage__linkActionBtn:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.adminPage__linkActionBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.adminPage__linkActionBtn--primary {
+  border-color: rgba(28, 176, 212, 0.45);
+  color: var(--adm-primary);
+}
+
+.adminPage__linkActionBtn--danger {
+  border-color: rgba(248, 113, 113, 0.35);
+  color: #f87171;
+}
+
+.adminPage__topRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  align-items: stretch;
+}
+
+@media (max-width: 900px) {
+  .adminPage__topRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+.adminPage__topRowCell {
+  min-width: 0;
+  height: 100%;
+}
+
+.adminPage__topRow .adminPage__card {
+  height: 100%;
+}
+
+.adminPage__topRow .settingsPage__card {
+  height: 100%;
+}
+
+.adminPage__topRow .settingsPage {
+  height: 100%;
+}
+
+.adminPage__settings.settingsPage {
+  flex: none;
+  background: transparent;
+  padding: 0;
+}
+
+.adminPage__settingsAbout.settingsPage {
+  flex: none;
+  background: transparent;
+  padding: 0;
+}
+
+.adminPage__card {
+  padding: 1.15rem 1.25rem 1.2rem;
+  border-radius: 10px;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  box-sizing: border-box;
+}
+
+.adminPage__cardHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  margin-bottom: 1.1rem;
+}
+
+.adminPage__cardHeadText {
+  min-width: 0;
+}
+
+.adminPage__cardTitle {
+  margin: 0 0 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--adm-text);
+  line-height: 1.25;
+}
+
+.adminPage__cardHint {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--adm-muted);
+}
+
+/* Settings cards on Controls — same heading style as System services */
+.adminPage .settingsPage__cardHead {
+  margin-bottom: 1.1rem;
+}
+
+.adminPage .settingsPage__sectionTitle {
+  margin: 0 0 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--adm-text);
+  line-height: 1.25;
+}
+
+.adminPage .settingsPage__sectionHint {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--adm-muted);
+}
+
+.adminPage__cardHead--split {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+.adminPage__cardHeadMain {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+.adminPage__cronCard {
+  overflow: hidden;
+}
+
+.adminPage__cronCard:has(.adminPage__cronInputWrap--timeComboOpen) {
+  overflow: visible;
+}
+
+.adminPage__cronMeta {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--adm-muted);
+}
+
+.adminPage__cronMeta--error {
+  color: var(--adm-status-bad);
+}
+
+.adminPage__cronBody {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  margin-top: 0.15rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--adm-border);
+}
+
+.adminPage__cronLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.adminPage__cronPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-width: 0;
+  padding: 0.95rem 1rem;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.28);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  box-sizing: border-box;
+}
+
+.adminPage__cronSectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  flex-wrap: wrap;
+}
+
+.adminPage__cronSectionTitleWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--adm-primary);
+}
+
+.adminPage__cronSectionTitle {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--adm-text);
+}
+
+.adminPage__cronBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--adm-primary);
+  background: rgba(28, 176, 212, 0.12);
+  border: 1px solid rgba(28, 176, 212, 0.28);
+}
+
+.adminPage__cronEmpty {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px dashed rgba(148, 163, 184, 0.22);
+  background: rgba(15, 20, 25, 0.35);
+}
+
+.adminPage__cronEmpty p {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--adm-muted);
+}
+
+.adminPage__cronEmpty p:first-child {
+  font-weight: 600;
+  color: var(--adm-text);
+}
+
+.adminPage__cronFeedsToolbar {
+  display: flex;
+  align-items: stretch;
+}
+
+.adminPage__cronSearchWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 2.5rem;
+  box-sizing: border-box;
+  border: 1px solid var(--adm-input-border);
+  border-radius: 8px;
+  background: rgba(15, 20, 25, 0.45);
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.adminPage__cronSearchWrap:focus-within {
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.14);
+}
+
+.adminPage__cronSearchIcon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--adm-muted);
+  pointer-events: none;
+}
+
+.adminPage__cronSearchInput {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: none;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--adm-text);
+  padding: 0 0.65rem 0 2.25rem;
+  font-size: 0.875rem;
+  line-height: 1.25;
+  outline: none;
+}
+
+.adminPage__cronSearchInput::placeholder {
+  color: var(--adm-muted);
+  font-size: 0.875rem;
+  opacity: 1;
+}
+
+.adminPage__cronSearchInput:focus {
+  outline: none;
+}
+
+.adminPage__cronSearchClear {
+  position: absolute;
+  right: 0.35rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--adm-muted);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.adminPage__cronSearchClear:hover {
+  color: var(--adm-text);
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.adminPage__cronSearchInput:not(:placeholder-shown),
+.adminPage__cronSearchWrap:has(.adminPage__cronSearchClear) .adminPage__cronSearchInput {
+  padding-right: 2.1rem;
+}
+
+.adminPage__cronFeedsPanel {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--adm-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--adm-input-bg);
+}
+
+.adminPage__cronFeedEmpty {
+  margin: 0;
+  padding: 1rem 0.85rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--adm-muted);
+  text-align: center;
+}
+
+.adminPage__cronFeedList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.adminPage__cronFeedList li {
+  border-top: 1px solid var(--adm-border);
+}
+
+.adminPage__cronFeedRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.72rem 0.85rem;
+  cursor: pointer;
+  user-select: none;
+  color: var(--adm-text);
+  transition: background 0.12s ease;
+}
+
+.adminPage__cronFeedRow--all {
+  align-items: center;
+  border-top: none;
+  background: rgba(148, 163, 184, 0.06);
+  font-weight: 600;
+  font-size: 0.84rem;
+}
+
+.adminPage__cronFeedRow:hover {
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.adminPage__cronFeedRow--selected {
+  background: rgba(28, 176, 212, 0.08);
+}
+
+.adminPage__cronFeedRow--selected:hover {
+  background: rgba(28, 176, 212, 0.12);
+}
+
+.adminPage__cronFeedRow input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0.15rem 0 0;
+  flex-shrink: 0;
+  accent-color: var(--adm-primary);
+  cursor: pointer;
+}
+
+.adminPage__cronFeedRow--all input[type="checkbox"] {
+  margin-top: 0;
+}
+
+.adminPage__cronFeedAllLabel {
+  flex: 1;
+}
+
+.adminPage__cronFeedMain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.adminPage__cronFeedName {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--adm-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adminPage__cronFeedUrl {
+  font-size: 0.76rem;
+  line-height: 1.35;
+  color: var(--adm-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adminPage__cronFeedMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2rem;
+  flex-shrink: 0;
+}
+
+.adminPage__cronFeedId {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--adm-muted);
+}
+
+.adminPage__cronFeedCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.45rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 6px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--adm-primary);
+  background: rgba(28, 176, 212, 0.12);
+}
+
+.adminPage__cronFormTop {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.adminPage__cronFormTop--schedule {
+  grid-template-columns: 1fr;
+}
+
+.adminPage__cronDateTimeRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  grid-column: 1 / -1;
+}
+
+.adminPage__cronField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.adminPage__cronField--full {
+  grid-column: 1 / -1;
+}
+
+.adminPage__cronFieldHint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--adm-muted);
+  line-height: 1.4;
+}
+
+.adminPage__cronFieldLabel {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--adm-muted);
+}
+
+.adminPage__cronInputWrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  position: relative;
+  height: 2.5rem;
+  box-sizing: border-box;
+  padding: 0 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--adm-input-border);
+  background: rgba(15, 20, 25, 0.45);
+  color: var(--adm-muted);
+  overflow: hidden;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.adminPage__cronInputWrap > svg {
+  flex-shrink: 0;
+  color: var(--adm-muted);
+  pointer-events: none;
+}
+
+.adminPage__cronFieldIcon {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+  color: var(--adm-primary, #1cb0d4);
+  stroke: currentColor;
+  pointer-events: none;
+}
+
+html.app-theme-dark .adminPage__cronInputWrap > svg:not(.adminPage__cronFieldIcon) {
+  color: #e2e8f0;
+}
+
+html.app-theme-dark .adminPage__cronInputWrap > svg.adminPage__cronFieldIcon,
+html.app-theme-dark .adminPage__cronFieldIcon {
+  color: #38bdf8;
+  stroke: currentColor;
+}
+
+html.app-theme-dark .adminPage__cronSectionTitleWrap .adminPage__cronFieldIcon {
+  color: var(--adm-primary, #1cb0d4);
+}
+
+html:not(.app-theme-dark) .adminPage__cronInputWrap > svg:not(.adminPage__cronFieldIcon) {
+  color: #64748b;
+}
+
+html:not(.app-theme-dark) .adminPage__cronInputWrap > svg.adminPage__cronFieldIcon,
+html:not(.app-theme-dark) .adminPage__cronFieldIcon {
+  color: var(--adm-primary, #1cb0d4);
+}
+
+.adminPage__cronInputWrap:focus-within {
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.14);
+}
+
+.adminPage__cronInputWrap--native:focus-within {
+  outline: none;
+}
+
+.adminPage__cronInputWrap--native:focus-within .adminPage__cronInput--native {
+  outline: none;
+  box-shadow: none;
+}
+
+.adminPage__cronInputWrap--native .adminPage__cronInput--native {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: block;
+}
+
+.adminPage__cronInputWrap--timeCombo {
+  position: relative;
+  padding-right: 0.35rem;
+  overflow: visible;
+  z-index: 1;
+}
+
+.adminPage__cronInputWrap--timeComboOpen {
+  z-index: 50;
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.14);
+}
+
+.adminPage__cronTimeComboInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.adminPage__cronTimeComboInput::-webkit-calendar-picker-indicator {
+  display: none;
+}
+
+.adminPage__cronTimeComboInput::-webkit-clear-button {
+  display: none;
+}
+
+.adminPage__cronTimeComboToggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--adm-muted);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.adminPage__cronTimeComboToggle:hover {
+  color: var(--adm-text);
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.adminPage__cronTimeComboToggle:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.45);
+  outline-offset: 1px;
+}
+
+.adminPage__cronTimeComboList {
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem 0;
+  max-height: 220px;
+  overflow-y: auto;
+  border-radius: 8px;
+  border: 1px solid var(--adm-input-border);
+  background: #0f1419;
+  box-shadow:
+    0 4px 6px -1px rgba(15, 23, 42, 0.2),
+    0 10px 24px -4px rgba(15, 23, 42, 0.28);
+}
+
+.adminPage__cronTimeComboList--portal {
+  position: fixed;
+  z-index: 1200;
+  box-sizing: border-box;
+}
+
+.adminPage__cronTimeComboOption {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0.45rem 0.75rem;
+  border: none;
+  background: transparent;
+  color: var(--adm-text);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.adminPage__cronTimeComboOption:hover {
+  background: rgba(28, 176, 212, 0.1);
+}
+
+.adminPage__cronTimeComboOption--active {
+  background: rgba(28, 176, 212, 0.14);
+  color: var(--adm-primary);
+  font-weight: 600;
+}
+
+html:not(.app-theme-dark) .adminPage__cronTimeComboList {
+  background: #fff;
+  border-color: #e2e8f0;
+  box-shadow:
+    0 4px 6px -1px rgba(15, 23, 42, 0.08),
+    0 10px 24px -4px rgba(15, 23, 42, 0.12);
+}
+
+html:not(.app-theme-dark) .adminPage__cronTimeComboOption {
+  color: #1f2937;
+}
+
+html:not(.app-theme-dark) .adminPage__cronTimeComboOption--active {
+  color: var(--adm-primary);
+}
+
+.adminPage__cronInput--native::-webkit-date-and-time-value {
+  text-align: left;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+
+.adminPage__cronInput {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--adm-text);
+  font-size: 0.875rem;
+  line-height: 1.25;
+  outline: none;
+  box-shadow: none;
+}
+
+.adminPage__cronInput--native {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: textfield;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  cursor: pointer;
+}
+
+html.app-theme-dark .adminPage__cronInput--native {
+  color-scheme: dark;
+}
+
+html:not(.app-theme-dark) .adminPage__cronInput--native {
+  color-scheme: light;
+}
+
+.adminPage__cronInput--native:focus,
+.adminPage__cronInput--native:focus-visible {
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+}
+
+html.app-theme-dark .adminPage__cronInputWrap--native {
+  color-scheme: dark;
+}
+
+.adminPage__cronInput--native::-webkit-calendar-picker-indicator,
+.adminPage__cronInput--native::-webkit-clear-button,
+.adminPage__cronInput--native::-webkit-inner-spin-button {
+  opacity: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 2.5rem;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+html.app-theme-dark .adminPage__cronInput--native::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  filter: invert(1) brightness(1.35);
+  cursor: pointer;
+}
+
+html:not(.app-theme-dark) .adminPage__cronInput--native::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  filter: none;
+}
+
+.adminPage__cronInputWrap--date .adminPage__cronInput--native::-webkit-calendar-picker-indicator {
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  pointer-events: none !important;
+  filter: none !important;
+}
+
+.adminPage__cronFieldIconBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--adm-primary, #1cb0d4);
+}
+
+html.app-theme-dark .adminPage__cronFieldIconBtn {
+  color: #38bdf8;
+}
+
+.adminPage__cronFieldIconBtn .adminPage__cronFieldIcon {
+  pointer-events: none;
+}
+
+.adminPage__cronFieldIconBtn:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.45);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.adminPage__cronInput--native::-webkit-datetime-edit,
+.adminPage__cronInput--native::-webkit-datetime-edit-fields-wrapper,
+.adminPage__cronInput--native::-webkit-datetime-edit-text,
+.adminPage__cronInput--native::-webkit-datetime-edit-month-field,
+.adminPage__cronInput--native::-webkit-datetime-edit-day-field,
+.adminPage__cronInput--native::-webkit-datetime-edit-year-field,
+.adminPage__cronInput--native::-webkit-datetime-edit-hour-field,
+.adminPage__cronInput--native::-webkit-datetime-edit-minute-field,
+.adminPage__cronInput--native::-webkit-datetime-edit-ampm-field {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  color: var(--adm-text);
+  background: transparent;
+}
+
+.adminPage__cronInput--native::-webkit-datetime-edit-fields-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.adminPage__cronInput--native:focus::-webkit-datetime-edit-fields-wrapper,
+.adminPage__cronInput--native:focus-visible::-webkit-datetime-edit-fields-wrapper {
+  background: transparent;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+.adminPage__cronInput--native::-moz-focus-inner {
+  border: 0;
+  padding: 0;
+}
+
+.adminPage__cronSelect {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0 1.35rem 0 0;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background-color: transparent !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.1rem center;
+  background-size: 12px;
+  color: var(--adm-text);
+  font-size: 0.875rem;
+  line-height: 1.25;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+.adminPage__cronSelect:focus,
+.adminPage__cronSelect:focus-visible {
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+}
+
+.adminPage__cronSelect::-ms-expand {
+  display: none;
+}
+
+.adminPage__cronInputWrap:focus-within .adminPage__cronSelect {
+  outline: none;
+  box-shadow: none;
+}
+
+.adminPage__cronSelect--withChevron {
+  padding-right: 0;
+  background-image: none;
+}
+
+.adminPage__cronSelectChevron {
+  flex-shrink: 0;
+  color: var(--adm-muted);
+  pointer-events: none;
+}
+
+.adminPage__cronSelect option,
+.adminPage__cronSelect optgroup {
+  color: #0f1419;
+  background: #fff;
+}
+
+.adminPage__cronQuickTimes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  grid-column: 1 / -1;
+}
+
+.adminPage__cronRecurrence {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-top: 0.1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--adm-border);
+}
+
+.adminPage__cronRecurrenceBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.adminPage__cronMonthField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: 10rem;
+}
+
+.adminPage__cronRecurrenceHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  flex-wrap: wrap;
+}
+
+.adminPage__cronRecurrenceTitle {
+  margin: 0 0 0.15rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--adm-text);
+}
+
+.adminPage__cronRecurrenceHint {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--adm-muted);
+}
+
+.adminPage__cronRepeatRow {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.adminPage__cronRepeatLabel {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--adm-text);
+  cursor: pointer;
+}
+
+.adminPage__cronRepeatEvery {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.adminPage__cronRepeatEveryLabel {
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: var(--adm-text);
+}
+
+.adminPage__cronRepeatInterval {
+  width: 3.25rem;
+  height: 2.35rem;
+  padding: 0 0.45rem;
+  border-radius: 8px;
+  border: 1px solid var(--adm-input-border);
+  background: rgba(15, 20, 25, 0.45);
+  color: var(--adm-text);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.adminPage__cronRepeatInterval:focus {
+  outline: none;
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.14);
+}
+
+.adminPage__cronRepeatUnitText {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--adm-muted);
+  text-transform: lowercase;
+}
+
+.adminPage__cronUnitOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.adminPage__cronUnitBtn {
+  min-width: 4.25rem;
+  height: 2.1rem;
+  padding: 0 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--adm-input-border);
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--adm-muted);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.adminPage__cronUnitBtn:hover {
+  color: var(--adm-text);
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+.adminPage__cronUnitBtn--selected {
+  background: rgba(28, 176, 212, 0.16);
+  border-color: rgba(28, 176, 212, 0.55);
+  color: var(--adm-primary);
+}
+
+.adminPage__cronMonthDaySelect {
+  width: 100%;
+  max-width: 10rem;
+  height: 2.35rem;
+  padding: 0 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--adm-input-border);
+  background: rgba(15, 20, 25, 0.45);
+  color: var(--adm-text);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.adminPage__cronMonthDaySelect:focus {
+  outline: none;
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.14);
+}
+
+.adminPage__cronDayList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.adminPage__cronDayBtn {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--adm-input-border);
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--adm-muted);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.adminPage__cronDayBtn:hover {
+  color: var(--adm-text);
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+.adminPage__cronDayBtn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.22);
+}
+
+.adminPage__cronDayBtn--selected {
+  background: var(--adm-primary);
+  border-color: var(--adm-primary);
+  color: #f8fafc;
+}
+
+.adminPage__cronTimeChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.25rem;
+  height: 1.85rem;
+  padding: 0 0.55rem;
+  border-radius: 6px;
+  border: 1px solid var(--adm-input-border);
+  background: transparent;
+  color: var(--adm-muted);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.adminPage__cronTimeChip:hover {
+  color: var(--adm-text);
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+.adminPage__cronTimeChip--active {
+  background: rgba(28, 176, 212, 0.14);
+  border-color: rgba(28, 176, 212, 0.45);
+  color: var(--adm-primary);
+}
+
+.adminPage__cronSummary {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: 10px;
+  background: rgba(28, 176, 212, 0.08);
+  border: 1px solid rgba(28, 176, 212, 0.2);
+  color: var(--adm-text);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.adminPage__cronSummary svg {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+  color: var(--adm-primary);
+}
+
+.adminPage__cronNote {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--adm-muted);
+}
+
+.adminPage__cronNote svg {
+  flex-shrink: 0;
+  color: var(--adm-primary);
+}
+
+.adminPage__cronFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem 1.25rem;
+  flex-wrap: wrap;
+  padding-top: 1rem;
+  border-top: 1px solid var(--adm-border);
+}
+
+.adminPage__cronFooterHint {
+  margin: 0;
+  max-width: 34rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--adm-muted);
+}
+
+.adminPage__cronFooterActions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.adminPage__cronStopBtn,
+.adminPage__cronSaveBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 9.5rem;
+}
+
+.adminPage__cronTabsRow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding-top: 0.15rem;
+}
+
+.adminPage__cronTabsRow .adminPage__tabs--sub {
+  margin: 0;
+}
+
+.adminPage__cronBody--logs {
+  gap: 1rem;
+}
+
+.adminPage__table--cronFeeds .adminPage__cronFeedName {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--adm-text);
+}
+
+.adminPage__table--cronFeeds .adminPage__th:nth-child(3),
+.adminPage__table--cronFeeds .adminPage__th:nth-child(4),
+.adminPage__table--cronFeeds .adminPage__th:nth-child(5),
+.adminPage__table--cronFeeds .adminPage__th:nth-child(6),
+.adminPage__table--cronFeeds .adminPage__th:nth-child(7),
+.adminPage__table--cronFeeds .adminPage__td:nth-child(3),
+.adminPage__table--cronFeeds .adminPage__td:nth-child(4),
+.adminPage__table--cronFeeds .adminPage__td:nth-child(5),
+.adminPage__table--cronFeeds .adminPage__td:nth-child(6),
+.adminPage__table--cronFeeds .adminPage__td:nth-child(7) {
+  width: 4.5rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 980px) {
+  .adminPage__cronLayout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .adminPage__cronFormTop--schedule {
+    grid-template-columns: 1fr;
+  }
+
+  .adminPage__cronDateTimeRow {
+    grid-template-columns: 1fr;
+  }
+
+  .adminPage__cronFooter {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .adminPage__cronFooterActions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .adminPage__cronStopBtn,
+  .adminPage__cronSaveBtn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+.adminPage__serviceList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.adminPage__serviceRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--adm-border);
+}
+
+.adminPage__serviceRow:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.adminPage__serviceName {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--adm-text);
+  min-width: 0;
+}
+
+.adminPage__statusPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  padding: 0.16rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.25;
+  flex-shrink: 0;
+  pointer-events: none;
+  user-select: none;
+  border: 1px solid transparent;
+}
+
+.adminPage__statusPillDot {
+  width: 0.32rem;
+  height: 0.32rem;
+  border-radius: 2px;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+/* Same visual language as Settings → Disconnected (.settingsPage__pill--bad), slightly smaller */
+.adminPage__statusPill--stopped {
+  color: var(--adm-status-bad);
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+.adminPage__statusPill--stopped .adminPage__statusPillDot {
+  background: var(--adm-status-bad);
+}
+
+/* Same as Settings → Connected (.settingsPage__pill--ok), slightly smaller */
+.adminPage__statusPill--running {
+  color: var(--adm-status-ok);
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(52, 211, 153, 0.35);
+}
+
+.adminPage__statusPill--running .adminPage__statusPillDot {
+  background: var(--adm-status-ok);
+  box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.25);
+}
+
+.adminPage__statusPill--idle {
+  color: var(--adm-muted);
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+.adminPage__statusPill--idle .adminPage__statusPillDot {
+  background: #94a3b8;
+}
+
+.adminPage__statusPill--pending {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
+.adminPage__statusPill--pending .adminPage__statusPillDot {
+  background: #fbbf24;
+  animation: adminPage__statusPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes adminPage__statusPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.adminPage__cronServicePills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.adminPage__serviceActions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.adminPage__modelField {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--adm-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.adminPage__modelLabelRow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+}
+
+.adminPage__modelLabel {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--adm-text);
+}
+
+.adminPage__modelCurrent {
+  display: inline-flex;
+  align-items: center;
+  max-width: min(100%, 18rem);
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--adm-primary);
+  background: rgba(28, 176, 212, 0.14);
+  border: 1px solid rgba(28, 176, 212, 0.45);
+  box-shadow: 0 0 0 1px rgba(28, 176, 212, 0.08);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adminPage__modelControls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.adminPage__modelPickerRow {
+  width: 100%;
+  min-width: 0;
+}
+
+.adminPage__modelActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  width: 100%;
+  margin-bottom: 0.75rem;
+}
+
+.adminPage__modelApplyBtn,
+.adminPage__modelTestBtn {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  margin-top: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.adminPage__modelPicker {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.adminPage__modelTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  height: 40px;
+  padding: 0 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--adm-input-border);
+  background: var(--adm-input-bg);
+  color: var(--adm-text);
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.adminPage__modelTrigger:hover:not(:disabled) {
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+.adminPage__modelPicker--open .adminPage__modelTrigger {
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.18);
+}
+
+.adminPage__modelTrigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.adminPage__modelTriggerText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adminPage__modelTriggerIcon {
+  flex-shrink: 0;
+  color: var(--adm-muted);
+  transition: transform 0.15s ease;
+}
+
+.adminPage__modelPicker--open .adminPage__modelTriggerIcon {
+  transform: rotate(180deg);
+}
+
+.adminPage__modelMenu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  border: 1px solid var(--adm-input-border);
+  background: var(--adm-card);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.28);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.adminPage__modelSearchWrap {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  height: 40px;
+  padding: 0 0.75rem;
+  border-bottom: 1px solid var(--adm-border);
+  background: var(--adm-input-bg);
+  box-sizing: border-box;
+}
+
+.adminPage__modelSearchWrap:focus-within {
+  background: rgba(28, 176, 212, 0.06);
+}
+
+.adminPage__modelSearchIcon {
+  flex-shrink: 0;
+  color: var(--adm-muted);
+}
+
+.adminPage__modelSearchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--adm-text);
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.adminPage__modelSearchInput:focus {
+  outline: none;
+}
+
+.adminPage__modelSearchInput::placeholder {
+  color: #64748b;
+}
+
+.adminPage__modelSearchInput:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.adminPage__modelSearchInput::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+
+.adminPage__modelList {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem;
+  max-height: 14rem;
+  overflow-y: auto;
+  background: var(--adm-input-bg);
+  box-sizing: border-box;
+}
+
+.adminPage__modelListEmpty {
+  padding: 0.65rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--adm-muted);
+}
+
+.adminPage__modelOption {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 36px;
+  padding: 0.45rem 0.65rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--adm-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.adminPage__modelOption:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.adminPage__modelOption--selected {
+  background: rgba(28, 176, 212, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(28, 176, 212, 0.35);
+}
+
+.adminPage__modelOption:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.adminPage__modelOptionLabel {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adminPage__modelStatus {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  border: 1px solid var(--adm-border);
+  background: var(--adm-input-bg);
+  color: var(--adm-text);
+}
+
+.adminPage__modelStatus--success {
+  color: #15803d;
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.adminPage__modelStatus--error {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.adminPage__modelTestDialog {
+  max-width: 460px;
+}
+
+.adminPage__modelTestDialogBanner {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.adminPage__modelTestDialogBanner--success {
+  color: #15803d;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.adminPage__modelTestDialogBanner--error {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.adminPage__modelTestDialogMeta {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.adminPage__modelTestDialogRow {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: start;
+}
+
+.adminPage__modelTestDialogRow dt {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--main-text-muted, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.adminPage__modelTestDialogRow dd {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--main-text-color, #1f2937);
+  word-break: break-word;
+}
+
+.adminPage__modelTestDialogMessage {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.adminPage__modelTestDialogMessageLabel {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--main-text-muted, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.adminPage__modelTestDialogMessageText {
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--main-text-color, #1f2937);
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.adminPage__modelTestDialog--error .adminPage__modelTestDialogMessageText {
+  color: #991b1b;
+  background: rgba(254, 242, 242, 0.85);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.adminPage__modelTestDialog .usersPage__dialogActions {
+  padding: 0 1.1rem 1.1rem;
+  margin-top: 0;
+}
+
+html.app-theme-dark .adminPage__modelTestDialogRow dd {
+  color: #e2e8f0;
+}
+
+html.app-theme-dark .adminPage__modelTestDialogBanner--success {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.14);
+  border-color: rgba(74, 222, 128, 0.35);
+}
+
+html.app-theme-dark .adminPage__modelTestDialogBanner--error {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+html.app-theme-dark .adminPage__modelTestDialogMessageText {
+  color: #e2e8f0;
+  background: rgba(15, 23, 42, 0.75);
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+html.app-theme-dark
+  .adminPage__modelTestDialog--error
+  .adminPage__modelTestDialogMessageText {
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.28);
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+.adminPage__split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  align-items: stretch;
+}
+
+@media (max-width: 900px) {
+  .adminPage__split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.adminPage__ingestRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.adminPage__ingestRow .adminPage__input {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.adminPage .usersPage__inviteBtn {
+  flex-shrink: 0;
+}
+
+.adminPage__input {
+  height: 40px;
+  padding: 0 0.85rem;
+  border-radius: 8px;
+  border: 1px solid var(--adm-input-border);
+  background: var(--adm-input-bg);
+  color: var(--adm-text);
+  font: inherit;
+  font-size: 0.875rem;
+  box-sizing: border-box;
+}
+
+.adminPage__input::placeholder {
+  color: #64748b;
+}
+
+.adminPage__input:focus {
+  outline: none;
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.18);
+}
+
+.adminPage__fileFields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.adminPage__fileField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.adminPage__fileField--tight {
+  margin-bottom: 0;
+}
+
+.adminPage__fileLabel {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--adm-muted);
+}
+
+.adminPage__fileInput {
+  width: 100%;
+  max-width: 100%;
+  margin-bottom: 0.75rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--adm-muted);
+  cursor: pointer;
+}
+
+.adminPage__fileInput::file-selector-button {
+  margin-right: 0.65rem;
+  height: 34px;
+  padding: 0 0.85rem;
+  border-radius: 6px;
+  border: 1px solid var(--adm-input-border);
+  background: var(--adm-input-bg);
+  color: var(--adm-text);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.adminPage__fileInput::file-selector-button:hover {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+.adminPage__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--adm-text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.adminPage__check input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--adm-primary);
+  cursor: pointer;
+}
+
+.adminPage__cardFoot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+  padding-top: 0.25rem;
+}
+
+.adminPage__dataGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.25rem;
+  margin-top: 0.25rem;
+}
+
+@media (max-width: 1024px) {
+  .adminPage__dataGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.adminPage__dataCol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 1rem 1.05rem;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  box-sizing: border-box;
+}
+
+.adminPage__dataCol--danger {
+  border-color: rgba(220, 38, 38, 0.25);
+  background: rgba(127, 29, 29, 0.12);
+}
+
+.adminPage__dataColTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--adm-text);
+}
+
+.adminPage__dataColDesc {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--adm-muted);
+}
+
+.adminPage__ghostBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  width: 100%;
+  min-height: 40px;
+  padding: 0.5rem 0.85rem;
+  margin-top: auto;
+  border-radius: 8px;
+  border: 1px solid var(--adm-outline);
+  background: rgba(15, 23, 42, 0.25);
+  color: var(--adm-text);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.adminPage__ghostBtn:hover {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(248, 250, 252, 0.5);
+}
+
+.adminPage__urlRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.adminPage__urlInput {
+  /* flex: 1 1 14rem; */
+  min-width: 0;
+  height: 40px;
+  padding: 0 0.85rem;
+  box-sizing: border-box;
+  border-radius: 8px;
+  border: 1px solid var(--adm-input-border);
+  background: var(--adm-input-bg);
+  color: var(--adm-text);
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.adminPage__urlInput::placeholder {
+  color: var(--adm-muted);
+}
+
+.adminPage__urlInput:focus {
+  outline: none;
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.18);
+}
+
+.adminPage__urlInput:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.adminPage__urlAddBtn {
+  flex-shrink: 0;
+}
+
+.adminPage__dangerInput {
+  width: 100%;
+  height: 40px;
+  padding: 0 0.85rem;
+  box-sizing: border-box;
+  border-radius: 8px;
+  border: 1px solid #dc2626;
+  background: var(--adm-input-bg);
+  color: var(--adm-text);
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.adminPage__dangerInput::placeholder {
+  color: #94a3b8;
+}
+
+.adminPage__dangerInput:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.25);
+}
+
+.adminPage__dangerBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  width: 100%;
+  min-height: 40px;
+  padding: 0.5rem 0.85rem;
+  margin-top: 0.15rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--adm-danger);
+  color: #fff;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.adminPage__dangerBtn:hover:not(:disabled) {
+  background: var(--adm-danger-hover);
+}
+
+.adminPage__dangerBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.adminPage__visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+html:not(.app-theme-dark) .adminPage__statusPill--stopped {
+  color: #dc2626;
+  background: rgba(254, 226, 226, 0.9);
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
+html:not(.app-theme-dark) .adminPage__statusPill--stopped .adminPage__statusPillDot {
+  background: #dc2626;
+}
+
+html:not(.app-theme-dark) .adminPage__statusPill--running {
+  color: #047857;
+  background: rgba(209, 250, 229, 0.95);
+  border-color: rgba(52, 211, 153, 0.45);
+}
+
+html:not(.app-theme-dark) .adminPage__statusPill--running .adminPage__statusPillDot {
+  background: #059669;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.28);
+}
+
+html:not(.app-theme-dark) .adminPage__statusPill--pending {
+  color: #b45309;
+  background: rgba(254, 243, 199, 0.95);
+  border-color: rgba(251, 191, 36, 0.45);
+}
+
+html:not(.app-theme-dark) .adminPage__statusPill--pending .adminPage__statusPillDot {
+  background: #d97706;
+}
+
+html:not(.app-theme-dark) .adminPage__tabs {
+  background: rgba(28, 176, 212, 0.06);
+  border-color: rgba(28, 176, 212, 0.16);
+}
+
+html:not(.app-theme-dark) .adminPage__tab:hover {
+  background: rgba(255, 255, 255, 0.75);
+}
+
+html:not(.app-theme-dark) .adminPage__tab--selected {
+  background: #fff;
+  border-color: rgba(148, 163, 184, 0.22);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+html:not(.app-theme-dark) .adminPage {
+  --adm-surface: #fff;
+  --adm-card: #f8f8fc;
+  --adm-border: rgba(15, 23, 42, 0.08);
+  --adm-text: #0f172a;
+  --adm-muted: #64748b;
+  --adm-input-bg: #fff;
+  --adm-input-border: #cbd5e1;
+  --adm-outline: #cbd5e1;
+}
+
+html:not(.app-theme-dark) .mainLayout__content.adminPage {
+  background-color: var(--adm-surface);
+}
+
+html:not(.app-theme-dark) .adminPage__card,
+html:not(.app-theme-dark) .adminPage .settingsPage__card {
+  background: #f8f8fc;
+}
+
+html:not(.app-theme-dark) .adminPage__dataCol,
+html:not(.app-theme-dark) .adminPage__cronPanel {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+html:not(.app-theme-dark) .adminPage__cronInputWrap,
+html:not(.app-theme-dark) .adminPage__cronSearchWrap,
+html:not(.app-theme-dark) .adminPage__cronSearchInput,
+html:not(.app-theme-dark) .adminPage__cronRepeatInterval,
+html:not(.app-theme-dark) .adminPage__cronMonthDaySelect {
+  background: #fff;
+}
+
+html:not(.app-theme-dark) .adminPage__cronFeedsPanel {
+  background: #fff;
+}
+
+html:not(.app-theme-dark) .adminPage__cronDayBtn,
+html:not(.app-theme-dark) .adminPage__cronUnitBtn,
+html:not(.app-theme-dark) .adminPage__cronTimeChip {
+  background: #fff;
+  border-color: #94a3b8;
+  color: #334155;
+}
+
+html:not(.app-theme-dark) .adminPage__cronDayBtn:hover,
+html:not(.app-theme-dark) .adminPage__cronUnitBtn:hover,
+html:not(.app-theme-dark) .adminPage__cronTimeChip:hover {
+  background: #f8fafc;
+  border-color: #64748b;
+  color: #0f172a;
+}
+
+html:not(.app-theme-dark) .adminPage__cronDayBtn--selected {
+  background: var(--adm-primary);
+  border-color: var(--adm-primary);
+  color: #fff;
+}
+
+html:not(.app-theme-dark) .adminPage__cronDayBtn--selected:hover {
+  background: var(--adm-primary-strong, #149bb8);
+  border-color: var(--adm-primary-strong, #149bb8);
+  color: #fff;
+}
+
+html:not(.app-theme-dark) .adminPage__cronUnitBtn--selected,
+html:not(.app-theme-dark) .adminPage__cronTimeChip--active {
+  background: rgba(28, 176, 212, 0.14);
+  border-color: rgba(28, 176, 212, 0.55);
+  color: var(--adm-primary-strong, #149bb8);
+}
+
+html:not(.app-theme-dark) .adminPage__cronSummary {
+  background: rgba(28, 176, 212, 0.08);
+}
+
+html:not(.app-theme-dark) .adminPage__cronEmpty {
+  background: #fff;
+  border-color: #cbd5e1;
+}
+
+html:not(.app-theme-dark) .adminPage__cronFeedRow--selected {
+  background: rgba(28, 176, 212, 0.08);
+}
+
+html:not(.app-theme-dark) .adminPage__dataCol--danger {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+html:not(.app-theme-dark) .adminPage__ghostBtn {
+  background: #fff;
+}
+
+html:not(.app-theme-dark) .adminPage__fileInput::file-selector-button {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+html:not(.app-theme-dark) .adminPage__modelCurrent {
+  color: var(--main-auth-button-color-strong, #149bb8);
+  background: rgba(28, 176, 212, 0.12);
+  border-color: rgba(28, 176, 212, 0.4);
+}
+
+html:not(.app-theme-dark) .adminPage__modelPicker--open .adminPage__modelTrigger {
+  border-color: var(--main-auth-button-color, #1cb0d4);
+  box-shadow: 0 0 0 2px rgba(28, 176, 212, 0.2);
+}
+
+html:not(.app-theme-dark) .adminPage__modelMenu {
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+}
+
+html:not(.app-theme-dark) .adminPage__modelOption--selected {
+  background: rgba(28, 176, 212, 0.1);
+}
+
+html.app-theme-dark .adminPage {
+  --adm-surface: #0f172a;
+  --adm-card: #1e293b;
+}
+
+html.app-theme-dark .adminPage__cronInputWrap {
+  background: rgba(15, 23, 42, 0.55);
+  border-color: rgba(148, 163, 184, 0.28);
+}

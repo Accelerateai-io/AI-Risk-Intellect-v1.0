@@ -1,0 +1,57 @@
+{
+  "type": "object",
+  "required": ["risk", "controls", "justification"],
+  "properties": {
+    "_source": { "type": "string" },
+    "_meta": { "type": "object" },
+    "risk": {
+      "type": "object",
+      "required": ["risk_title", "domains", "description"],
+      "properties": {
+        "risk_title": { "type": "string" },
+        "domains": { "type": "string" },
+        "description": { "type": "string" },
+        "attack_vector": { "type": "string" },
+        "observable_indicators": { "type": "string" },
+        "data_to_identify_risk": { "type": "string" },
+        "evidence_sources": { "type": "string" },
+        "intent": { "type": "string" },
+        "timing": { "type": "string" },
+        "risk_type_detected": { "type": "string" },
+        "primary_risk": { "type": "string" },
+        "secondary_risks": { "type": "string" },
+        "sector": { "type": "string" },
+        "industry": { "type": "string" }
+      }
+    },
+    "controls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "control_ref": { "type": "string" },
+          "name": { "type": "string" },
+          "why": { "type": "string" },
+          "score": { "type": "number" }
+        }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "properties": {
+        "risk_identified": { "type": "string" },
+        "article_context": { "type": "string" },
+        "alignment_reasoning": { "type": "string" }
+      }
+    },
+    "justification": {
+      "type": "object",
+      "properties": {
+        "decision_rationale": { "type": "string" },
+        "taxonomy_mapping": { "type": "object" },
+        "evidence_breakdown": { "type": "array" },
+        "self_assessment": { "type": "object" }
+      }
+    }
+  }
+}

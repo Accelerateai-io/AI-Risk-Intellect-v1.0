@@ -1,0 +1,1870 @@
+/* RSS Feeds tab — aligned with Jobs / Users data tables */
+
+.adminPage__rssPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.adminPage__rssWorkspace {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.adminPage__rssWorkspaceHead {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.adminPage__rssWorkspaceTopRow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.adminPage__rssWorkspaceTopRow .adminPage__tabs--sub {
+  margin: 0;
+}
+
+.adminPage__rssWorkspaceTitle {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.adminPage__rssWorkspaceActions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.adminPage__rssWorkspaceActions .adminPage__rssRefreshBtn,
+.adminPage__rssWorkspaceActions .adminPage__rssIngestBtn {
+  margin-left: 0;
+}
+
+.adminPage__rssRefreshBtn {
+  margin-left: auto;
+}
+
+.adminPage__rssIngestBtn {
+  margin-left: auto;
+}
+
+.adminPage__rssToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--adm-border);
+  background: rgba(148, 163, 184, 0.04);
+}
+
+.adminPage__rssToolbarField {
+  flex: 1 1 16rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.adminPage__rssToolbarLabel {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--adm-muted);
+}
+
+.adminPage__rssToolbar .adminPage__urlInput {
+  width: 100%;
+}
+
+.adminPage__rssToolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.adminPage__rssLogsToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid var(--adm-border);
+  background: rgba(148, 163, 184, 0.04);
+}
+
+/* Filter bar — same layout as Jobs (.jobsPage__filters) */
+.adminPage__dataFilters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem 1.25rem;
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 0;
+  border-radius: 10px;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  box-sizing: border-box;
+}
+
+.adminPage__dataFilters .adminPage__linksFilter,
+.adminPage__dataFilters .adminPage__logsFilter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: min(160px, 100%);
+}
+
+.adminPage__dataFilters .adminPage__linksSearchWrap,
+.adminPage__dataFilters .adminPage__logsSearchWrap {
+  position: relative;
+  flex: 0 1 420px;
+  min-width: 200px;
+  max-width: 420px;
+  margin-left: auto;
+}
+
+.adminPage__logsFilter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.adminPage__linksFilter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.adminPage__dataFilters .adminPage__logsFilter label,
+.adminPage__dataFilters .adminPage__linksFilter label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--adm-muted);
+}
+
+.adminPage__dataFilters .adminPage__logsFilter select,
+.adminPage__dataFilters .adminPage__linksFilter select {
+  width: 100%;
+  min-width: 10rem;
+  height: 40px;
+  border: 1px solid var(--adm-border);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.25);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  background-size: 12px;
+  color: var(--adm-text);
+  padding: 0 2rem 0 0.65rem;
+  font-size: 0.85rem;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+.adminPage__dataFilters .adminPage__logsFilter select:focus,
+.adminPage__dataFilters .adminPage__linksFilter select:focus {
+  outline: none;
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+.adminPage__logsFilter select::-ms-expand,
+.adminPage__linksFilter select::-ms-expand {
+  display: none;
+}
+
+.adminPage__logsSearchWrap {
+  position: relative;
+  flex: 1 1 16rem;
+  min-width: 12rem;
+}
+
+.adminPage__linksSearchWrap {
+  position: relative;
+  flex: 1 1 16rem;
+  min-width: 12rem;
+}
+
+.adminPage__logsSearchIcon {
+  position: absolute;
+  left: 0.65rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--adm-muted);
+  pointer-events: none;
+}
+
+.adminPage__linksSearchIcon {
+  position: absolute;
+  left: 0.65rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--adm-muted);
+  pointer-events: none;
+}
+
+.adminPage__dataFilters .adminPage__logsSearchInput,
+.adminPage__dataFilters .adminPage__linksSearchInput {
+  width: 100%;
+  height: 40px;
+  box-sizing: border-box;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--ui-border-radius, 8px);
+  background: rgba(15, 23, 42, 0.25);
+  color: var(--adm-text);
+  padding: 0 0.75rem 0 2.35rem;
+  font-size: 0.875rem;
+  line-height: 1.25;
+}
+
+.adminPage__dataFilters .adminPage__logsSearchInput::placeholder,
+.adminPage__dataFilters .adminPage__linksSearchInput::placeholder {
+  color: #94a3b8;
+  font-size: 0.875rem;
+  opacity: 1;
+}
+
+.adminPage__dataFilters .adminPage__logsClearBtn,
+.adminPage__dataFilters .adminPage__linksClearBtn {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--adm-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--adm-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.adminPage__dataFilters .adminPage__logsClearBtn:hover,
+.adminPage__dataFilters .adminPage__linksClearBtn:hover {
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--adm-text);
+}
+
+.adminPage__logsClearBtn[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 4;
+  padding: 0.3rem 0.55rem;
+  border-radius: 5px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 0.15s ease, visibility 0.15s ease, transform 0.15s ease;
+  background: #1e293b;
+  color: #f8fafc;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.28);
+}
+
+.adminPage__linksClearBtn[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 4;
+  padding: 0.3rem 0.55rem;
+  border-radius: 5px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 0.15s ease, visibility 0.15s ease, transform 0.15s ease;
+  background: #1e293b;
+  color: #f8fafc;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.28);
+}
+
+.adminPage__logsClearBtn:hover::after,
+.adminPage__logsClearBtn:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.adminPage__linksClearBtn:hover::after,
+.adminPage__linksClearBtn:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.adminPage__rssWorkspace .adminPage__tableSection,
+.adminPage__rssWorkspace .adminPage__dataTableSection {
+  min-width: 0;
+  margin-top: 0;
+}
+
+.adminPage__dataTableSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+
+.adminPage__dataTableHead .adminPage__dataFilters {
+  margin-bottom: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.adminPage__dataTableToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--adm-border);
+}
+
+.adminPage__dataTableToolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.adminPage__dataTableToolbarActions .adminPage__rssRefreshBtn,
+.adminPage__dataTableToolbarActions .adminPage__rssIngestBtn {
+  margin-left: 0;
+}
+
+.adminPage__dataTableToolbarSearch {
+  position: relative;
+  flex: 0 1 420px;
+  min-width: min(220px, 100%);
+  margin-left: auto;
+}
+
+.adminPage__dataTableToolbarSearch .adminPage__linksSearchIcon {
+  position: absolute;
+  left: 0.65rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--adm-muted);
+  pointer-events: none;
+}
+
+.adminPage__dataTableToolbarSearch .adminPage__linksSearchInput {
+  width: 100%;
+  height: 40px;
+  box-sizing: border-box;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--ui-border-radius, 8px);
+  background: rgba(15, 23, 42, 0.25);
+  color: var(--adm-text);
+  padding: 0 0.75rem 0 2.35rem;
+  font-size: 0.875rem;
+  line-height: 1.25;
+}
+
+.adminPage__dataTableToolbarSearch .adminPage__linksSearchInput::placeholder {
+  color: #94a3b8;
+  font-size: 0.875rem;
+  opacity: 1;
+}
+
+.adminPage__dataTableToolbarSearch .adminPage__linksSearchInput:focus {
+  outline: none;
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+.adminPage__th--sortable {
+  padding: 0;
+}
+
+.adminPage__sortBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.95rem 1rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.adminPage__th--center .adminPage__sortBtn {
+  justify-content: center;
+  text-align: center;
+}
+
+.adminPage__sortBtn:hover {
+  color: var(--adm-text);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.adminPage__sortBtn--active {
+  color: var(--adm-text);
+}
+
+.adminPage__sortBtn svg {
+  flex-shrink: 0;
+  opacity: 0.55;
+}
+
+.adminPage__sortBtn--active svg {
+  opacity: 1;
+  color: #38bdf8;
+}
+
+.adminPage__rssWorkspace .adminPage__tableWrap,
+.adminPage__rssWorkspace .adminPage__dataTableWrap {
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  border: 1px solid var(--adm-border);
+  background: var(--adm-card);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.adminPage__dataTableHead + .adminPage__dataTableWrap {
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+}
+
+.adminPage__dataTableHead {
+  border: 1px solid var(--adm-border);
+  border-radius: 10px 10px 0 0;
+  background: var(--adm-card);
+  overflow: hidden;
+}
+
+.adminPage__dataTablePager.dtPagination {
+  border-top: 1px solid var(--adm-border);
+}
+
+.adminPage__tableWrap--links {
+  overflow: hidden;
+}
+
+.adminPage__table--links {
+  table-layout: fixed;
+  min-width: 58rem;
+}
+
+.adminPage__table--links .adminPage__colId {
+  width: 4.25rem;
+}
+
+.adminPage__table--links .adminPage__colName {
+  width: 10rem;
+}
+
+.adminPage__table--links .adminPage__nameCol {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.adminPage__table--links .adminPage__colUrl {
+  width: auto;
+  min-width: 14rem;
+}
+
+.adminPage__table--links .adminPage__colItems {
+  width: 4.75rem;
+}
+
+.adminPage__table--links .adminPage__colDiscovery {
+  width: 11.5rem;
+}
+
+.adminPage__table--links .adminPage__colStatus {
+  width: 6.75rem;
+}
+
+.adminPage__table--links .adminPage__feedStatusCell {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.adminPage__feedStatusPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 5.75rem;
+  margin: 0 auto;
+  padding: 0.3rem 0.65rem;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-indent: 0;
+  gap: 0;
+  box-sizing: border-box;
+}
+
+.adminPage__table--links .adminPage__colAdded {
+  width: 6.5rem;
+}
+
+.adminPage__table--links .adminPage__colExtraction {
+  width: 13.5rem;
+}
+
+.adminPage__table--links .adminPage__colActions {
+  width: 4.5rem;
+}
+
+.adminPage__rowMenuWrap {
+  position: relative;
+  display: inline-flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.adminPage__kebabBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 1px solid var(--adm-border);
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.06);
+  color: var(--adm-muted);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.adminPage__kebabBtn:hover:not(:disabled) {
+  background: rgba(28, 176, 212, 0.12);
+  color: var(--adm-text);
+  border-color: rgba(28, 176, 212, 0.35);
+}
+
+.adminPage__kebabBtn[aria-expanded="true"] {
+  border-color: var(--adm-primary);
+  color: var(--adm-primary);
+  background: rgba(28, 176, 212, 0.14);
+}
+
+.adminPage__kebabBtn:disabled,
+.adminPage__kebabBtn:disabled:hover {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: rgba(148, 163, 184, 0.04);
+  color: var(--adm-muted);
+  border-color: var(--adm-border);
+}
+
+.adminPage__rowMenu {
+  min-width: 10.5rem;
+  padding: 0.3rem;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.45);
+}
+
+.adminPage__rowMenu--portal {
+  position: fixed;
+  z-index: 4000;
+  right: auto;
+  bottom: auto;
+  margin: 0;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+}
+
+.adminPage__rowMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.4rem 0.65rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--adm-text);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.adminPage__rowMenuItem:hover:not(:disabled) {
+  background: rgba(28, 176, 212, 0.16);
+}
+
+.adminPage__rowMenuItem--extract {
+  color: #22d3ee;
+}
+
+.adminPage__rowMenuItem--extract:hover {
+  background: rgba(34, 211, 238, 0.14);
+  color: #67e8f9;
+}
+
+.adminPage__rowMenuItem--restore {
+  color: var(--adm-status-ok);
+}
+
+.adminPage__rowMenuItem--restore:hover {
+  background: rgba(52, 211, 153, 0.14);
+  color: #6ee7b7;
+}
+
+.adminPage__rowMenuItem--danger {
+  color: var(--adm-status-bad);
+}
+
+.adminPage__rowMenuItem--danger:hover {
+  background: rgba(248, 113, 113, 0.14);
+  color: #fca5a5;
+}
+
+.adminPage__table--links .adminPage__feedUrlCol {
+  width: auto;
+  max-width: none;
+  overflow: hidden;
+}
+
+.adminPage__table--links .adminPage__feedUrlCol .adminPage__cellUrl {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adminPage__rssWorkspace .adminPage__tableScroll {
+  overflow: auto;
+  max-height: min(34rem, 62vh);
+}
+
+.adminPage__table {
+  width: 100%;
+  min-width: 44rem;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.adminPage__th {
+  padding: 0.75rem 1rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--adm-muted);
+  background: #0f172a;
+  border-bottom: 1px solid var(--adm-border);
+  white-space: nowrap;
+  text-align: left;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+.adminPage__th--center {
+  text-align: center;
+}
+
+.adminPage__td--center {
+  text-align: center;
+}
+
+.adminPage__th--actions {
+  text-align: right;
+}
+
+.adminPage__th--discovery {
+  white-space: normal;
+  line-height: 1.25;
+  min-width: 9rem;
+}
+
+.adminPage__th--actionsSticky,
+.adminPage__td--actionsSticky {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: var(--adm-card);
+  /* box-shadow: -8px 0 12px -10px rgba(2, 6, 23, 0.45); */
+}
+
+.adminPage__table thead .adminPage__th--actionsSticky {
+  z-index: 4;
+  background: #0f172a;
+}
+
+.adminPage__tableRow--archived .adminPage__td {
+  color: var(--adm-muted);
+}
+
+.adminPage__tableRow--archived .adminPage__cellUrl {
+  color: var(--adm-muted);
+}
+
+.adminPage__tableRow--archived .adminPage__statusPill--archived {
+  opacity: 1;
+}
+
+.adminPage__td {
+  padding: 0.95rem 1rem;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--adm-border);
+  color: var(--adm-text);
+  font-size: 14px;
+}
+
+.adminPage__table tbody tr:last-child .adminPage__td {
+  border-bottom: none;
+}
+
+.adminPage__table tbody tr:hover .adminPage__td {
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.adminPage__table tbody tr:hover .adminPage__td--actionsSticky {
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.adminPage__emptyCell {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--adm-muted);
+  font-size: 0.875rem;
+}
+
+.adminPage__id {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--entity-id-color, #22d3ee);
+}
+
+.adminPage__cellUrl {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--adm-text);
+  text-decoration: none;
+  vertical-align: bottom;
+}
+
+.adminPage__cellUrl:hover {
+  color: #7dd3fc;
+  text-decoration: underline;
+}
+
+.adminPage__cellMuted {
+  color: var(--adm-muted);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.adminPage__discoveryProgressCell {
+  min-width: 13.5rem;
+}
+
+.adminPage__discoveryProgress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.adminPage__discoveryProgressMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--adm-muted);
+  white-space: nowrap;
+}
+
+.adminPage__discoveryProgressTrack {
+  position: relative;
+  width: 100%;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.22);
+  overflow: hidden;
+}
+
+.adminPage__discoveryProgressFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #22d3ee, #34d399);
+  transition: width 0.25s ease;
+}
+
+.adminPage__addedAtCell {
+  min-width: 6.5rem;
+}
+
+.adminPage__addedAt {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.adminPage__extractionStatusCell {
+  min-width: 11.5rem;
+  overflow: visible;
+}
+
+.adminPage__extractionStatusPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.28rem 0.65rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  width: max-content;
+  max-width: 100%;
+  text-transform: none;
+  letter-spacing: normal;
+  border: 1px solid transparent;
+}
+
+.adminPage__extractionTimesCell {
+  min-width: 13.5rem;
+}
+
+.adminPage__extractionProgress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+}
+
+.adminPage__extractionProgressMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--adm-muted);
+  white-space: nowrap;
+}
+
+.adminPage__extractionProgressMeta--single {
+  justify-content: center;
+}
+
+.adminPage__discoveryProgressTrack--indeterminate {
+  overflow: hidden;
+}
+
+.adminPage__discoveryProgressFill--indeterminate {
+  width: 40%;
+  animation: adminPage__extractionProgressIndeterminate 1.35s ease-in-out infinite;
+}
+
+@keyframes adminPage__extractionProgressIndeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.adminPage__extractionTimes {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--adm-text);
+  white-space: nowrap;
+}
+
+.adminPage__urlInput--cell {
+  width: 100%;
+  min-width: 12rem;
+}
+
+.adminPage__itemsBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  min-width: 2.5rem;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--adm-border);
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--adm-text);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.adminPage__itemsBtn:hover:not(:disabled) {
+  background: rgba(28, 176, 212, 0.12);
+  border-color: rgba(28, 176, 212, 0.35);
+}
+
+.adminPage__itemsBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.adminPage__itemsBtn[aria-expanded="true"] {
+  background: rgba(28, 176, 212, 0.15);
+  border-color: rgba(28, 176, 212, 0.45);
+}
+
+.adminPage__itemsCell {
+  position: relative;
+}
+
+.adminPage__itemsCellWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.adminPage__itemsDropdown {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  right: 0;
+  z-index: 8;
+  width: min(44rem, 82vw);
+  max-height: min(28rem, 70vh);
+  overflow: auto;
+  padding: 0.9rem 0.95rem;
+  border: 1px solid var(--adm-border);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.98);
+  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.45);
+  text-align: left;
+}
+
+.adminPage__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.adminPage__actionBtn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.adminPage__actionBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.adminPage__actionBtn:focus-visible {
+  outline: 2px solid var(--adm-primary);
+  outline-offset: 2px;
+}
+
+.adminPage__actionBtn[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 8px);
+  z-index: 4;
+  padding: 0.3rem 0.55rem;
+  border-radius: 5px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-50%) translateX(4px);
+  transition:
+    opacity 0.15s ease,
+    visibility 0.15s ease,
+    transform 0.15s ease;
+  background: #1e293b;
+  color: #f8fafc;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.28);
+}
+
+.adminPage__actionBtn:hover:not(:disabled)::after,
+.adminPage__actionBtn:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(0);
+}
+
+.adminPage__actionBtn--extract {
+  color: #22d3ee;
+}
+
+.adminPage__actionBtn--extract:hover:not(:disabled) {
+  color: #67e8f9;
+  background: rgba(34, 211, 238, 0.12);
+}
+
+.adminPage__actionBtn--edit {
+  color: #94a3b8;
+}
+
+.adminPage__actionBtn--edit:hover:not(:disabled) {
+  color: #e2e8f0;
+  background: rgba(148, 163, 184, 0.15);
+}
+
+.adminPage__actionBtn--archive {
+  color: #f87171;
+}
+
+.adminPage__actionBtn--archive:hover:not(:disabled) {
+  color: #fca5a5;
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.adminPage__actionBtn--save {
+  color: #34d399;
+}
+
+.adminPage__actionBtn--save:hover:not(:disabled) {
+  background: rgba(52, 211, 153, 0.12);
+}
+
+.adminPage__actionBtn--cancel {
+  color: #94a3b8;
+}
+
+.adminPage__itemsExpandRow .adminPage__td {
+  padding: 0;
+  background: rgba(15, 23, 42, 0.35);
+  border-bottom: 1px solid var(--adm-border);
+}
+
+.adminPage__itemsPanel {
+  padding: 0.85rem 1rem 1rem;
+  border-top: 1px solid var(--adm-border);
+}
+
+.adminPage__itemsPanelTitle {
+  margin: 0 0 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--adm-muted);
+}
+
+.adminPage__itemsPanelEmpty {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--adm-muted);
+}
+
+.adminPage__itemsTable {
+  width: 100%;
+  min-width: 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 0.825rem;
+  border-radius: 8px;
+  border: 1px solid var(--adm-border);
+  overflow: hidden;
+  background: rgba(148, 163, 184, 0.03);
+}
+
+.adminPage__itemsTable th,
+.adminPage__itemsTable td {
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--adm-border);
+  vertical-align: middle;
+}
+
+.adminPage__itemsTable col.adminPage__itemsColIndex {
+  width: 3.2rem;
+}
+
+.adminPage__itemsTable col.adminPage__itemsColName {
+  width: 11rem;
+}
+
+.adminPage__itemsTable .adminPage__itemsNameCol {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.adminPage__itemsTable th {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--adm-muted);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.adminPage__itemsTable th:first-child,
+.adminPage__itemsTable td:first-child {
+  width: 3.2rem;
+}
+
+.adminPage__itemsTable .adminPage__itemTitle {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--adm-text);
+}
+
+.adminPage__itemsTable tbody tr:hover td {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.adminPage__itemsTable .adminPage__cellUrl {
+  display: block;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  line-height: 1.4;
+}
+
+.adminPage__itemsTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.adminPage__statusPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.28rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  min-width: 5.6rem;
+  gap: 0;
+}
+
+.adminPage__statusPill--pending,
+.adminPage__statusPill--running {
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  color: #fbbf24;
+}
+
+.adminPage__statusPill--done {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  color: var(--adm-status-ok);
+}
+
+.adminPage__statusPill--error,
+.adminPage__statusPill--skipped {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: var(--adm-status-bad);
+}
+
+.adminPage__statusPill--not-processed {
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: var(--adm-muted);
+}
+
+.adminPage__statusPill--archived {
+  background: rgba(148, 163, 184, 0.14);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  color: var(--adm-muted);
+}
+
+.adminPage__actionBtn--restore {
+  color: #34d399;
+}
+
+.adminPage__actionBtn--restore:hover:not(:disabled) {
+  background: rgba(52, 211, 153, 0.14);
+  color: #6ee7b7;
+}
+
+.adminPage__table--logs {
+  table-layout: fixed;
+  min-width: 52rem;
+}
+
+.adminPage__table--logs .adminPage__colLogFeedId,
+.adminPage__table--logs .adminPage__colLogExtracted,
+.adminPage__table--logs .adminPage__colLogJob {
+  width: 5.5rem;
+}
+
+.adminPage__table--logs .adminPage__colLogUrl {
+  width: auto;
+  min-width: 14rem;
+}
+
+.adminPage__table--logs .adminPage__colLogReason {
+  width: 15.5rem;
+}
+
+.adminPage__table--logs .adminPage__colLogStatus {
+  width: 7.25rem;
+}
+
+.adminPage__table--logs .adminPage__colLogExecution {
+  width: 8.25rem;
+}
+
+.adminPage__table--logs .adminPage__reasonCell {
+  white-space: normal;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.adminPage__executionTimeCell {
+  min-width: 8.25rem;
+}
+
+.adminPage__executionCell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.adminPage__executionDuration {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.1rem 0.45rem;
+  border-radius: 6px;
+  font-weight: 700;
+  color: #22d3ee;
+  background: rgba(34, 211, 238, 0.14);
+}
+
+.adminPage__executionAt {
+  font-size: 0.75rem;
+  color: var(--adm-muted);
+}
+
+html:not(.app-theme-dark) .adminPage__executionDuration {
+  color: #0e7490;
+  background: rgba(14, 116, 144, 0.1);
+}
+
+/* Box-shaped status badges in RSS feeds (override global pill radius). */
+.adminPage__rssWorkspace .adminPage__statusPill {
+  border-radius: 4px;
+  justify-content: center;
+  min-width: 5.6rem;
+  padding: 0.28rem 0.6rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  gap: 0;
+}
+
+.adminPage__rssWorkspace .adminPage__feedStatusPill {
+  min-width: 5.75rem;
+  letter-spacing: 0.04em;
+  justify-content: center;
+  text-align: center;
+}
+
+.adminPage__rssWorkspace .adminPage__extractionStatusPill {
+  min-width: 0;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 0.72rem;
+}
+
+.adminPage__reasonCell {
+  max-width: 14rem;
+  white-space: normal;
+  line-height: 1.35;
+  font-size: 0.8125rem;
+}
+
+html.app-theme-dark .adminPage__kebabBtn {
+  background: #334155;
+  border-color: #475569;
+  color: #cbd5e1;
+}
+
+html.app-theme-dark .adminPage__kebabBtn:hover:not(:disabled) {
+  background: #475569;
+  color: #f1f5f9;
+  border-color: rgba(28, 176, 212, 0.35);
+}
+
+html.app-theme-dark .adminPage__kebabBtn[aria-expanded="true"] {
+  background: rgba(28, 176, 212, 0.2);
+}
+
+html.app-theme-dark .adminPage__actionBtn {
+  background: #334155;
+}
+
+html.app-theme-dark .adminPage__actionBtn--extract:hover:not(:disabled) {
+  background: rgba(34, 211, 238, 0.28);
+}
+
+html.app-theme-dark .adminPage__actionBtn--edit:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.28);
+}
+
+html.app-theme-dark .adminPage__actionBtn--archive:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.28);
+}
+
+html.app-theme-dark .adminPage__actionBtn--save:hover:not(:disabled) {
+  background: rgba(52, 211, 153, 0.28);
+}
+
+html.app-theme-dark .adminPage__actionBtn--restore:hover:not(:disabled) {
+  background: rgba(52, 211, 153, 0.28);
+}
+
+/* Portaled menus render on document.body — use explicit colors (not --adm-card). */
+html.app-theme-dark .adminPage__rowMenu,
+html.app-theme-dark .adminPage__rowMenu--portal {
+  background: #1e293b;
+  border-color: rgba(148, 163, 184, 0.25);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.45);
+}
+
+html.app-theme-dark .adminPage__rowMenuItem {
+  color: #f1f5f9;
+}
+
+html.app-theme-dark .adminPage__rowMenuItem:hover:not(:disabled) {
+  background: rgba(28, 176, 212, 0.2);
+}
+
+html.app-theme-dark .adminPage__rowMenuItem--extract {
+  color: #22d3ee;
+}
+
+html.app-theme-dark .adminPage__rowMenuItem--extract:hover:not(:disabled) {
+  background: rgba(34, 211, 238, 0.14);
+  color: #67e8f9;
+}
+
+html.app-theme-dark .adminPage__rowMenuItem--restore {
+  color: #34d399;
+}
+
+html.app-theme-dark .adminPage__rowMenuItem--restore:hover:not(:disabled) {
+  background: rgba(52, 211, 153, 0.14);
+  color: #6ee7b7;
+}
+
+html.app-theme-dark .adminPage__rowMenuItem--danger {
+  color: #f87171;
+}
+
+html.app-theme-dark .adminPage__rowMenuItem--danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.14);
+  color: #fca5a5;
+}
+
+html.app-theme-dark .adminPage__table tbody tr:hover .adminPage__td {
+  background: #334155;
+}
+
+html.app-theme-dark .adminPage__table tbody tr:hover .adminPage__td--actionsSticky {
+  background: #334155;
+}
+
+html:not(.app-theme-dark) .adminPage__th {
+  background: #f1f5f9;
+}
+
+html:not(.app-theme-dark) .adminPage__table thead .adminPage__th--actionsSticky {
+  background: #f1f5f9;
+}
+
+html:not(.app-theme-dark) .adminPage__td--actionsSticky {
+  background: #f8f8fc;
+}
+
+html:not(.app-theme-dark) .adminPage__table tbody tr:hover .adminPage__td--actionsSticky {
+  background: #f8fafc;
+}
+
+html:not(.app-theme-dark) .adminPage__rssToolbar,
+html:not(.app-theme-dark) .adminPage__rssLogsToolbar {
+  background: #f8fafc;
+}
+
+html:not(.app-theme-dark) .adminPage__dataFilters {
+  background: #f8f8fc;
+}
+
+html:not(.app-theme-dark) .adminPage__rssWorkspace .adminPage__tableWrap {
+  background: #f8f8fc;
+}
+
+html:not(.app-theme-dark) .adminPage__logsFilter select,
+html:not(.app-theme-dark) .adminPage__logsSearchInput {
+  background-color: #fff;
+}
+
+html:not(.app-theme-dark) .adminPage__linksFilter select,
+html:not(.app-theme-dark) .adminPage__linksSearchInput {
+  background-color: #fff;
+}
+
+html:not(.app-theme-dark) .adminPage__logsFilter select,
+html:not(.app-theme-dark) .adminPage__linksFilter select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  background-size: 12px;
+}
+
+html:not(.app-theme-dark) .adminPage__discoveryProgressTrack {
+  background: #e2e8f0;
+}
+
+html:not(.app-theme-dark) .adminPage__table tbody tr:hover .adminPage__td {
+  background: #f8fafc;
+}
+
+html:not(.app-theme-dark) .adminPage__itemsExpandRow .adminPage__td {
+  background: #f1f5f9;
+}
+
+html:not(.app-theme-dark) .adminPage__itemsDropdown {
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+}
+
+html:not(.app-theme-dark) .adminPage__itemsTable {
+  background: #ffffff;
+}
+
+html:not(.app-theme-dark) .adminPage__itemsTable tbody tr:hover td {
+  background: #f8fafc;
+}
+
+html:not(.app-theme-dark) .adminPage__actionBtn[data-tooltip]::after {
+  background: #0f172a;
+  color: #f8fafc;
+}
+
+html:not(.app-theme-dark) .adminPage__actionBtn--extract {
+  color: #0891b2;
+}
+
+html:not(.app-theme-dark) .adminPage__actionBtn--extract:hover:not(:disabled) {
+  color: #0e7490;
+  background: rgba(8, 145, 178, 0.1);
+}
+
+html:not(.app-theme-dark) .adminPage__actionBtn--restore {
+  color: #059669;
+}
+
+html:not(.app-theme-dark) .adminPage__actionBtn--restore:hover:not(:disabled) {
+  color: #047857;
+  background: rgba(5, 150, 105, 0.12);
+}
+
+html:not(.app-theme-dark) .adminPage__actionBtn--archive {
+  color: #dc2626;
+}
+
+html:not(.app-theme-dark) .adminPage__actionBtn--archive:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.08);
+}
+
+html:not(.app-theme-dark) .adminPage__kebabBtn {
+  background: #fff;
+  border-color: #e5e7eb;
+  color: #64748b;
+}
+
+html:not(.app-theme-dark) .adminPage__kebabBtn:hover:not(:disabled) {
+  background: #f8fafc;
+  color: #1f2937;
+  border-color: rgba(28, 176, 212, 0.35);
+}
+
+html:not(.app-theme-dark) .adminPage__rowMenu {
+  background: #fff;
+  border-color: #e5e7eb;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+}
+
+html:not(.app-theme-dark) .adminPage__rowMenuItem {
+  color: #1f2937;
+}
+
+html:not(.app-theme-dark) .adminPage__rowMenuItem:hover:not(:disabled) {
+  background: rgba(28, 176, 212, 0.14);
+}
+
+html:not(.app-theme-dark) .adminPage__rowMenuItem--extract {
+  color: #0891b2;
+}
+
+html:not(.app-theme-dark) .adminPage__rowMenuItem--restore {
+  color: #059669;
+}
+
+html:not(.app-theme-dark) .adminPage__rowMenuItem--danger {
+  color: #dc2626;
+}
+
+@media (max-width: 720px) {
+  .adminPage__rssWorkspaceHead {
+    align-items: stretch;
+  }
+
+  .adminPage__rssWorkspaceTopRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .adminPage__rssWorkspaceTopRow .adminPage__tabs--sub {
+    width: 100%;
+  }
+
+  .adminPage__rssWorkspaceActions {
+    width: 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+
+  .adminPage__rssWorkspaceActions .usersPage__inviteBtn {
+    flex: 1 1 calc(50% - 0.25rem);
+    justify-content: center;
+    min-width: 0;
+  }
+
+  .adminPage__rssToolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .adminPage__rssToolbarActions {
+    width: 100%;
+  }
+
+  .adminPage__rssToolbarActions .usersPage__inviteBtn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .adminPage__dataFilters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .adminPage__dataFilters .adminPage__linksSearchWrap,
+  .adminPage__dataFilters .adminPage__logsSearchWrap {
+    flex: 1 1 100%;
+    max-width: none;
+    margin-left: 0;
+  }
+
+  .adminPage__logsFilter select,
+  .adminPage__logsSearchWrap {
+    width: 100%;
+  }
+
+  .adminPage__linksFilter select,
+  .adminPage__linksSearchWrap {
+    width: 100%;
+  }
+}
+
+/* Discovery start dialog */
+
+.adminPage__discoveryDialog {
+  max-width: 36rem;
+}
+
+.adminPage__discoveryDialogHint {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  color: var(--adm-muted, var(--main-text-muted, #64748b));
+  line-height: 1.45;
+}
+
+.adminPage__discoveryDialogEmpty {
+  margin: 0 0 1rem;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px dashed var(--adm-border, #e2e8f0);
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--adm-muted, var(--main-text-muted, #64748b));
+}
+
+.adminPage__discoveryFeedListWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 0.25rem;
+  border: 1px solid var(--adm-border, #e2e8f0);
+  border-radius: 8px;
+  overflow: hidden;
+  max-height: min(20rem, 50vh);
+}
+
+.adminPage__discoveryFeedRow {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.85rem;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.875rem;
+  color: var(--adm-text, var(--main-text-color, #1f2937));
+}
+
+.adminPage__discoveryFeedRow--all {
+  border-bottom: 1px solid var(--adm-border, #e2e8f0);
+  background: rgba(148, 163, 184, 0.06);
+  font-weight: 600;
+}
+
+.adminPage__discoveryFeedRow input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--adm-primary, #1cb0d4);
+  cursor: pointer;
+}
+
+.adminPage__discoveryFeedAllLabel {
+  flex: 1;
+}
+
+.adminPage__discoveryFeedCount {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--adm-muted, var(--main-text-muted, #64748b));
+}
+
+.adminPage__discoveryPresetActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: 0.5rem;
+}
+
+.adminPage__discoveryPresetBtn {
+  height: 1.7rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--adm-border, #e2e8f0);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--adm-text, var(--main-text-color, #1f2937));
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.adminPage__discoveryPresetBtn:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.adminPage__discoveryPresetBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.adminPage__discoveryFeedList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+
+.adminPage__discoveryFeedList li {
+  border-bottom: 1px solid var(--adm-border, #e2e8f0);
+}
+
+.adminPage__discoveryFeedList li:last-child {
+  border-bottom: none;
+}
+
+.adminPage__discoveryFeedRow:hover {
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.adminPage__discoveryFeedRowWrap {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.adminPage__discoveryFeedRowWrap .adminPage__discoveryFeedRow {
+  flex: 1;
+}
+
+.adminPage__discoveryFeedExpandBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  margin-right: 0.45rem;
+  border: 1px solid var(--adm-border, #e2e8f0);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--adm-muted, var(--main-text-muted, #64748b));
+  cursor: pointer;
+}
+
+.adminPage__discoveryFeedExpandBtn:hover:not(:disabled) {
+  color: var(--adm-text, var(--main-text-color, #1f2937));
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.adminPage__discoveryFeedExpandBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.adminPage__discoveryFeedUrl {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adminPage__discoveryItemList {
+  list-style: none;
+  margin: 0;
+  padding: 0.2rem 0.5rem 0.5rem 2.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.adminPage__discoveryItemRow {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.adminPage__discoveryItemRow:hover {
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.adminPage__discoveryItemRow input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--adm-primary, #1cb0d4);
+  cursor: pointer;
+}
+
+.adminPage__discoveryItemUrl {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--adm-muted, var(--main-text-muted, #64748b));
+  font-size: 0.8125rem;
+}
+
+html.app-theme-dark .adminPage__discoveryFeedRow--all {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+html.app-theme-dark .adminPage__discoveryFeedRow:hover {
+  background: rgba(148, 163, 184, 0.1);
+}
+
+html.app-theme-dark .adminPage__discoveryItemRow:hover {
+  background: rgba(148, 163, 184, 0.1);
+}

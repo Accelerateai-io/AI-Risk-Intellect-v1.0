@@ -1,0 +1,154 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap");
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: "Inter", sans-serif;
+}
+
+
+:root {
+  --app-font-family: "Inter", sans-serif;
+  /* Auth sign-in fields + matching toast outline (periwinkle ring, cool tint fill) */
+  /* --auth-signin-input-border: #b8c9f3; */
+  --auth-signin-input-border: rgba(28, 176, 212, 0.2);
+  --auth-signin-input-bg: #f2f6fc;
+  --main-auth-button-color: #1cb0d4;
+  --main-auth-button-color-strong: #149bb8;
+  /* Same focus ring for inputs, textareas, selects, and auth fields */
+  --main-auth-focus-ring-shadow: 0 0 0 2px rgba(28, 176, 212, 0.35);
+  /* Form / body text (matches `select` in this file) */
+  --main-text-color: #1f2937;
+  --main-text-muted: #64748b;
+  --main-text-label: #475569;
+  --ui-border-radius: 5px;
+  --toastify-font-family: var(--app-font-family);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: var(--app-font-family);
+}
+
+input {
+  border: 1px solid lightgray;
+  border-radius: 4px;
+  padding: 5px;
+  font-size: 16px;
+  height: 40px;
+}
+
+input:focus {
+  outline: none;
+  border-color: var(--main-auth-button-color);
+  box-shadow: var(--main-auth-focus-ring-shadow);
+}
+button {
+  font-family: var(--app-font-family);
+  border-radius: var(--ui-border-radius);
+}
+
+/* All textareas: 5px radius, no resize */
+textarea {
+  border: 1px solid lightgray;
+  border-radius: 5px;
+  padding: 5px;
+  font-size: 16px;
+  resize: none;
+  min-height: 2.5em;
+  box-sizing: border-box;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: var(--main-auth-button-color);
+  box-shadow: var(--main-auth-focus-ring-shadow);
+}
+
+/* COTS-style select: applied to all form selects across the app */
+select {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  padding: 0.5rem 2rem 0.5rem 0.75rem;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  min-height: 40px;
+  background-color: #fff;
+  color: #1f2937;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236B7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+}
+select:focus {
+  outline: none;
+  border-color: var(--main-auth-button-color);
+  box-shadow: var(--main-auth-focus-ring-shadow);
+}
+
+.invite_user_btn {
+  border: 1px solid var(--main-auth-button-color);
+  padding: 7px 10px;
+  width: 8em;
+  background-color: var(--main-auth-button-color);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  color: white;
+  width: fit-content;
+  border-radius: var(--ui-border-radius);
+  display: flex;
+  justify-content: center;
+  align-content: center;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+}
+
+.error_icon {
+  transform: rotate(180deg); /* or any angle */
+  transition: transform 0.2s ease;
+  color: red;
+}
+
+.error_text_sec {
+  display: flex;
+  align-items: center;
+  padding: 0.2em 0 0 0;
+  gap: 0.4em;
+}
+
+.error_text_sec p {
+  color: red;
+  font-size: 14px;
+}
+
+/* Shared tokens when user selects dark theme (app + auth pages) */
+html.app-theme-dark {
+  --main-text-color: #f1f5f9;
+  --main-text-muted: #94a3b8;
+  --main-text-label: #cbd5e1;
+  --auth-signin-input-bg: #0f172a;
+  --auth-signin-input-border: rgba(148, 163, 184, 0.28);
+  --main-auth-focus-ring-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
+}
+
+html.app-theme-dark input,
+html.app-theme-dark select,
+html.app-theme-dark textarea {
+  border-color: rgba(148, 163, 184, 0.28);
+  background-color: #0f172a;
+  color: #f1f5f9;
+}
+
+html.app-theme-dark select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394A3B8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+}

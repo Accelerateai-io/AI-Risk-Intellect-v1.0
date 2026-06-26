@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "./dist",
+    "rootDir": "src",
+    "strict": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "sourceMap": false,
+    "resolveJsonModule": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "drizzle",
+    "src/controllers/analyze.controller.ts",
+    "src/middleware/rateLimiter.middleware.ts",
+    "src/middleware/requestLogger.middleware.ts",
+    "src/middleware/validate.middleware.ts",
+    "src/services/ai/**",
+    "src/services/scraping/**",
+    "src/services/workflow/**",
+    "src/utils/ssrfProtection.ts",
+    "src/validators/analyze.validator.ts"
+  ]
+}

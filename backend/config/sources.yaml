@@ -1,0 +1,15 @@
+# RSS discovery (port of config/sources.yaml + auto_ingest_loop)
+# Interval: poll_interval_seconds OR env AUTO_INGEST_INTERVAL_MIN (minutes)
+# Cap per cycle: env AUTO_INGEST_MAX_PER_CYCLE (default 50)
+
+poll_interval_seconds: 900
+
+feeds:
+  - name: BBC Technology
+    type: rss
+    url: https://feeds.bbci.co.uk/news/technology/rss.xml
+    enabled: true
+
+# Python-style sections (optional)
+news: []
+research: []

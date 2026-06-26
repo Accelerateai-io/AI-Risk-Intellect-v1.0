@@ -1,0 +1,93 @@
+.pageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.75rem;
+}
+
+.pageHeader__lead {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.pageHeader__iconWrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 12px;
+  background: rgba(28, 176, 212, 0.12);
+  color: var(--main-auth-button-color, #1cb0d4);
+}
+
+.pageHeader__icon {
+  flex-shrink: 0;
+}
+
+.pageHeader__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.pageHeader__title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--page-header-title-color, var(--main-text-color, #0f172a));
+}
+
+.pageHeader__subtitle {
+  margin: 0;
+  max-width: 42rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--page-header-subtitle-color, var(--main-text-muted, #64748b));
+}
+
+.pageHeader__actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pageHeader .usersPage__inviteBtn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.pageHeader__refreshIcon--spin {
+  animation: pageHeaderSpin 0.75s linear infinite;
+}
+
+@keyframes pageHeaderSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+html.app-theme-dark .pageHeader__iconWrap {
+  background: rgba(28, 176, 212, 0.16);
+  color: #38bdf8;
+}
+
+html.app-theme-dark .pageHeader__title {
+  color: var(--page-header-title-color, #f1f5f9);
+}
+
+html.app-theme-dark .pageHeader__subtitle {
+  color: var(--page-header-subtitle-color, #94a3b8);
+}

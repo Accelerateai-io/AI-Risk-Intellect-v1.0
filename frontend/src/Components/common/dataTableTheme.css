@@ -1,0 +1,137 @@
+/**
+ * Shared data table surfaces — light by default, dark-aligned under .app-theme-dark.
+ */
+
+.usersPage__tableCard,
+.articlesPage__tableWrap,
+.jobsPage__tableWrap,
+.riskPage__tableWrap {
+  background: #fff;
+}
+
+.usersPage__table,
+.articlesPage__table,
+.jobsPage__table,
+.riskPage__table {
+  background: #fff;
+}
+
+.usersPage__table th,
+.articlesPage__th,
+.jobsPage__th,
+.riskPage__th {
+  background: #f1f5f9;
+}
+
+.usersPage__table td,
+.articlesPage__td,
+.jobsPage__td,
+.riskPage__td,
+.riskPage__th--sticky,
+.riskPage__td--sticky {
+  background-color: #fff;
+}
+
+.usersPage__table tbody tr:hover,
+.articlesPage__table tbody tr:hover,
+.jobsPage__table tbody tr:hover,
+.riskPage__table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.usersPage__table tbody tr:hover td,
+.articlesPage__table tbody tr:hover .articlesPage__td,
+.jobsPage__table tbody tr:hover .jobsPage__td,
+.riskPage__table tbody tr:hover .riskPage__td,
+.riskPage__table tbody tr:hover .riskPage__td--sticky {
+  background-color: #f8fafc;
+}
+
+.usersPage__pager.dtPagination,
+.articlesPage__pager.dtPagination,
+.jobsPage__pager.dtPagination,
+.riskPage__pager.dtPagination,
+.adminPage__dataTablePager.dtPagination,
+.observabilityPage__tablePanel .dtPagination {
+  --dt-pager-bg: #fff;
+  --dt-pager-input-bg: #fff;
+  background: #fff;
+}
+
+/* Dark theme — match page surfaces (Observability, Jobs, Risks, etc.) */
+html.app-theme-dark .usersPage__tableCard,
+html.app-theme-dark .articlesPage__tableWrap,
+html.app-theme-dark .jobsPage__tableWrap,
+html.app-theme-dark .riskPage__tableWrap {
+  background: #1e293b;
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+html.app-theme-dark .usersPage__table,
+html.app-theme-dark .articlesPage__table,
+html.app-theme-dark .jobsPage__table,
+html.app-theme-dark .riskPage__table {
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+html.app-theme-dark .usersPage__table th,
+html.app-theme-dark .articlesPage__th,
+html.app-theme-dark .jobsPage__th,
+html.app-theme-dark .riskPage__th,
+html.app-theme-dark .riskPage__th--sticky {
+  background: #0f172a;
+  color: #94a3b8;
+  border-bottom-color: rgba(148, 163, 184, 0.12);
+}
+
+html.app-theme-dark .usersPage__table td,
+html.app-theme-dark .articlesPage__td,
+html.app-theme-dark .jobsPage__td,
+html.app-theme-dark .riskPage__td,
+html.app-theme-dark .riskPage__td--sticky {
+  background-color: #1e293b;
+  color: #f8fafc;
+  border-bottom-color: rgba(148, 163, 184, 0.12);
+}
+
+html.app-theme-dark .usersPage__table tbody tr:hover,
+html.app-theme-dark .articlesPage__table tbody tr:hover,
+html.app-theme-dark .jobsPage__table tbody tr:hover,
+html.app-theme-dark .riskPage__table tbody tr:hover,
+html.app-theme-dark .observabilityPage__table tbody tr:hover {
+  background: #334155;
+}
+
+html.app-theme-dark .usersPage__table tbody tr:hover td,
+html.app-theme-dark .articlesPage__table tbody tr:hover .articlesPage__td,
+html.app-theme-dark .jobsPage__table tbody tr:hover .jobsPage__td,
+html.app-theme-dark .riskPage__table tbody tr:hover .riskPage__td,
+html.app-theme-dark .riskPage__table tbody tr:hover .riskPage__td--sticky,
+html.app-theme-dark .observabilityPage__table tbody tr:hover td {
+  background-color: #334155;
+}
+
+html.app-theme-dark .usersPage__nameText {
+  color: #e2e8f0;
+}
+
+html.app-theme-dark .usersPage__email,
+html.app-theme-dark .articlesPage__muted,
+html.app-theme-dark .jobsPage__muted {
+  color: #94a3b8;
+}
+
+html.app-theme-dark .riskPage__rowKey {
+  color: var(--entity-id-color, #22d3ee);
+}
+
+html.app-theme-dark .usersPage__pager.dtPagination,
+html.app-theme-dark .articlesPage__pager.dtPagination,
+html.app-theme-dark .jobsPage__pager.dtPagination,
+html.app-theme-dark .riskPage__pager.dtPagination {
+  --dt-pager-bg: #1e293b;
+  --dt-pager-input-bg: rgba(15, 23, 42, 0.6);
+  background: #1e293b;
+  border-top-color: rgba(148, 163, 184, 0.12);
+}

@@ -1,0 +1,286 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1778568231639,
+      "tag": "0000_lyrical_speed_demon",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1778571838687,
+      "tag": "0001_gigantic_sharon_carter",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778600000000,
+      "tag": "0002_invited_users_nullable_password",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1778700000000,
+      "tag": "0003_password_reset_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1778800000000,
+      "tag": "0004_user_account_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1778900000000,
+      "tag": "0005_user_profile_update_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779000000000,
+      "tag": "0006_user_profile_update_logs",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779100000000,
+      "tag": "0007_articles_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779200000000,
+      "tag": "0008_drop_articles_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779300000000,
+      "tag": "0009_articles_raw_text_html",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1779400000000,
+      "tag": "0010_articles_sha256",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1779500000000,
+      "tag": "0011_job_status_done_error",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1779600000000,
+      "tag": "0012_risks",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1779700000000,
+      "tag": "0013_serial_article_job_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1779800000000,
+      "tag": "0014_llm_observability",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1779900000000,
+      "tag": "0015_ingest_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1780000000000,
+      "tag": "0016_ingest_links_url_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1780100000000,
+      "tag": "0017_ingest_link_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1780200000000,
+      "tag": "0018_jobs_ingest_link_refs",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1780300000000,
+      "tag": "0019_ingest_links_suggested_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1780400000000,
+      "tag": "0020_aiid_etl_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1780500000000,
+      "tag": "0021_drop_aiid_incidents",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1780600000000,
+      "tag": "0022_aiid_incidents",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1780700000000,
+      "tag": "0023_drop_aiid_incidents",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1780800000000,
+      "tag": "0024_etl_report_uploads",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1780900000000,
+      "tag": "0025_aiid_reports_text_to_description",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1781000000000,
+      "tag": "0026_etl_report_uploads_file_path",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1781100000000,
+      "tag": "0027_aiid_reports_integer_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1781200000000,
+      "tag": "0028_aiid_reports_url_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1781300000000,
+      "tag": "0029_etl_report_upload_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1781400000000,
+      "tag": "0030_etl_report_uploads_file_sha256",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1781500000000,
+      "tag": "0031_aiid_reports_upload_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1781600000000,
+      "tag": "0032_job_source_etl_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1781700000000,
+      "tag": "0033_jobs_started_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1781800000000,
+      "tag": "0034_cron_job_schedules",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1781900000000,
+      "tag": "0035_cron_job_timezone",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1782000000000,
+      "tag": "0036_cron_job_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1782100000000,
+      "tag": "0037_application_logs",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1782200000000,
+      "tag": "0038_cron_job_event_scheduled_completed",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1782300000000,
+      "tag": "0039_etl_report_upload_items_extraction",
+      "breakpoints": true
+    }
+  ]
+}

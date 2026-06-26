@@ -1,0 +1,15 @@
+{
+  "id": "rss-discovery",
+  "startDate": "2026-06-11",
+  "startTime": "08:30",
+  "repeat": true,
+  "repeatInterval": 1,
+  "repeatUnit": "week",
+  "repeatDays": [
+    2,
+    4
+  ],
+  "ingestLinkIds": [],
+  "endsOn": null,
+  "active": false
+}

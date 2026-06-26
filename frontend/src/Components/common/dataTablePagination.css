@@ -1,0 +1,130 @@
+.dtPagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
+  padding: 0.65rem 1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  font-size: 0.8125rem;
+  color: var(--dt-pager-fg, #64748b);
+  background: var(--dt-pager-bg, #fff);
+}
+
+.dtPagination--noRange {
+  justify-content: flex-end;
+}
+
+.dtPagination__range {
+  margin: 0;
+  font-weight: 500;
+}
+
+.dtPagination__range strong {
+  font-weight: 700;
+  color: var(--dt-pager-strong, #334155);
+}
+
+.dtPagination__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+
+.dtPagination__sizeLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: inherit;
+}
+
+.dtPagination__sizeText {
+  white-space: nowrap;
+}
+
+.dtPagination .dtPagination__sizeSelect {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  display: inline-block;
+  width: auto;
+  min-width: 4rem;
+  max-width: 100%;
+  min-height: unset;
+  height: 32px;
+  padding: 0 1.65rem 0 0.5rem;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.5;
+  border-radius: 6px;
+  border: 1px solid var(--dt-pager-border, #cbd5e1);
+  background-color: var(--dt-pager-input-bg, #fff);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.45rem center;
+  background-size: 12px;
+  color: var(--dt-pager-strong, #334155);
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.dtPagination__nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.dtPagination__pageLabel {
+  padding: 0 0.45rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--dt-pager-strong, #334155);
+  min-width: 6.5rem;
+  text-align: center;
+}
+
+.dtPagination__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--dt-pager-border, #cbd5e1);
+  border-radius: 6px;
+  background: var(--dt-pager-input-bg, #fff);
+  color: var(--dt-pager-strong, #334155);
+  cursor: pointer;
+}
+
+.dtPagination__btn:hover:not(:disabled) {
+  background: var(--dt-pager-btn-hover, #f1f5f9);
+  border-color: var(--dt-pager-border-hover, #94a3b8);
+}
+
+.dtPagination__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dtPagination__btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(28, 176, 212, 0.35);
+}
+
+html.app-theme-dark .dtPagination {
+  --dt-pager-fg: #94a3b8;
+  --dt-pager-strong: #e2e8f0;
+  --dt-pager-border: rgba(148, 163, 184, 0.35);
+  --dt-pager-border-hover: rgba(148, 163, 184, 0.55);
+  --dt-pager-input-bg: rgba(15, 23, 42, 0.6);
+  --dt-pager-btn-hover: rgba(30, 41, 59, 0.85);
+}
+
+html.app-theme-dark .dtPagination .dtPagination__sizeSelect {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+}
