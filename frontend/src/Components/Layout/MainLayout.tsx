@@ -1,7 +1,8 @@
 import mainLogo from "../../assets/images/mainlogo.svg";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useSearchParams } from "react-router-dom";
 import { isSidebarNavItemActive, SIDEBAR_NAV } from "./sidebarNav";
 import { TopBar } from "./TopBar";
+import { isReviewSource, type ReviewNavState } from "../../utils/reviewNav";
 import { usePendingReviewCount } from "../../utils/usePendingReviewCount";
 import "./mainLayout.css";
 
@@ -13,7 +14,13 @@ const NAV_ICON_PROPS = {
 };
 
 export function MainLayout() {
-  const { pathname } = useLocation();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const { pathname } = location;
+  const fromReview = isReviewSource({
+    searchParams,
+    state: location.state as ReviewNavState | null,
+  });
   const pendingReviewCount = usePendingReviewCount();
 
   return (
@@ -29,7 +36,7 @@ export function MainLayout() {
           />
           <div className="mainLayout__brandText">
             <span className="mainLayout__brandTitle">AI-Q</span>
-            <span className="mainLayout__brandTagline">AI RISK INTELLECT</span>
+            <span className="mainLayout__brandTagline">AI RISK INTELLIGENCE</span>
           </div>
         </div>
         <nav className="mainLayout__nav">
@@ -47,7 +54,7 @@ export function MainLayout() {
                 end
                 className={() =>
                   `mainLayout__navLink${
-                    isSidebarNavItemActive(pathname, item.to)
+                    isSidebarNavItemActive(pathname, item.to, { fromReview })
                       ? " mainLayout__navLink--active"
                       : ""
                   }`

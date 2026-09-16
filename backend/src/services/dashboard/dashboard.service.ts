@@ -3,6 +3,7 @@ import { db } from "../../db/index.js";
 import { articles } from "../../schema/articles/articles.js";
 import { jobs } from "../../schema/jobs/jobs.js";
 import { risks } from "../../schema/risks/risks.js";
+import { resolveQualityScore100 } from "../risks/riskQuality.js";
 
 export type DashboardMetricCard = {
   value: string;
@@ -61,6 +62,13 @@ export type DashboardStats = {
     totalDelta: number;
     totalDeltaPct: string;
     confidencePct: number;
+  };
+  /** Real likelihood×impact severity distribution (5×5 matrix bands). */
+  riskRating: {
+    rows: DashboardSeverityRow[];
+    total: number;
+    scored: number;
+    unscored: number;
   };
   confidence: {
     avgPct: number;
@@ -145,16 +153,19 @@ function primaryCategoryKey(primary: string | null): "technical" | "operational"
 
 function severityKey(score: number | null): "low" | "medium" | "high" | "critical" {
   if (score == null) return "low";
-  if (score >= 90) return "critical";
-  if (score >= 75) return "high";
-  if (score >= 50) return "medium";
+  // Accept both unit (0–1) and percent (0–100) quality scores.
+  const pct = score <= 1 ? score * 100 : score;
+  if (pct >= 90) return "critical";
+  if (pct >= 75) return "high";
+  if (pct >= 50) return "medium";
   return "low";
 }
 
 function confidenceKey(score: number | null): "high" | "medium" | "low" {
   if (score == null) return "low";
-  if (score >= 85) return "high";
-  if (score >= 65) return "medium";
+  const pct = score <= 1 ? score * 100 : score;
+  if (pct >= 85) return "high";
+  if (pct >= 65) return "medium";
   return "low";
 }
 
@@ -333,6 +344,8 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       sector: risks.sector,
       industry: risks.industry,
       qualityScore: risks.qualityScore,
+      severityBand: risks.severityBand,
+      extractionJson: risks.extractionJson,
       createdAt: risks.createdAt,
     })
     .from(risks);
@@ -370,6 +383,8 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const riskSpark = buildWeeklySparkline(riskDailyMap, 12);
 
   const severityCounts = { low: 0, medium: 0, high: 0, critical: 0 };
+  const ratingCounts = { low: 0, medium: 0, high: 0, critical: 0 };
+  let ratingUnscored = 0;
   const confidenceCounts = { high: 0, medium: 0, low: 0 };
   const taxonomyCounts = Object.fromEntries(
     TAXONOMY_KEYS.map((k) => [k, 0]),
@@ -389,9 +404,19 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   let scoreCount = 0;
 
   for (const row of riskRows) {
-    const score = row.qualityScore;
+    const score = resolveQualityScore100({
+      qualityScore: row.qualityScore,
+      extractionJson: row.extractionJson,
+    });
     severityCounts[severityKey(score)] += 1;
     confidenceCounts[confidenceKey(score)] += 1;
+
+    const band = (row.severityBand ?? "").toLowerCase();
+    if (band === "low" || band === "medium" || band === "high" || band === "critical") {
+      ratingCounts[band] += 1;
+    } else {
+      ratingUnscored += 1;
+    }
 
     if (score != null) {
       scoreSum += score;
@@ -434,6 +459,25 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     const count = severityCounts[key];
     const pct =
       severityTotal > 0 ? (count / severityTotal) * 100 : 0;
+    return {
+      key,
+      label: severityLabels[key],
+      color: severityColors[key],
+      pct: formatPct(pct, 0),
+      count: formatCount(count),
+      delta: "0",
+      deltaPct: "(0.0%)",
+      trend: "up" as const,
+    };
+  });
+
+  const ratingScored =
+    ratingCounts.low + ratingCounts.medium + ratingCounts.high + ratingCounts.critical;
+  const ratingRows: DashboardSeverityRow[] = (
+    ["low", "medium", "high", "critical"] as const
+  ).map((key) => {
+    const count = ratingCounts[key];
+    const pct = ratingScored > 0 ? (count / ratingScored) * 100 : 0;
     return {
       key,
       label: severityLabels[key],
@@ -538,6 +582,12 @@ export async function getDashboardStats(): Promise<DashboardStats> {
             ? formatPct(100)
             : "0.0%",
       confidencePct: avgConfidence,
+    },
+    riskRating: {
+      rows: ratingRows,
+      total: totalRisks,
+      scored: ratingScored,
+      unscored: ratingUnscored,
     },
     confidence: {
       avgPct: avgConfidence,

@@ -40,7 +40,7 @@
 
 .usersPage__dialog {
   width: 100%;
-  max-width: 420px;
+  max-width: 600px;
   background: #fff;
   border-radius: 10px;
   box-shadow: 0 18px 50px rgba(15, 23, 42, 0.18);
@@ -512,14 +512,16 @@ html.app-theme-dark .usersPage__btn--logoutTone:hover:not(:disabled) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: auto;
   min-width: 1.2rem;
-  padding: 0.06rem 0.28rem;
+  padding: 0.06rem 0.4rem;
   font-size: 0.68rem;
   font-weight: 700;
   line-height: 1.15;
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.08);
   color: inherit;
+  white-space: nowrap;
 }
 
 .usersPage__tab--selected .usersPage__tabCount {

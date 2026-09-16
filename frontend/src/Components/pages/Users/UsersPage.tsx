@@ -15,6 +15,7 @@ import {
   UserRound,
   AtSign,
   BadgeCheck,
+  Shield,
   Activity,
   RefreshCw,
   MessageSquareText,
@@ -26,16 +27,23 @@ import { setDocumentPageTitle } from "../../../utils/pageTitle";
 import { usePagination } from "../../../utils/usePagination";
 import "./usersPage.css";
 
+type UserRole = "admin" | "user";
+
 type UserRow = {
   id: string;
   email: string;
   username: string;
   fullName: string | null;
   accountStatus: "pending" | "completed" | "expired";
+  role: UserRole;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
 };
+
+function normalizeUserRole(role: unknown): UserRole {
+  return role === "admin" ? "admin" : "user";
+}
 
 const USERNAME_RE = /^[a-zA-Z0-9_.-]+$/;
 const INVITE_LINK_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
@@ -62,7 +70,9 @@ function userInitials(u: UserRow): string {
 }
 
 function displayName(u: UserRow): string {
-  return u.fullName?.trim() || "—";
+  const raw = u.fullName?.trim();
+  if (!raw) return "—";
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 
 function accountStatusLabel(s: UserRow["accountStatus"]): string {
@@ -109,7 +119,7 @@ function normalizeUsersFromApi(raw: unknown): UserRow[] {
       status === "pending" || status === "expired" || status === "completed"
         ? status
         : "completed";
-    return { ...u, accountStatus } as UserRow;
+    return { ...u, accountStatus, role: normalizeUserRole(u.role) } as UserRow;
   });
 }
 
@@ -132,6 +142,7 @@ export function UsersPage() {
   const dialogRef = useRef<HTMLDivElement>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [email, setEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<UserRole>("user");
   const [sending, setSending] = useState(false);
 
   const [search, setSearch] = useState("");
@@ -153,6 +164,7 @@ export function UsersPage() {
     fullName: "",
     username: "",
     email: "",
+    role: "user" as UserRole,
     isActive: true,
     reason: "",
   });
@@ -231,7 +243,8 @@ export function UsersPage() {
     const fullNameDirty =
       fullNameTrim !== (editUser.fullName?.trim() ?? "");
     const statusDirty = editDraft.isActive !== editUser.isActive;
-    return usernameDirty || fullNameDirty || statusDirty;
+    const roleDirty = editDraft.role !== editUser.role;
+    return usernameDirty || fullNameDirty || statusDirty || roleDirty;
   }, [editUser, editDraft, savingEdit]);
 
   const submitEditUser = useCallback(
@@ -273,6 +286,7 @@ export function UsersPage() {
             username: usernameTrim,
             fullName: fullNameTrim,
             isActive: editDraft.isActive,
+            role: editDraft.role,
             reason: reasonTrim,
           }),
         });
@@ -329,6 +343,7 @@ export function UsersPage() {
         u.fullName ?? "",
         u.id,
         u.isActive ? "active" : "inactive",
+        u.role,
         u.accountStatus,
         accountStatusLabel(u.accountStatus).toLowerCase(),
       ]
@@ -396,6 +411,7 @@ export function UsersPage() {
         fullName: editUser.fullName?.trim() ?? "",
         username: editUser.username,
         email: editUser.email,
+        role: normalizeUserRole(editUser.role),
         isActive: editUser.isActive,
         reason: "",
       });
@@ -427,6 +443,7 @@ export function UsersPage() {
       dialogRef.current?.querySelector<HTMLInputElement>("input[type=email]")?.focus();
     } else {
       setEmail("");
+      setInviteRole("user");
       setSending(false);
     }
   }, [inviteOpen]);
@@ -437,7 +454,10 @@ export function UsersPage() {
     setInviteOpen(false);
   };
 
-  async function postInviteToEmail(targetEmail: string): Promise<{
+  async function postInviteToEmail(
+    targetEmail: string,
+    role?: UserRole,
+  ): Promise<{
     ok: boolean;
     message?: string;
     error?: string;
@@ -459,7 +479,10 @@ export function UsersPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email: trimmed }),
+        body: JSON.stringify({
+          email: trimmed,
+          ...(role ? { role } : {}),
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
@@ -497,7 +520,7 @@ export function UsersPage() {
     }
     setSending(true);
     try {
-      const result = await postInviteToEmail(trimmed);
+      const result = await postInviteToEmail(trimmed, inviteRole);
       if (!result.ok) {
         toast.error(result.error ?? "Could not send invitation.", {
           autoClose: 6000,
@@ -691,6 +714,7 @@ export function UsersPage() {
                     </th>
                     <th scope="col">Email</th>
                     <th scope="col">Username</th>
+                    <th scope="col">Role</th>
                     <th scope="col">Account</th>
                     <th scope="col">Status</th>
                     <th scope="col" className="usersPage__thActions">
@@ -726,6 +750,7 @@ export function UsersPage() {
                       )}
                     </td>
                     <td>{u.username}</td>
+                    <td>{u.role === "admin" ? "Admin" : "User"}</td>
                     <td>
                       <span className={accountStatusBadgeClass(u.accountStatus)}>
                         {accountStatusLabel(u.accountStatus)}
@@ -851,6 +876,30 @@ export function UsersPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={sending}
               />
+              <label
+                className="usersPage__label usersPage__label--withIcon"
+                htmlFor="invite-role"
+              >
+                <Shield
+                  className="usersPage__labelIcon"
+                  size={16}
+                  strokeWidth={2}
+                  aria-hidden
+                />
+                <span>Role</span>
+              </label>
+              <select
+                id="invite-role"
+                className="usersPage__input usersPage__select"
+                value={inviteRole}
+                onChange={(e) =>
+                  setInviteRole(e.target.value === "admin" ? "admin" : "user")
+                }
+                disabled={sending}
+              >
+                <option value="user">User</option>
+                <option value="admin">Admin</option>
+              </select>
               <div className="usersPage__dialogActions">
                 <button
                   type="button"
@@ -920,7 +969,7 @@ export function UsersPage() {
                     />
                     <span>Full name</span>
                   </dt>
-                  <dd>{viewUser.fullName?.trim() || "—"}</dd>
+                  <dd>{displayName(viewUser)}</dd>
                 </div>
                 <div className="usersPage__detailItem">
                   <dt className="usersPage__detailLabel">
@@ -945,6 +994,18 @@ export function UsersPage() {
                     <span>Username</span>
                   </dt>
                   <dd>{viewUser.username}</dd>
+                </div>
+                <div className="usersPage__detailItem">
+                  <dt className="usersPage__detailLabel">
+                    <Shield
+                      className="usersPage__labelIcon"
+                      size={15}
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                    <span>Role</span>
+                  </dt>
+                  <dd>{viewUser.role === "admin" ? "Admin" : "User"}</dd>
                 </div>
                 <div className="usersPage__detailItem">
                   <dt className="usersPage__detailLabel">
@@ -1076,6 +1137,34 @@ export function UsersPage() {
                       setEditDraft((d) => ({ ...d, username: e.target.value }))
                     }
                   />
+                </div>
+                <div className="usersPage__formField">
+                  <label
+                    className="usersPage__label usersPage__label--withIcon"
+                    htmlFor="edit-role"
+                  >
+                    <Shield
+                      className="usersPage__labelIcon"
+                      size={16}
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                    <span>Role</span>
+                  </label>
+                  <select
+                    id="edit-role"
+                    className="usersPage__input usersPage__select"
+                    value={editDraft.role}
+                    onChange={(e) =>
+                      setEditDraft((d) => ({
+                        ...d,
+                        role: e.target.value === "admin" ? "admin" : "user",
+                      }))
+                    }
+                  >
+                    <option value="user">User</option>
+                    <option value="admin">Admin</option>
+                  </select>
                 </div>
                 <div className="usersPage__formField">
                   <label

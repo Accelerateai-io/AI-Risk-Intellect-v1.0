@@ -5,6 +5,7 @@ import "./resetPassword.css";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiUrl } from "../../../utils/apiBase";
 import { setDocumentPageTitle } from "../../../utils/pageTitle";
+import { persistSessionUser } from "../../../utils/sessionUser";
 import { AuthShell } from "../AuthShell";
 
 const ResetPassword = () => {
@@ -57,7 +58,7 @@ const ResetPassword = () => {
         body: JSON.stringify({ token, password: newPassword }),
       });
       const data = (await res.json().catch(() => ({}))) as {
-        user?: { username: string; email: string };
+        user?: { username: string; email: string; role?: string };
         accessToken?: string;
         error?: { message?: string };
       };
@@ -70,9 +71,7 @@ const ResetPassword = () => {
         return;
       }
       if (data.user && data.accessToken) {
-        sessionStorage.setItem("accessToken", data.accessToken);
-        sessionStorage.setItem("userName", data.user.username);
-        sessionStorage.setItem("userEmail", data.user.email);
+        persistSessionUser(data.user, data.accessToken);
         setStatus("success");
         toast.success("Password updated. You're signed in.", {
           autoClose: 2000,

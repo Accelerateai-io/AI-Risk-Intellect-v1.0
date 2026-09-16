@@ -20,7 +20,7 @@ export const enqueueUrlSchema = z.object({
   suggestedName: z
     .string()
     .trim()
-    .max(256, "Suggested name is too long.")
+    .max(2000, "Suggested name is too long.")
     .optional(),
 });
 
@@ -53,6 +53,16 @@ export type InvokeLlmModelInput = z.infer<typeof invokeLlmModelSchema>;
 export const ingestLinkIdSchema = z.object({
   id: z.coerce.number().int().positive(),
 });
+
+export const listReportUploadItemsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).optional().default(50),
+  offset: z.coerce.number().int().min(0).optional().default(0),
+  afterId: z.coerce.number().int().positive().optional(),
+});
+
+export type ListReportUploadItemsQuery = z.infer<
+  typeof listReportUploadItemsQuerySchema
+>;
 
 export type IngestLinkIdParams = z.infer<typeof ingestLinkIdSchema>;
 
@@ -90,6 +100,9 @@ export const startReportsRunSchema = z
       .array(z.coerce.number().int().positive())
       .min(1, "Select at least one report URL to run.")
       .optional(),
+    excludeReportIds: z
+      .array(z.coerce.number().int().positive())
+      .optional(),
   })
   .refine(
     (value) =>
@@ -100,6 +113,44 @@ export const startReportsRunSchema = z
   );
 
 export type StartReportsRunInput = z.infer<typeof startReportsRunSchema>;
+
+export const startBatchRunSchema = z
+  .object({
+    modelId: z.string().trim().min(1).max(256).optional(),
+    ingestLinkIds: z
+      .array(z.coerce.number().int().positive())
+      .optional(),
+    ingestLinkItemIds: z
+      .array(z.coerce.number().int().positive())
+      .optional(),
+    uploadIds: z
+      .array(z.coerce.number().int().positive())
+      .optional(),
+    reportIds: z
+      .array(z.coerce.number().int().positive())
+      .optional(),
+    excludeReportIds: z
+      .array(z.coerce.number().int().positive())
+      .optional(),
+  })
+  .refine(
+    (value) =>
+      (value.ingestLinkIds?.length ?? 0) > 0 ||
+      (value.ingestLinkItemIds?.length ?? 0) > 0 ||
+      (value.uploadIds?.length ?? 0) > 0 ||
+      (value.reportIds?.length ?? 0) > 0,
+    {
+      message: "Select at least one RSS feed URL or ETL report URL to run.",
+    },
+  );
+
+export type StartBatchRunInput = z.infer<typeof startBatchRunSchema>;
+
+export const batchRunIdSchema = z.object({
+  id: z.coerce.number().int().positive(),
+});
+
+export type BatchRunIdParams = z.infer<typeof batchRunIdSchema>;
 
 const cronDateSchema = z
   .string()

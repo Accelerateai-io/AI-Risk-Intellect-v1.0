@@ -48,6 +48,65 @@
   min-height: 2.75rem;
 }
 
+.riskDetailPage__stickyMeta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.riskDetailPage__saveBtn,
+.riskDetailPage__cancelBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  min-height: 2.15rem;
+  padding: 0.4rem 0.95rem;
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.riskDetailPage__saveBtn {
+  background: var(--main-auth-button-color, #1cb0d4);
+  color: #fff;
+}
+
+.riskDetailPage__cancelBtn {
+  background: #fff;
+  color: var(--main-text-color, #1f2937);
+  border: 1px solid #e5e7eb;
+}
+
+.riskDetailPage__saveBtn:disabled,
+.riskDetailPage__cancelBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.usersPage__fieldError {
+  margin: 0.4rem 0 0;
+  font-size: 0.8125rem;
+  color: #b91c1c;
+}
+
+.usersPage__dialogCopy {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--main-text-muted, #64748b);
+}
+
+.riskDetail__confirmDialog .usersPage__dialogActions {
+  padding: 0 1.1rem 1.25rem;
+}
+
+
 .riskDetailPage__stickyTabs.riskDetail__tabBar {
   padding: 0;
 }
@@ -321,6 +380,12 @@ html:not(.app-theme-dark) .mainLayout__content.riskDetailPage {
 }
 
 /* Dark theme */
+html.app-theme-dark .riskDetailPage__cancelBtn {
+  background: #1e293b;
+  color: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
 html.app-theme-dark .riskDetailPage {
   --risk-surface: #0f172a;
   --risk-card: #1e293b;
@@ -343,6 +408,12 @@ html.app-theme-dark .riskDetailPage {
     flex-wrap: wrap;
     align-items: flex-start;
     row-gap: 0.65rem;
+  }
+
+  .riskDetailPage__stickyMeta {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .riskDetailPage__meta {

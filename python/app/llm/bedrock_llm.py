@@ -626,7 +626,18 @@ JSON FORMATTING (strict — invalid JSON will be rejected):
                 "timing": "Unknown",
                 "risk_type_detected": "Extraction Error",
                 "primary_risk": "Technical Risks",
-                "secondary_risks": "Technical/Performance Risk"
+                "secondary_risks": "Technical/Performance Risk",
+                "ai_product_name": None,
+                "ai_product_vendor": None
+            },
+            "risk_scoring": {
+                "likelihood": None,
+                "likelihood_reasoning": "",
+                "impact": None,
+                "impact_reasoning": "",
+                "loss_categories": [],
+                "severity_score": None,
+                "severity_band": None
             },
             "controls": [{
                 "control_ref": "ERR-001",

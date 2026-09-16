@@ -524,6 +524,17 @@ html:not(.app-theme-dark) .obsChart__grid {
   vertical-align: middle;
 }
 
+.observabilityPage__modelLabel {
+  display: inline-block;
+  max-width: 16rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 html:not(.app-theme-dark) .observabilityPage__modelBadge {
   background: rgba(139, 92, 246, 0.1);
   color: #6d28d9;

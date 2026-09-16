@@ -5,6 +5,7 @@ import {
   detectTextLanguage,
   isEnglishLanguageCode,
 } from "../../utils/languageDetect.js";
+import { decodeDisplayTitle } from "../../utils/decodeHtmlEntities.js";
 import { translateTextToEnglish } from "../../utils/translateTextToEnglish.js";
 
 const CJK_TITLE_PATTERN = /[\u4e00-\u9fff\u3040-\u30ff\u3400-\u4dbf\uac00-\ud7af]/;
@@ -37,10 +38,10 @@ export async function resolveEnglishArticleTitle(input: {
   rawText?: string | null;
   cachedEnglishTitle?: string | null;
 }): Promise<{ title: string | null; translated: boolean }> {
-  const cached = input.cachedEnglishTitle?.trim();
+  const cached = decodeDisplayTitle(input.cachedEnglishTitle, "");
   if (cached) return { title: cached, translated: false };
 
-  const original = input.title?.trim() || null;
+  const original = decodeDisplayTitle(input.title, "");
   if (!original) return { title: null, translated: false };
 
   if (!(await isNonEnglishContent(original, input.rawText))) {
@@ -59,7 +60,7 @@ export async function persistEnglishArticleTitle(
   articleId: number,
   title: string | null,
 ): Promise<void> {
-  const normalized = title?.trim() ?? "";
+  const normalized = decodeDisplayTitle(title, "");
   if (!normalized) return;
 
   await db
@@ -84,10 +85,10 @@ export async function resolveEnglishRiskTitle(input: {
   rawText?: string | null;
   cachedEnglishTitle?: string | null;
 }): Promise<{ title: string | null; translated: boolean }> {
-  const cached = input.cachedEnglishTitle?.trim();
+  const cached = decodeDisplayTitle(input.cachedEnglishTitle, "");
   if (cached) return { title: cached, translated: false };
 
-  const original = input.title?.trim() || null;
+  const original = decodeDisplayTitle(input.title, "");
   if (!original) return { title: null, translated: false };
 
   if (!(await isNonEnglishContent(original, input.rawText))) {

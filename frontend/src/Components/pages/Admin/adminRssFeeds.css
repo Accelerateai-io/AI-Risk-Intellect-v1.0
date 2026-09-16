@@ -1118,6 +1118,15 @@
   border-top: 1px solid var(--adm-border);
 }
 
+.adminPage__itemsPanelScroller {
+  max-height: min(24rem, 50vh);
+  overflow-y: auto;
+}
+
+.adminPage__itemsPanelSentinel {
+  height: 1px;
+}
+
 .adminPage__itemsPanelTitle {
   margin: 0 0 0.7rem;
   font-size: 0.72rem;
@@ -1823,6 +1832,37 @@ html:not(.app-theme-dark) .adminPage__rowMenuItem--danger {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  max-height: 12.5rem;
+  overflow-y: auto;
+}
+
+.adminPage__discoveryItemsStatus {
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.75rem;
+  color: var(--adm-muted, var(--main-text-muted, #64748b));
+}
+
+.adminPage__discoveryItemsStatus--loading {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.adminPage__discoveryItemsSpinner {
+  flex-shrink: 0;
+  animation: adminPageDiscoverySpin 0.8s linear infinite;
+}
+
+@keyframes adminPageDiscoverySpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.adminPage__discoveryItemSentinel {
+  height: 1px;
+  width: 100%;
 }
 
 .adminPage__discoveryItemRow {

@@ -16,6 +16,10 @@ export const userAccountStatusEnum = pgEnum("user_account_status", [
   "expired",
 ]);
 
+/** Application role. `admin` may edit reviewable risk fields. */
+export const userRoleEnum = pgEnum("user_role", ["admin", "user"]);
+export type UserRole = (typeof userRoleEnum.enumValues)[number];
+
 export const users = pgTable(
   "users",
   {
@@ -28,6 +32,7 @@ export const users = pgTable(
     accountStatus: userAccountStatusEnum("account_status")
       .notNull()
       .default("pending"),
+    role: userRoleEnum("role").notNull().default("user"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -39,6 +44,7 @@ export const users = pgTable(
   (table) => [
     index("users_email_idx").on(table.email),
     index("users_username_idx").on(table.username),
+    index("users_role_idx").on(table.role),
   ],
 );
 

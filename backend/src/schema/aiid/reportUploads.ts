@@ -22,8 +22,8 @@ export const etlReportUploads = pgTable(
   "etl_report_uploads",
   {
     id: serial("id").primaryKey(),
-    suggestedName: varchar("suggested_name", { length: 256 }),
-    reportFilePath: varchar("report_file_path", { length: 1024 }).notNull(),
+    suggestedName: text("suggested_name"),
+    reportFilePath: text("report_file_path").notNull(),
     fileSha256: varchar("file_sha256", { length: 64 }),
     status: varchar("status", { length: 32 })
       .notNull()

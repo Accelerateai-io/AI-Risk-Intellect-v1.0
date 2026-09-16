@@ -26,6 +26,12 @@ export function riskMatchesFilters(
     row.industry,
     row.intent,
     row.qualityScore,
+    row.riskScoring?.severityBand ?? "",
+    row.riskScoring?.severityScore ?? "",
+    row.riskScoring?.likelihoodLabel ?? "",
+    row.riskScoring?.impactLabel ?? "",
+    row.product?.name ?? "",
+    row.product?.vendor ?? "",
   ]
     .join(" ")
     .toLowerCase();
@@ -48,6 +54,13 @@ export function sortRiskRows(
       (a, b) =>
         Number.parseFloat(b.qualityScore) -
         Number.parseFloat(a.qualityScore),
+    );
+  } else if (order === "severity") {
+    // Highest severity first; unscored rows sink to the bottom.
+    copy.sort(
+      (a, b) =>
+        (b.riskScoring?.severityScore ?? -1) -
+        (a.riskScoring?.severityScore ?? -1),
     );
   } else {
     copy.sort((a, b) => createdAtMs(b) - createdAtMs(a));

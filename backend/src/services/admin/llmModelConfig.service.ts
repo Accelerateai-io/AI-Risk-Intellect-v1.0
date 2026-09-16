@@ -7,9 +7,21 @@ import {
   resolveBedrockModelId,
   type LlmModelOption as CatalogModelOption,
 } from "../../config/modelsCatalog.js";
-import { normalizeBedrockModelAlias } from "../../utils/bedrockModelId.js";
+import { normalizeBedrockModelAlias, isBedrockProviderModelId } from "../../utils/bedrockModelId.js";
 import { upsertEnvFile } from "../../utils/envFile.js";
-import { invokeBedrockModelTest, invokeBedrockModelPrompt } from "./bedrockModelTest.service.js";
+import {
+  invokeBedrockModelTest,
+  invokeBedrockModelPrompt,
+  invokeInferenceProfileTest,
+  resolveWorkingInvokeIdForProfile,
+} from "./bedrockModelTest.service.js";
+import {
+  fetchAllInferenceProfiles,
+  findInferenceProfileById,
+  findProfileForActiveModel,
+  getProfileOptionId,
+  inferenceProfilesEnabled,
+} from "./bedrockInferenceProfiles.service.js";
 import { backendRoot } from "./spawnBackendScript.js";
 import {
   buildModelFulfillmentResponse,
@@ -58,14 +70,47 @@ function currentModelId(): string {
 }
 
 function findOption(modelId: string): LlmModelOption | undefined {
+  if (inferenceProfilesEnabled() && activeBackend() === "bedrock") {
+    const profiles = cachedInferenceProfileOptions;
+    if (profiles) {
+      const match = profiles.find((option) => option.id === modelId);
+      if (match) return match;
+    }
+  }
   return findCatalogOption(modelId);
 }
 
+let cachedInferenceProfileOptions: LlmModelOption[] | null = null;
+
+async function listInferenceProfileOptions(): Promise<LlmModelOption[]> {
+  if (!inferenceProfilesEnabled()) return [];
+
+  const profiles = await fetchAllInferenceProfiles();
+  const options: LlmModelOption[] = [];
+
+  for (const profile of profiles) {
+    const id = getProfileOptionId(profile);
+    const label = profile.inferenceProfileName?.trim() || profile.modelId || id;
+    if (!id || !label) continue;
+    options.push({
+      id,
+      label,
+      backend: "bedrock",
+    });
+  }
+
+  cachedInferenceProfileOptions = options;
+  return options;
+}
+
 function listOptions(): LlmModelOption[] {
+  if (cachedInferenceProfileOptions?.length) {
+    return [...cachedInferenceProfileOptions];
+  }
   const options = loadModelOptionsFromCatalog();
   const current = currentModelId();
 
-  if (current && !findOption(current)) {
+  if (current && !findCatalogOption(current)) {
     return [
       {
         id: current,
@@ -79,17 +124,74 @@ function listOptions(): LlmModelOption[] {
   return options;
 }
 
+async function listOptionsAsync(): Promise<LlmModelOption[]> {
+  if (inferenceProfilesEnabled() && activeBackend() === "bedrock") {
+    try {
+      const profiles = await fetchAllInferenceProfiles();
+      const profileOptions: LlmModelOption[] = [];
+
+      for (const profile of profiles) {
+        const id = getProfileOptionId(profile);
+        const label = profile.inferenceProfileName?.trim() || profile.modelId || id;
+        if (!id || !label) continue;
+        profileOptions.push({ id, label, backend: "bedrock" });
+      }
+
+      cachedInferenceProfileOptions = profileOptions;
+
+      if (profileOptions.length > 0) {
+        const current = currentModelId();
+        const activeProfile = current
+          ? findProfileForActiveModel(current, profiles)
+          : undefined;
+
+        if (
+          activeProfile &&
+          !profileOptions.some((o) => o.id === getProfileOptionId(activeProfile))
+        ) {
+          return [
+            {
+              id: getProfileOptionId(activeProfile),
+              label:
+                activeProfile.inferenceProfileName ||
+                getProfileOptionId(activeProfile),
+              backend: "bedrock",
+            },
+            ...profileOptions,
+          ];
+        }
+
+        return profileOptions;
+      }
+    } catch (err) {
+      console.error("[llmModelConfig] Failed to load inference profiles:", err);
+    }
+  }
+
+  return listOptions();
+}
+
 function isBedrockModel(modelId: string): boolean {
   return (
     Boolean(findCatalogOption(modelId)) ||
+    Boolean(findInferenceProfileById(modelId)) ||
     modelId.startsWith("us.anthropic.") ||
     modelId.startsWith("anthropic.") ||
     modelId.startsWith("claude-") ||
-    modelId.includes(".")
+    modelId.startsWith("arn:aws:bedrock:") ||
+    isBedrockProviderModelId(modelId)
   );
 }
 
-function envUpdatesForModel(modelId: string): Record<string, string> {
+function isInferenceProfileSelection(modelId: string): boolean {
+  if (!inferenceProfilesEnabled()) return false;
+  if (!cachedInferenceProfileOptions?.some((o) => o.id === modelId)) {
+    return false;
+  }
+  return Boolean(findInferenceProfileById(modelId));
+}
+
+function envUpdatesForModel(modelId: string, invokeModelId?: string): Record<string, string> {
   const option = findOption(modelId);
   const backend = option?.backend ?? (isBedrockModel(modelId) ? "bedrock" : activeBackend());
 
@@ -100,8 +202,8 @@ function envUpdatesForModel(modelId: string): Record<string, string> {
     USE_CISCO: "false",
   };
 
-  if (backend === "bedrock" || isBedrockModel(modelId)) {
-    const resolved = resolveBedrockModelId(modelId);
+  if (backend === "bedrock" || isBedrockModel(modelId) || isInferenceProfileSelection(modelId)) {
+    const resolved = invokeModelId?.trim() || resolveBedrockModelId(modelId);
     return {
       ...base,
       USE_BEDROCK: "true",
@@ -167,6 +269,14 @@ async function syncPythonModel(modelId: string): Promise<{
   }
 }
 
+/** Sync the running Python service to a specific model id (not only process env). */
+export async function syncPythonLlmModel(modelId: string): Promise<boolean> {
+  const trimmed = modelId.trim();
+  if (!trimmed) return false;
+  const result = await syncPythonModel(trimmed);
+  return result.ok;
+}
+
 export type LlmModelConfig = {
   backend: LlmBackend;
   modelId: string;
@@ -174,7 +284,49 @@ export type LlmModelConfig = {
   options: LlmModelOption[];
   pythonSynced: boolean;
   requiresPythonRestart: boolean;
+  inferenceProfiles?: boolean;
 };
+
+export async function getLlmModelConfigAsync(): Promise<LlmModelConfig> {
+  const backend = activeBackend();
+  const rawModelId = currentModelId();
+  const options = await listOptionsAsync();
+
+  let modelId = rawModelId;
+  let option = findOption(modelId);
+
+  if (!option && inferenceProfilesEnabled() && backend === "bedrock" && rawModelId) {
+    const profiles = await fetchAllInferenceProfiles();
+    const activeProfile = findProfileForActiveModel(rawModelId, profiles);
+    if (activeProfile) {
+      option = {
+        id: getProfileOptionId(activeProfile),
+        label:
+          activeProfile.inferenceProfileName || getProfileOptionId(activeProfile),
+        backend: "bedrock",
+      };
+      modelId = option.id;
+    }
+  }
+
+  if (!option && backend === "bedrock" && rawModelId && !isInferenceProfileSelection(rawModelId)) {
+    modelId = resolveBedrockModelId(rawModelId);
+    option = findOption(modelId) ?? findCatalogOption(modelId);
+  }
+
+  return {
+    backend,
+    modelId: option?.id ?? modelId,
+    modelLabel: option?.label ?? modelId,
+    options,
+    pythonSynced: false,
+    requiresPythonRestart: backend === "local",
+    inferenceProfiles:
+      inferenceProfilesEnabled() &&
+      options.length > 0 &&
+      Boolean(cachedInferenceProfileOptions?.length),
+  };
+}
 
 export function getLlmModelConfig(): LlmModelConfig {
   const backend = activeBackend();
@@ -186,11 +338,12 @@ export function getLlmModelConfig(): LlmModelConfig {
 
   return {
     backend,
-    modelId,
+    modelId: option?.id ?? modelId,
     modelLabel: option?.label ?? modelId,
     options: listOptions(),
     pythonSynced: false,
     requiresPythonRestart: backend === "local",
+    inferenceProfiles: inferenceProfilesEnabled(),
   };
 }
 
@@ -202,6 +355,8 @@ export type LlmModelValidationResult = {
   response?: string;
   latencyMs?: number;
   fulfillmentResponse?: ModelFulfillmentResponse;
+  workingVia?: string;
+  profileTest?: import("./bedrockInferenceProfiles.service.js").InferenceProfileTestResult;
 };
 
 export type LlmModelInvokeResult = {
@@ -231,7 +386,26 @@ export async function invokeLlmModel(input: {
     return { success: false, message: "This model is not supported" };
   }
 
-  const catalogOption = findOption(trimmed);
+  if (inferenceProfilesEnabled()) {
+    await listInferenceProfileOptions();
+    if (isInferenceProfileSelection(trimmed)) {
+      const workingId = await resolveWorkingInvokeIdForProfile(trimmed, {
+        forceRetest: false,
+      });
+      if (!workingId) {
+        return {
+          success: false,
+          message: "Inference profile is not working with any identifier.",
+        };
+      }
+      return invokeBedrockModelPrompt({
+        ...input,
+        modelId: workingId,
+      });
+    }
+  }
+
+  const catalogOption = findCatalogOption(trimmed);
   if (
     !catalogOption &&
     activeBackend() === "bedrock" &&
@@ -269,7 +443,14 @@ export async function validateLlmModel(
     };
   }
 
-  const catalogOption = findOption(trimmed);
+  if (inferenceProfilesEnabled()) {
+    await listInferenceProfileOptions();
+    if (isInferenceProfileSelection(trimmed)) {
+      return invokeInferenceProfileTest(trimmed);
+    }
+  }
+
+  const catalogOption = findCatalogOption(trimmed);
   if (
     !catalogOption &&
     activeBackend() === "bedrock" &&
@@ -315,20 +496,34 @@ export async function setLlmModel(modelId: string): Promise<LlmModelConfig> {
     throw new Error("modelId is required");
   }
 
-  const catalogOption = findOption(trimmed);
-  if (!catalogOption && activeBackend() === "bedrock" && !isBedrockModel(trimmed)) {
-    throw new Error(`Model not found in models.json: ${trimmed}`);
+  let invokeModelId: string | undefined;
+
+  if (inferenceProfilesEnabled()) {
+    await listInferenceProfileOptions();
+    if (isInferenceProfileSelection(trimmed)) {
+      const workingId = await resolveWorkingInvokeIdForProfile(trimmed, {
+        forceRetest: false,
+      });
+      if (!workingId) {
+        throw new Error(
+          "Inference profile test failed. Run Test before Apply, or choose another profile.",
+        );
+      }
+      invokeModelId = workingId;
+    }
   }
 
-  const updates = envUpdatesForModel(trimmed);
+  const catalogOption = findCatalogOption(trimmed);
+  if (!catalogOption && !invokeModelId && activeBackend() === "bedrock" && !isBedrockModel(trimmed)) {
+    throw new Error(`Model not found: ${trimmed}`);
+  }
+
+  const updates = envUpdatesForModel(trimmed, invokeModelId);
   applyEnvToProcess(updates);
-
-  if (fs.existsSync(envLocalPath)) {
-    upsertEnvFile(envLocalPath, updates);
-  }
+  upsertEnvFile(envLocalPath, updates);
 
   const python = await syncPythonModel(updates.BEDROCK_MODEL ?? trimmed);
-  const config = getLlmModelConfig();
+  const config = await getLlmModelConfigAsync();
   config.pythonSynced = python.ok;
   config.requiresPythonRestart =
     python.requiresPythonRestart ?? config.requiresPythonRestart;

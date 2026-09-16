@@ -1,8 +1,14 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { risks } from "../../schema/risks/risks.js";
+import { riskReviewLogs } from "../../schema/risks/riskReviewLogs.js";
 import { users } from "../../schema/users/users.js";
 import { HttpError } from "../../utils/httpError.js";
+import {
+  isDomainInTaxonomy,
+  normalizeToCatalogDomain,
+} from "./riskCatalogMatch.service.js";
+import { DOMAIN_REVIEW_REASON } from "./riskQuality.js";
 import { resolveRiskUuid } from "./riskResolve.js";
 
 function truncate(value: string | null | undefined, max: number): string | null {
@@ -89,6 +95,30 @@ function assertCanClassify(reviewStatus: string): void {
   }
 }
 
+function applyMappedDomain(
+  ext: Record<string, unknown>,
+  nextDomain: string,
+  previousDomain: string,
+): Record<string, unknown> {
+  const risk = (ext.risk ?? {}) as Record<string, unknown>;
+  const reason = str(ext.review_reason);
+  const remainingReason = reason
+    .replaceAll(DOMAIN_REVIEW_REASON, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return {
+    ...ext,
+    risk: {
+      ...risk,
+      domains: nextDomain,
+    },
+    original_extracted_domain: str(ext.original_extracted_domain) || previousDomain,
+    reviewer_mapped_domain: nextDomain,
+    review_reason: remainingReason || undefined,
+  };
+}
+
 function reviewerPayload(reviewer: ReviewerInfo): Record<string, string> {
   return {
     user_id: reviewer.userId,
@@ -96,6 +126,16 @@ function reviewerPayload(reviewer: ReviewerInfo): Record<string, string> {
     email: reviewer.email,
     display_name: reviewer.displayName,
   };
+}
+
+const MIN_FEEDBACK_LEN = 3;
+
+function requireFeedback(value: string, message: string): string {
+  const feedback = value.trim();
+  if (feedback.length < MIN_FEEDBACK_LEN) {
+    throw HttpError.unprocessable(message);
+  }
+  return feedback;
 }
 
 /**
@@ -129,30 +169,121 @@ export async function approveReviewRisk(
   assertNotAlreadyApproved(reviewStatus);
 
   const risk = (ext.risk ?? {}) as Record<string, unknown>;
-  const domain = str(options.domain ?? row.domains ?? risk.domains);
+  const previousDomain = str(row.domains ?? risk.domains);
+  const requestedDomain = str(options.domain);
+  const mappedDomain = requestedDomain
+    ? normalizeToCatalogDomain(requestedDomain)
+    : null;
+  if (requestedDomain && !mappedDomain) {
+    throw HttpError.unprocessable(
+      "Domain must be one of the 7 taxonomy domains.",
+    );
+  }
+  if (!mappedDomain && !isDomainInTaxonomy(previousDomain)) {
+    throw HttpError.unprocessable(
+      "Select one of the 7 taxonomy domains before moving this item to Risks.",
+    );
+  }
+  const domain = mappedDomain || previousDomain;
+  const mappedExt = mappedDomain
+    ? applyMappedDomain(ext, mappedDomain, previousDomain)
+    : ext;
 
-  const feedback = options.feedback?.trim();
+  const feedback = requireFeedback(
+    options.feedback?.trim() || str(ext.review_feedback),
+    "Feedback is required before moving this item to Risks.",
+  );
+  const classification = options.classification ?? "structured";
   const reviewedAt = new Date().toISOString();
   const updatedExtraction: Record<string, unknown> = {
-    ...ext,
+    ...mappedExt,
     review_status: "approved",
-    review_classification: options.classification ?? "structured",
+    review_classification: classification,
     approved_at: reviewedAt,
     reviewed_at: reviewedAt,
     reviewed_by: reviewerPayload(options.reviewer),
-    review_feedback: feedback || str(ext.review_feedback),
+    review_feedback: feedback,
+  };
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(risks)
+      .set({
+        ...(domain ? { domains: truncate(domain, 255) } : {}),
+        extractionJson: updatedExtraction,
+        updatedAt: new Date(),
+      })
+      .where(eq(risks.id, uuid));
+    await tx.insert(riskReviewLogs).values({
+      riskId: uuid,
+      submittedByUserId: options.reviewer.userId,
+      action: "approve",
+      classification,
+      feedback,
+    });
+  });
+
+  return { riskId: uuid };
+}
+
+export async function remapReviewDomain(
+  riskIdOrDisplayId: string,
+  input: { domain: string; reviewer: ReviewerInfo },
+): Promise<{ riskId: string; domain: string }> {
+  const nextDomain = normalizeToCatalogDomain(input.domain.trim());
+  if (!nextDomain || !isDomainInTaxonomy(nextDomain)) {
+    throw HttpError.unprocessable(
+      "Select one of the 7 available taxonomy domains.",
+    );
+  }
+
+  const uuid = await resolveRiskUuid(riskIdOrDisplayId);
+  if (!uuid) {
+    throw HttpError.notFound("Risk not found.");
+  }
+
+  const [row] = await db
+    .select({
+      id: risks.id,
+      domains: risks.domains,
+      extractionJson: risks.extractionJson,
+    })
+    .from(risks)
+    .where(eq(risks.id, uuid))
+    .limit(1);
+
+  if (!row) {
+    throw HttpError.notFound("Risk not found.");
+  }
+
+  const ext = (row.extractionJson ?? {}) as Record<string, unknown>;
+  const reviewStatus = str(ext.review_status).toLowerCase();
+  assertNotAlreadyApproved(reviewStatus);
+
+  const risk = (ext.risk ?? {}) as Record<string, unknown>;
+  const previousDomain = str(row.domains ?? risk.domains);
+  if (isDomainInTaxonomy(previousDomain)) {
+    throw HttpError.unprocessable(
+      "This domain is already one of the 7 taxonomy domains.",
+    );
+  }
+  const remappedAt = new Date().toISOString();
+  const updatedExtraction = {
+    ...applyMappedDomain(ext, nextDomain, previousDomain),
+    domain_remapped_at: remappedAt,
+    domain_remapped_by: reviewerPayload(input.reviewer),
   };
 
   await db
     .update(risks)
     .set({
-      ...(domain ? { domains: truncate(domain, 255) } : {}),
+      domains: truncate(nextDomain, 255),
       extractionJson: updatedExtraction,
       updatedAt: new Date(),
     })
     .where(eq(risks.id, uuid));
 
-  return { riskId: uuid };
+  return { riskId: uuid, domain: nextDomain };
 }
 
 /**
@@ -162,10 +293,10 @@ export async function rejectReviewRisk(
   riskIdOrDisplayId: string,
   options: RejectReviewOptions,
 ): Promise<void> {
-  const feedback = options.feedback.trim();
-  if (!feedback) {
-    throw HttpError.unprocessable("Feedback is required when rejecting a risk.");
-  }
+  const feedback = requireFeedback(
+    options.feedback,
+    "Feedback is required when marking a risk as Raw.",
+  );
 
   const uuid = await resolveRiskUuid(riskIdOrDisplayId);
   if (!uuid) {
@@ -200,13 +331,22 @@ export async function rejectReviewRisk(
     reviewed_by: reviewerPayload(options.reviewer),
   };
 
-  await db
-    .update(risks)
-    .set({
-      extractionJson: updatedExtraction,
-      updatedAt: new Date(),
-    })
-    .where(eq(risks.id, uuid));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(risks)
+      .set({
+        extractionJson: updatedExtraction,
+        updatedAt: new Date(),
+      })
+      .where(eq(risks.id, uuid));
+    await tx.insert(riskReviewLogs).values({
+      riskId: uuid,
+      submittedByUserId: options.reviewer.userId,
+      action: "reject",
+      classification: options.classification ?? "raw",
+      feedback,
+    });
+  });
 }
 
 export type ClassifyReviewOptions = {
@@ -221,12 +361,10 @@ export async function classifyReviewRisk(
   riskIdOrDisplayId: string,
   options: ClassifyReviewOptions,
 ): Promise<void> {
-  const feedback = options.feedback.trim();
-  if (!feedback) {
-    throw HttpError.unprocessable(
-      "Feedback is required when saving a structured review.",
-    );
-  }
+  const feedback = requireFeedback(
+    options.feedback,
+    "Feedback is required when saving a structured review.",
+  );
 
   const uuid = await resolveRiskUuid(riskIdOrDisplayId);
   if (!uuid) {
@@ -261,13 +399,22 @@ export async function classifyReviewRisk(
     reviewed_by: reviewerPayload(options.reviewer),
   };
 
-  await db
-    .update(risks)
-    .set({
-      extractionJson: updatedExtraction,
-      updatedAt: new Date(),
-    })
-    .where(eq(risks.id, uuid));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(risks)
+      .set({
+        extractionJson: updatedExtraction,
+        updatedAt: new Date(),
+      })
+      .where(eq(risks.id, uuid));
+    await tx.insert(riskReviewLogs).values({
+      riskId: uuid,
+      submittedByUserId: options.reviewer.userId,
+      action: "classify",
+      classification: "structured",
+      feedback,
+    });
+  });
 }
 
 export type UpdateReviewFeedbackOptions = {
@@ -282,10 +429,7 @@ export async function updateReviewFeedback(
   riskIdOrDisplayId: string,
   options: UpdateReviewFeedbackOptions,
 ): Promise<void> {
-  const feedback = options.feedback.trim();
-  if (!feedback) {
-    throw HttpError.unprocessable("Feedback is required.");
-  }
+  const feedback = requireFeedback(options.feedback, "Feedback is required.");
 
   const uuid = await resolveRiskUuid(riskIdOrDisplayId);
   if (!uuid) {
@@ -326,11 +470,25 @@ export async function updateReviewFeedback(
     reviewed_by: reviewerPayload(options.reviewer),
   };
 
-  await db
-    .update(risks)
-    .set({
-      extractionJson: updatedExtraction,
-      updatedAt: new Date(),
-    })
-    .where(eq(risks.id, uuid));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(risks)
+      .set({
+        extractionJson: updatedExtraction,
+        updatedAt: new Date(),
+      })
+      .where(eq(risks.id, uuid));
+    await tx.insert(riskReviewLogs).values({
+      riskId: uuid,
+      submittedByUserId: options.reviewer.userId,
+      action: "update",
+      classification:
+        reviewStatus === "rejected"
+          ? "raw"
+          : reviewStatus === "classified"
+            ? "structured"
+            : null,
+      feedback,
+    });
+  });
 }

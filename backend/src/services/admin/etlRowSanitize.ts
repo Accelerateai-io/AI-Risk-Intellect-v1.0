@@ -65,7 +65,7 @@ export function mapRecordToRow(record: ParsedEtlRecord) {
     objectId: sanitizeRequiredString(record.id, 24),
     datePublished: parseOptionalDate(record.date_published),
     reportNumber: sanitizeOptionalString(record.report_number ?? null, 128),
-    sourceDomain: sanitizeOptionalString(record.source_domain ?? null, 512),
+    sourceDomain: sanitizeOptionalString(record.source_domain ?? null),
     description: sanitizeOptionalString(record.description ?? null),
     title: sanitizeRequiredString(record.title),
     url: sanitizeRequiredString(record.url, 2048),

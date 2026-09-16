@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
+import { isReviewSource, type ReviewNavState } from "../../utils/reviewNav";
 import { getSidebarNavItem } from "./sidebarNav";
 import "./pageHeader.css";
 
@@ -27,8 +28,13 @@ export function PageHeader({
   titleId,
   actions,
 }: PageHeaderProps) {
-  const { pathname } = useLocation();
-  const Icon = pageIcon ?? getSidebarNavItem(pathname)?.icon;
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const fromReview = isReviewSource({
+    searchParams,
+    state: location.state as ReviewNavState | null,
+  });
+  const Icon = pageIcon ?? getSidebarNavItem(location.pathname, { fromReview })?.icon;
 
   const headerClass = ["pageHeader", className].filter(Boolean).join(" ");
   const titleClass = ["pageHeader__title", titleClassName].filter(Boolean).join(" ");

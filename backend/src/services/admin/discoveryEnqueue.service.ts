@@ -4,10 +4,13 @@ import {
   ACTIVE_JOB_STATUSES,
   createArticleWithIngestJob,
 } from "../../jobs/jobFactory.js";
+import { batchRuns } from "../../schema/batchRuns/batchRuns.js";
 import { jobs } from "../../schema/jobs/jobs.js";
 import { createLogger } from "../../logger/index.js";
 import { normalizeUrl } from "../../utils/fetchUtils.js";
+import { getLlmModelConfig } from "./llmModelConfig.service.js";
 import { requestWorkerServiceStart } from "./workerManager.service.js";
+import { isUrlDoNotExecute } from "../jobs/urlExecutionBlocks.service.js";
 
 const discoveryEnqueueLog = createLogger("discovery-enqueue");
 
@@ -16,6 +19,14 @@ function isMissingIngestRefColumnError(err: unknown): boolean {
   return (
     message.includes('column "ingest_link_id" does not exist') ||
     message.includes('column "ingest_link_item_id" does not exist')
+  );
+}
+
+function isMissingModelColumnError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    message.includes('column "model_name" does not exist') ||
+    message.includes('column "model_label" does not exist')
   );
 }
 
@@ -58,16 +69,66 @@ export type DiscoveryEnqueueItem = {
   ingestLinkItemId?: number | null;
 };
 
+export type EnqueueModelOptions = {
+  batchRunId?: number | null;
+  modelName?: string | null;
+  modelLabel?: string | null;
+};
+
+/** Prefer explicit model → batch-assigned model → live Controls model. */
+export async function resolveEnqueueModel(
+  options?: EnqueueModelOptions,
+): Promise<{
+  modelName: string | null;
+  modelLabel: string | null;
+}> {
+  const fromOptions = options?.modelName?.trim() || null;
+  if (fromOptions) {
+    return {
+      modelName: fromOptions,
+      modelLabel: options?.modelLabel?.trim() || fromOptions,
+    };
+  }
+
+  if (options?.batchRunId != null) {
+    const [batch] = await db
+      .select({
+        modelName: batchRuns.modelName,
+        modelLabel: batchRuns.modelLabel,
+      })
+      .from(batchRuns)
+      .where(eq(batchRuns.id, options.batchRunId))
+      .limit(1);
+    if (batch?.modelName?.trim()) {
+      return {
+        modelName: batch.modelName.trim(),
+        modelLabel: batch.modelLabel?.trim() || batch.modelName.trim(),
+      };
+    }
+  }
+
+  const config = getLlmModelConfig();
+  const modelName = config.modelId?.trim() || null;
+  return {
+    modelName,
+    modelLabel: config.modelLabel?.trim() || modelName,
+  };
+}
+
 /**
  * Queue discovery URLs as article shell + pending ingest job.
- * SSRF / AI classification run later in the job worker (not at discovery).
+ * Snapshots the LLM model onto each job so later Controls changes do not
+ * rewrite extraction for URLs already in flight.
  */
 export async function enqueueDiscoveryBatch(
   items: DiscoveryEnqueueItem[],
+  options?: EnqueueModelOptions,
 ): Promise<number> {
   let count = 0;
   let skippedExisting = 0;
   let supportsIngestRefs = true;
+  let supportsModelColumns = true;
+  const model = await resolveEnqueueModel(options);
 
   for (const item of items) {
     let normalized: string;
@@ -77,22 +138,36 @@ export async function enqueueDiscoveryBatch(
       continue;
     }
 
+    if (await isUrlDoNotExecute(normalized)) {
+      skippedExisting += 1;
+      continue;
+    }
+
+    const baseInput = {
+      url: normalized,
+      source: "rss" as const,
+      ingestLinkId: item.ingestLinkId ?? null,
+      ingestLinkItemId: item.ingestLinkItemId ?? null,
+      batchRunId: options?.batchRunId ?? null,
+      ...(supportsModelColumns
+        ? { modelName: model.modelName, modelLabel: model.modelLabel }
+        : {}),
+    };
+
     let result;
     if (supportsIngestRefs) {
       try {
         result = await db.transaction(async (tx) =>
-          createArticleWithIngestJob(tx, {
-            url: normalized,
-            source: "rss",
-            ingestLinkId: item.ingestLinkId ?? null,
-            ingestLinkItemId: item.ingestLinkItemId ?? null,
-          }),
+          createArticleWithIngestJob(tx, baseInput),
         );
       } catch (err) {
-        if (!isMissingIngestRefColumnError(err)) {
+        if (supportsModelColumns && isMissingModelColumnError(err)) {
+          supportsModelColumns = false;
+        } else if (!isMissingIngestRefColumnError(err)) {
           throw err;
+        } else {
+          supportsIngestRefs = false;
         }
-        supportsIngestRefs = false;
       }
     }
 
@@ -101,6 +176,10 @@ export async function enqueueDiscoveryBatch(
         createArticleWithIngestJob(tx, {
           url: normalized,
           source: "rss",
+          batchRunId: options?.batchRunId ?? null,
+          ...(supportsModelColumns
+            ? { modelName: model.modelName, modelLabel: model.modelLabel }
+            : {}),
         }),
       );
     }
@@ -119,7 +198,13 @@ export async function enqueueDiscoveryBatch(
     );
   }
 
-  if (count > 0) {
+  if (count > 0 || (options?.batchRunId != null && skippedExisting > 0)) {
+    discoveryEnqueueLog.info("Enqueued discovery jobs with assigned model", {
+      count,
+      skippedExisting,
+      modelName: model.modelName,
+      batchRunId: options?.batchRunId ?? null,
+    });
     await requestWorkerServiceStart();
   }
 

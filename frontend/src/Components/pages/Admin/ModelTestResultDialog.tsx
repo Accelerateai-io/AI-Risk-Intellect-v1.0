@@ -9,6 +9,8 @@ export type ModelTestDialogState = {
   message: string;
   modelId: string;
   modelLabel: string;
+  invokeModelId?: string;
+  workingVia?: string;
   response?: string;
   fulfillmentResponse?: LlmModelValidationResponse["fulfillmentResponse"];
 };
@@ -28,10 +30,6 @@ export function ModelTestResultDialog({
 
   if (!open || !result) return null;
 
-  const displayMessage =
-    result.fulfillmentResponse?.fulfillmentText ??
-    result.response ??
-    result.message;
   const modelWorking =
     result.fulfillmentResponse?.outputContexts?.[0]?.parameters?.model_working;
   const isSuccess = result.success;
@@ -90,6 +88,18 @@ export function ModelTestResultDialog({
               <dt>Model</dt>
               <dd title={result.modelId}>{result.modelLabel}</dd>
             </div>
+            {result.workingVia ? (
+              <div className="adminPage__modelTestDialogRow">
+                <dt>Working via</dt>
+                <dd>{result.workingVia}</dd>
+              </div>
+            ) : null}
+            {result.invokeModelId ? (
+              <div className="adminPage__modelTestDialogRow">
+                <dt>Invoke ID</dt>
+                <dd title={result.invokeModelId}>{result.invokeModelId}</dd>
+              </div>
+            ) : null}
             {typeof modelWorking === "boolean" ? (
               <div className="adminPage__modelTestDialogRow">
                 <dt>Status</dt>
@@ -98,12 +108,14 @@ export function ModelTestResultDialog({
             ) : null}
           </dl>
 
+          {/* Response section hidden — model reply / error detail not shown in popup
           <div className="adminPage__modelTestDialogMessage">
             <p className="adminPage__modelTestDialogMessageLabel">Response</p>
             <p className="adminPage__modelTestDialogMessageText">
               {displayMessage}
             </p>
           </div>
+          */}
         </div>
 
         <div className="usersPage__dialogActions">

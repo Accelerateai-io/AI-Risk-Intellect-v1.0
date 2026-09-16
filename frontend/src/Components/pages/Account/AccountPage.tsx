@@ -15,6 +15,7 @@ import {
 import { PageHeader } from "../../Layout/PageHeader";
 import { authFetch } from "../../../utils/authFetch";
 import { setDocumentPageTitle } from "../../../utils/pageTitle";
+import { persistSessionUser } from "../../../utils/sessionUser";
 import { notifySessionProfileChanged } from "../../../utils/sessionProfileEvents";
 import "../Users/usersPage.css";
 import "./accountPage.css";
@@ -26,6 +27,7 @@ type MeUser = {
   fullName: string | null;
   accountStatus: string;
   isActive: boolean;
+  role?: string;
 };
 
 const USERNAME_RE = /^[a-zA-Z0-9_.-]+$/;
@@ -34,9 +36,7 @@ function applyAuthResponse(data: {
   user: MeUser;
   accessToken: string;
 }): void {
-  sessionStorage.setItem("accessToken", data.accessToken);
-  sessionStorage.setItem("userName", data.user.username);
-  sessionStorage.setItem("userEmail", data.user.email);
+  persistSessionUser(data.user, data.accessToken);
   notifySessionProfileChanged();
 }
 

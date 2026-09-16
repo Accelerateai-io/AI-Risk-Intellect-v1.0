@@ -10,9 +10,12 @@ import {
 } from "../../themePreference";
 import { authFetch } from "../../utils/authFetch";
 import { SESSION_PROFILE_CHANGED } from "../../utils/sessionProfileEvents";
+import { capitalizeDisplayName } from "../../utils/reviewOpsApi";
 
 function readUserProfile() {
-  const name = sessionStorage.getItem("userName")?.trim() || "Guest";
+  const name = capitalizeDisplayName(
+    sessionStorage.getItem("userName")?.trim() || "Guest",
+  );
   const email = sessionStorage.getItem("userEmail")?.trim() || "";
   return { name, email };
 }

@@ -21,8 +21,8 @@ import {
   Link2,
   MoreHorizontal,
   Pencil,
-  Play,
   Plus,
+  Save,
   RefreshCw,
   Rss,
   Search,
@@ -66,7 +66,7 @@ import {
 import "../Users/usersPage.css";
 import "./adminRssFeeds.css";
 
-type RssSubTab = "links" | "logs";
+type RssSubTab = "links" | "archive" | "logs";
 const TERMINAL_DISCOVERY_STATUSES = new Set(["EXECUTED", "SKIPPED", "FAILED"]);
 const RUNNING_DISCOVERY_STATUSES = new Set(["PENDING", "RUNNING"]);
 
@@ -151,15 +151,12 @@ function getLinkSortValue(
 
 function linkMatchesFilters(
   row: IngestLinkRow,
-  status: string,
+  archivedOnly: boolean,
   items: string,
   feedId: string,
   search: string,
 ): boolean {
-  if (status === "active" && row.archived) {
-    return false;
-  }
-  if (status === "archived" && !row.archived) {
+  if (archivedOnly ? !row.archived : row.archived) {
     return false;
   }
   if (items === "with" && row.itemCount <= 0) {
@@ -226,7 +223,6 @@ export function AdminRssFeedsSection({
   const [editSaving, setEditSaving] = useState(false);
   const [expandedLinkId, setExpandedLinkId] = useState<number | null>(null);
   const [linkItemsFilter, setLinkItemsFilter] = useState("all");
-  const [linkStatusFilter, setLinkStatusFilter] = useState("all");
   const [linkFeedFilter, setLinkFeedFilter] = useState("all");
   const [linkSearchQuery, setLinkSearchQuery] = useState("");
   const [linkPageSize, setLinkPageSize] = useState(10);
@@ -285,14 +281,15 @@ export function AdminRssFeedsSection({
     }
   }, []);
 
-  const loadIngestLinks = useCallback(async () => {
+  const loadIngestLinks = useCallback(async (options?: { silent?: boolean }) => {
     const token = sessionStorage.getItem("accessToken");
     if (!token) {
       setLinkRows([]);
       return;
     }
 
-    setLinksLoading(true);
+    const silent = options?.silent ?? false;
+    if (!silent) setLinksLoading(true);
     try {
       const result = await fetchIngestLinks();
       if (!result.ok) {
@@ -301,7 +298,7 @@ export function AdminRssFeedsSection({
       }
       setLinkRows(result.links ?? []);
     } finally {
-      setLinksLoading(false);
+      if (!silent) setLinksLoading(false);
     }
   }, []);
 
@@ -384,12 +381,12 @@ export function AdminRssFeedsSection({
   }, [rssTab, loadRssLogs]);
 
   useEffect(() => {
-    if (rssTab !== "links") return;
+    if (rssTab === "logs") return;
     void loadRssLogs({ silent: true });
   }, [rssTab, loadRssLogs]);
 
   useEffect(() => {
-    if (rssTab !== "links") return;
+    if (rssTab === "logs") return;
     if (discoveryStatus !== "starting" && discoveryStatus !== "running") return;
     const timer = window.setInterval(() => {
       void loadRssLogs({ silent: true });
@@ -528,7 +525,10 @@ export function AdminRssFeedsSection({
         setExpandedLinkId(null);
         setFeedItems([]);
       }
-      void loadIngestLinks();
+      setLinkRows((prev) =>
+        prev.map((row) => (row.id === id ? result.link : row)),
+      );
+      void loadIngestLinks({ silent: true });
     } finally {
       setLinkActionId(null);
     }
@@ -543,10 +543,14 @@ export function AdminRssFeedsSection({
         return;
       }
       toast.success(result.message, { autoClose: 2800 });
+      if (expandedLinkId === id) {
+        setExpandedLinkId(null);
+        setFeedItems([]);
+      }
       setLinkRows((prev) =>
         prev.map((row) => (row.id === id ? result.link : row)),
       );
-      void loadIngestLinks();
+      void loadIngestLinks({ silent: true });
     } finally {
       setLinkActionId(null);
     }
@@ -565,23 +569,27 @@ export function AdminRssFeedsSection({
   const logsColSpan = 7;
   const linkFeedOptions = useMemo(
     () =>
-      [...new Set(linkRows.map((row) => row.id))]
+      [...new Set(
+        linkRows
+          .filter((row) => (rssTab === "archive" ? row.archived : !row.archived))
+          .map((row) => row.id),
+      )]
         .sort((a, b) => a - b)
         .map(String),
-    [linkRows],
+    [linkRows, rssTab],
   );
   const filteredLinkRows = useMemo(
     () =>
       (linkRows ?? []).filter((row) =>
         linkMatchesFilters(
           row,
-          linkStatusFilter,
+          rssTab === "archive",
           linkItemsFilter,
           linkFeedFilter,
           linkSearchQuery,
         ),
       ),
-    [linkRows, linkStatusFilter, linkItemsFilter, linkFeedFilter, linkSearchQuery],
+    [linkRows, rssTab, linkItemsFilter, linkFeedFilter, linkSearchQuery],
   );
 
   const linkRowMenuFeed = useMemo(() => {
@@ -602,7 +610,6 @@ export function AdminRssFeedsSection({
     >();
 
     for (const link of linkRows) {
-      if (!activeLinkIds.has(link.id)) continue;
       map.set(link.id, {
         total: link.itemCount,
         completed: 0,
@@ -612,7 +619,7 @@ export function AdminRssFeedsSection({
 
     const latestByItem = new Map<string, DiscoveryLogRow>();
     for (const row of logRows) {
-      if (!row.ingestLinkId || !activeLinkIds.has(row.ingestLinkId)) continue;
+      if (!row.ingestLinkId) continue;
       const key =
         row.ingestLinkItemId > 0
           ? `${row.ingestLinkId}:${row.ingestLinkItemId}`
@@ -636,7 +643,7 @@ export function AdminRssFeedsSection({
     }
 
     return map;
-  }, [logRows, activeLinkIds, linkRows]);
+  }, [logRows, linkRows]);
 
   const sortedLinkRows = useMemo(() => {
     if (!linkSort) return filteredLinkRows;
@@ -653,7 +660,7 @@ export function AdminRssFeedsSection({
   const linkPager = usePagination({
     items: sortedLinkRows,
     pageSize: linkPageSize,
-    resetKey: `${linkStatusFilter}|${linkItemsFilter}|${linkFeedFilter}|${linkSearchQuery}|${linkSort?.key ?? ""}|${linkSort?.direction ?? ""}`,
+    resetKey: `${rssTab}|${linkItemsFilter}|${linkFeedFilter}|${linkSearchQuery}|${linkSort?.key ?? ""}|${linkSort?.direction ?? ""}`,
   });
   const linkPageRows = linkPager.pageItems ?? [];
 
@@ -749,7 +756,7 @@ export function AdminRssFeedsSection({
                 value={editSuggestedName}
                 onChange={(e) => setEditSuggestedName(e.target.value)}
                 autoComplete="off"
-                maxLength={256}
+                maxLength={2000}
                 disabled={editSaving}
               />
               <label className="usersPage__label usersPage__label--withIcon">
@@ -792,7 +799,7 @@ export function AdminRssFeedsSection({
                   onClick={() => void handleSaveLink()}
                   disabled={editSaving}
                 >
-                  <Play size={16} strokeWidth={2} aria-hidden />
+                  <Save size={16} strokeWidth={2} aria-hidden />
                   {editSaving ? "Saving…" : "Save"}
                 </button>
               </div>
@@ -863,16 +870,39 @@ export function AdminRssFeedsSection({
                 role="tab"
                 aria-selected={rssTab === "links"}
                 className={`adminPage__tab${rssTab === "links" ? " adminPage__tab--selected" : ""}`}
-                onClick={() => setRssTab("links")}
+                onClick={() => {
+                  closeLinkRowMenu();
+                  setExpandedLinkId(null);
+                  setLinkFeedFilter("all");
+                  setRssTab("links");
+                }}
               >
                 Links
               </button>
               <button
                 type="button"
                 role="tab"
+                aria-selected={rssTab === "archive"}
+                className={`adminPage__tab${rssTab === "archive" ? " adminPage__tab--selected" : ""}`}
+                onClick={() => {
+                  closeLinkRowMenu();
+                  setExpandedLinkId(null);
+                  setLinkFeedFilter("all");
+                  setRssTab("archive");
+                }}
+              >
+                Archive
+              </button>
+              <button
+                type="button"
+                role="tab"
                 aria-selected={rssTab === "logs"}
                 className={`adminPage__tab${rssTab === "logs" ? " adminPage__tab--selected" : ""}`}
-                onClick={() => setRssTab("logs")}
+                onClick={() => {
+                  closeLinkRowMenu();
+                  setExpandedLinkId(null);
+                  setRssTab("logs");
+                }}
               >
                 Logs
               </button>
@@ -885,6 +915,28 @@ export function AdminRssFeedsSection({
               >
                 <Plus size={18} strokeWidth={2} aria-hidden />
                 Ingest
+              </button>
+            ) : rssTab === "archive" ? (
+              <button
+                type="button"
+                className="usersPage__inviteBtn adminPage__rssRefreshBtn"
+                onClick={() => {
+                  void (async () => {
+                    await loadIngestLinks({ silent: true });
+                    toast.success("Archived feeds refreshed.", {
+                      autoClose: 2000,
+                    });
+                  })();
+                }}
+                disabled={linksLoading}
+                aria-busy={linksLoading}
+              >
+                <RefreshCw
+                  size={16}
+                  strokeWidth={2}
+                  aria-hidden
+                />
+                Refresh
               </button>
             ) : rssTab === "logs" ? (
               <button
@@ -908,27 +960,15 @@ export function AdminRssFeedsSection({
           </div>
         </div>
 
-        {rssTab === "links" && (
+        {(rssTab === "links" || rssTab === "archive") && (
             <AdminDataTable
-              ariaLabel="Feed URLs"
+              ariaLabel={rssTab === "archive" ? "Archived feed URLs" : "Feed URLs"}
               wrapClassName="adminPage__tableWrap--links"
               filters={
             <section
               className="adminPage__dataFilters"
-              aria-label="Filter feeds"
+              aria-label={rssTab === "archive" ? "Filter archived feeds" : "Filter feeds"}
             >
-              <div className="adminPage__linksFilter">
-                <label htmlFor={sid("links-filter-status")}>STATUS</label>
-                <select
-                  id={sid("links-filter-status")}
-                  value={linkStatusFilter}
-                  onChange={(e) => setLinkStatusFilter(e.target.value)}
-                >
-                  <option value="active">Active</option>
-                  <option value="archived">Archived</option>
-                  <option value="all">All</option>
-                </select>
-              </div>
               <div className="adminPage__linksFilter">
                 <label htmlFor={sid("links-filter-items")}>ITEMS</label>
                 <select
@@ -960,7 +1000,6 @@ export function AdminRssFeedsSection({
                 type="button"
                 className="adminPage__linksClearBtn"
                 onClick={() => {
-                  setLinkStatusFilter("all");
                   setLinkItemsFilter("all");
                   setLinkFeedFilter("all");
                   setLinkSearchQuery("");
@@ -1102,11 +1141,12 @@ export function AdminRssFeedsSection({
                             colSpan={linksColSpan}
                           >
                             {linkSearchQuery.trim() ||
-                            linkStatusFilter !== "all" ||
                             linkItemsFilter !== "all" ||
                             linkFeedFilter !== "all"
                               ? "No feeds match your filters."
-                              : "No feeds yet. Add an RSS or Atom feed URL above."}
+                              : rssTab === "archive"
+                                ? "No archived feeds."
+                                : "No feeds yet. Add an RSS or Atom feed URL above."}
                           </td>
                         </tr>
                       ) : (
@@ -1305,8 +1345,9 @@ export function AdminRssFeedsSection({
                                           className="adminPage__itemsPanelEmpty"
                                           role="status"
                                         >
-                                          No links stored yet. Use Extract on
-                                          this feed.
+                                          {rssTab === "archive"
+                                            ? "No links stored for this archived feed."
+                                            : "No links stored yet. Use Extract on this feed."}
                                         </p>
                                       ) : (
                                         <table className="adminPage__itemsTable">

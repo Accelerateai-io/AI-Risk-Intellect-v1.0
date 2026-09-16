@@ -38,7 +38,7 @@ export function AuthShell({ title, subtitle, children, wide }: AuthShellProps) {
       <footer className="signin-page-footer">
         <a
           className="signin-footer-link"
-          href="http://13.63.231.125/login"
+          href="https://aiq.accelerateai.io/login"
           target="_blank"
           rel="noopener noreferrer"
         >

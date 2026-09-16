@@ -2,6 +2,8 @@
  * Port of `app.ingestion.extract_text`.
  */
 
+import { decodeHtmlEntities } from "../utils/decodeHtmlEntities.js";
+
 function collapseWhitespace(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
@@ -19,9 +21,7 @@ function stripHtmlTags(html: string): string {
 export function extractTitleFromHtml(html: string): string {
   const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   if (!match?.[1]) return "";
-  return collapseWhitespace(
-    match[1].replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&"),
-  );
+  return collapseWhitespace(decodeHtmlEntities(match[1]));
 }
 
 /** Port of `extract_from_html`. */

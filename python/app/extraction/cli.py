@@ -26,6 +26,9 @@ from app.extraction.extract_utils import (
 )
 
 
+from app.llm.model_config import set_model
+
+
 def main() -> int:
     try:
         req = json.load(sys.stdin)
@@ -44,6 +47,7 @@ def main() -> int:
     text = req.get("text") or ""
     title = req.get("title") or ""
     url = req.get("url") or ""
+    model_id = req.get("modelId") or req.get("model_id") or ""
 
     if not text.strip():
         json.dump(
@@ -53,6 +57,9 @@ def main() -> int:
         return 1
 
     try:
+        if str(model_id).strip():
+            set_model(str(model_id).strip())
+
         schema = load_risk_schema()
         obj, source_flag, metrics = extract_with_auto_chunking(
             text,

@@ -24,7 +24,7 @@ export async function sendPasswordResetEmail(args: {
   const from = env.SENDER_EMAIL_ID!.trim();
   const appBase = env.INVITE_APP_URL.replace(/\/$/, "");
   const resetUrl = `${appBase}/reset-password?token=${encodeURIComponent(args.resetToken)}&email=${encodeURIComponent(args.to)}`;
-  const subject = "Reset your AI Risk Intellect password";
+  const subject = "Reset your AI Risk Intelligence password";
 
   const text = [
     "Hello,",
@@ -38,7 +38,7 @@ export async function sendPasswordResetEmail(args: {
 
   const html = `
     <p>Hello,</p>
-    <p>We received a request to reset the password for your <strong>AI Risk Intellect</strong> account.</p>
+    <p>We received a request to reset the password for your <strong>AI Risk Intelligence</strong> account.</p>
     <p style="margin:1.25rem 0">
       <a href="${escapeHtml(resetUrl)}"
         style="display:inline-block;padding:12px 22px;background:#1cb0d4;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:15px">

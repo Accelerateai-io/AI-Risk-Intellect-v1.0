@@ -700,13 +700,8 @@ html:not(.app-theme-dark) .dashHeatmap__legendLabel {
   height: 10.5rem;
   flex-shrink: 0;
   border-radius: 50%;
-  background: conic-gradient(
-    from -90deg,
-    #ef4444 0turn 0.04turn,
-    #f97316 0.04turn 0.17turn,
-    #eab308 0.17turn 0.54turn,
-    #22c55e 0.54turn 1turn
-  );
+  /* Fallback only — live slices come from inline style on the element */
+  background: conic-gradient(from -90deg, #64748b 0turn 1turn);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
 }
 

@@ -7,7 +7,8 @@ export default defineConfig({
   server: {
     port: 5176,
     proxy: {
-      "/api": {
+      // Use `/api/` (with trailing slash) so `/api-keys` SPA route is not proxied.
+      "/api/": {
         target: "http://localhost:5005",
         changeOrigin: true,
       },

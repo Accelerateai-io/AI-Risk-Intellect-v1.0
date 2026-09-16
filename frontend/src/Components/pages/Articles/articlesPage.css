@@ -141,6 +141,11 @@
   overflow: hidden;
 }
 
+.articlesPage__tableWrap[aria-busy="true"] {
+  opacity: 0.78;
+  transition: opacity 0.15s ease;
+}
+
 .articlesPage__tableScroll {
   overflow: auto;
   max-height: min(34rem, 62vh);

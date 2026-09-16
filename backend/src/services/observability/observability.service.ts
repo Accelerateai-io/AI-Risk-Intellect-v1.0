@@ -1,4 +1,5 @@
 import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { findCatalogOption } from "../../config/modelsCatalog.js";
 import { db } from "../../db/index.js";
 import { articles } from "../../schema/articles/articles.js";
 import { jobs } from "../../schema/jobs/jobs.js";
@@ -9,6 +10,15 @@ import { withUsModelPrefix } from "../../utils/bedrockModelId.js";
 function displayModelName(name: string | null | undefined): string {
   const trimmed = (name ?? "").trim();
   return trimmed ? withUsModelPrefix(trimmed) : "unknown";
+}
+
+function resolveModelLabel(modelName: string | null | undefined): string {
+  const id = displayModelName(modelName);
+  if (id === "unknown") return "Unknown";
+  const option =
+    findCatalogOption(id) ??
+    (modelName?.trim() ? findCatalogOption(modelName.trim()) : undefined);
+  return option?.label?.trim() || id;
 }
 
 export type ObservabilityHourlyPoint = {
@@ -22,6 +32,8 @@ export type ObservabilityHourlyPoint = {
 export type ObservabilityTableRow = {
   id: number;
   modelName: string;
+  /** Human-readable catalog label for the model id. */
+  modelLabel: string;
   url: string;
   wordCount: number;
   tokensGenerated: number;
@@ -170,17 +182,21 @@ async function fetchMetricsRows(
     )
     .orderBy(desc(llmObservability.createdAt));
 
-  return rows.map((row) => ({
-    id: row.id,
-    modelName: displayModelName(row.modelName),
-    url: row.url,
-    wordCount: row.wordCount,
-    tokensGenerated: row.tokensGenerated,
-    wordsPerSecond: wordsPerSecond(row.wordCount, row.durationMs),
-    wordsPerMinute: wordsPerMinute(row.wordCount, row.durationMs),
-    durationMs: row.durationMs,
-    createdAt: row.createdAt.toISOString(),
-  }));
+  return rows.map((row) => {
+    const modelName = displayModelName(row.modelName);
+    return {
+      id: row.id,
+      modelName,
+      modelLabel: resolveModelLabel(row.modelName),
+      url: row.url,
+      wordCount: row.wordCount,
+      tokensGenerated: row.tokensGenerated,
+      wordsPerSecond: wordsPerSecond(row.wordCount, row.durationMs),
+      wordsPerMinute: wordsPerMinute(row.wordCount, row.durationMs),
+      durationMs: row.durationMs,
+      createdAt: row.createdAt.toISOString(),
+    };
+  });
 }
 
 async function fetchRiskFallbackRows(
@@ -238,6 +254,7 @@ async function fetchRiskFallbackRows(
     return {
       id: riskIdToDisplayId(row.riskId),
       modelName: displayModelName(row.modelName),
+      modelLabel: resolveModelLabel(row.modelName),
       url: row.url,
       wordCount,
       tokensGenerated,

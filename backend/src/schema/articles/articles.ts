@@ -30,6 +30,7 @@ export const articles = pgTable(
     index("articles_url_idx").on(table.url),
     index("articles_sha256_idx").on(table.sha256),
     index("articles_created_at_idx").on(table.createdAt),
+    index("articles_risk_count_idx").on(table.riskCount),
   ],
 );
 

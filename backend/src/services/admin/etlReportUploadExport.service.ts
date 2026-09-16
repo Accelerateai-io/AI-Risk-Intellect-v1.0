@@ -4,7 +4,7 @@ import { db } from "../../db/index.js";
 import { etlReportUploads } from "../../schema/aiid/reportUploads.js";
 import { HttpError } from "../../utils/httpError.js";
 import { getReportUploadDisplayName } from "./etlReportFileStorage.js";
-import { listReportUploadItems } from "./etlReportUploads.service.js";
+import { listAllReportUploadItems } from "./etlReportUploads.service.js";
 
 function safeFilenamePart(value: string): string {
   const cleaned = value
@@ -23,11 +23,11 @@ export async function buildReportUploadItemsExcel(uploadId: number): Promise<{
     .from(etlReportUploads)
     .where(eq(etlReportUploads.id, uploadId));
 
-  if (!upload || upload.archived) {
+  if (!upload) {
     throw HttpError.notFound("Report upload not found.");
   }
 
-  const items = await listReportUploadItems(uploadId);
+  const items = await listAllReportUploadItems(uploadId);
   const urls = items
     .map((item) => item.url)
     .filter((url) => url.trim().length > 0);

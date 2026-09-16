@@ -26,36 +26,48 @@ from app.risk_processing.merge import merge_extractions
 
 logger = logging.getLogger("airisk")
 
-# ---------------------------------------------------------------------------
-# LLM backend selection (matches production Python app)
-# ---------------------------------------------------------------------------
-USE_BEDROCK = os.getenv("USE_BEDROCK", "false").lower() == "true"
-USE_SAGEMAKER = os.getenv("USE_SAGEMAKER", "false").lower() == "true"
-USE_OPENAI = os.getenv("USE_OPENAI", "false").lower() == "true"
-USE_CISCO = os.getenv("USE_CISCO", "false").lower() == "true"
+DEFAULT_LOCAL_MODEL_ID = "Qwen/Qwen2.5-3B-Instruct"
 
-if USE_BEDROCK:
-    from app.llm.bedrock_llm import generate_json
 
-    logger.info("Using AWS Bedrock LLM backend")
-elif USE_SAGEMAKER:
-    from app.llm.sagemaker_llm import generate_json
+def _flag(name: str) -> bool:
+    return os.getenv(name, "false").lower() == "true"
 
-    logger.info("Using SageMaker LLM backend")
-elif USE_OPENAI:
-    from app.llm.openai_llm import generate_json
 
-    logger.info("Using OpenAI LLM backend")
-elif USE_CISCO:
-    from app.llm.cisco_llm import generate_json
+def _active_backend() -> str:
+    if _flag("USE_BEDROCK"):
+        return "bedrock"
+    if _flag("USE_SAGEMAKER"):
+        return "sagemaker"
+    if _flag("USE_OPENAI"):
+        return "openai"
+    if _flag("USE_CISCO"):
+        return "cisco"
+    return "local"
 
-    logger.info("Using Cisco (HuggingFace) LLM backend")
-else:
+
+def _resolve_generate_json():
+    """Pick the backend at call time so Controls / set_model can switch to Bedrock."""
+    backend = _active_backend()
+    if backend == "bedrock":
+        from app.llm.bedrock_llm import generate_json
+
+        return generate_json, "bedrock"
+    if backend == "sagemaker":
+        from app.llm.sagemaker_llm import generate_json
+
+        return generate_json, "sagemaker"
+    if backend == "openai":
+        from app.llm.openai_llm import generate_json
+
+        return generate_json, "openai"
+    if backend == "cisco":
+        from app.llm.cisco_llm import generate_json
+
+        return generate_json, "cisco"
+
     from app.llm.local_llm import generate_json
 
-    logger.info("Using local LLM backend")
-
-from app.llm.local_llm import MODEL_ID
+    return generate_json, "local"
 
 _SCHEMA_PATH = (
     Path(__file__).resolve().parent.parent / "schemas" / "risk_extraction.schema.json"
@@ -68,7 +80,8 @@ def load_risk_schema() -> dict[str, Any]:
 
 
 def get_current_model_name() -> str:
-    if USE_BEDROCK:
+    backend = _active_backend()
+    if backend == "bedrock":
         from app.llm.model_config import _bedrock_model_id
 
         raw = (
@@ -77,13 +90,13 @@ def get_current_model_name() -> str:
             or "claude-haiku-4-5"
         )
         return _bedrock_model_id(raw)
-    if USE_SAGEMAKER:
+    if backend == "sagemaker":
         return os.getenv("SAGEMAKER_MODEL_NAME", "foundation-sec-8b")
-    if USE_OPENAI:
+    if backend == "openai":
         return os.getenv("OPENAI_MODEL", "gpt-5-mini")
-    if USE_CISCO:
+    if backend == "cisco":
         return os.getenv("CISCO_MODEL_NAME", "foundation-sec-8b")
-    return os.getenv("LOCAL_MODEL_ID", MODEL_ID)
+    return os.getenv("LOCAL_MODEL_ID", DEFAULT_LOCAL_MODEL_ID)
 
 
 def _is_stub_object(obj: dict) -> bool:
@@ -118,6 +131,17 @@ def _stub(text: str) -> dict:
             "secondary_risks": "Technical/Performance Risk",
             "sector": "Private",
             "industry": "Technology & Software",
+            "ai_product_name": None,
+            "ai_product_vendor": None,
+        },
+        "risk_scoring": {
+            "likelihood": None,
+            "likelihood_reasoning": "",
+            "impact": None,
+            "impact_reasoning": "",
+            "loss_categories": [],
+            "severity_score": None,
+            "severity_band": None,
         },
         "controls": [
             {
@@ -169,7 +193,8 @@ def extract_over_chunks(
     model_id: str | None = None,
     system_prompt_override: Optional[str] = None,
 ) -> list:
-    mid = model_id or MODEL_ID
+    generate_json, _backend = _resolve_generate_json()
+    mid = model_id or get_current_model_name()
     chunk_max = int(os.getenv("CHUNK_MAX_TOKENS", "1024"))
     chunk_overlap = int(os.getenv("CHUNK_OVERLAP", "100"))
 
@@ -238,12 +263,15 @@ def extract_with_auto_chunking(
         clear_extraction_metrics()
         return obj, source_flag, payload
 
+    generate_json, backend = _resolve_generate_json()
     use_chunking = os.getenv("USE_CHUNKING", "true").lower() in ("1", "true", "yes")
     threshold = int(os.getenv("CHUNK_THRESHOLD_CHARS", "6000"))
-    mid = model_id or os.getenv("LOCAL_MODEL_ID", MODEL_ID)
+    mid = model_id or get_current_model_name()
 
     logger.info(
-        "EXTRACT: Text length=%d chunking=%s threshold=%d",
+        "EXTRACT: backend=%s model=%s text_length=%d chunking=%s threshold=%d",
+        backend,
+        mid,
         len(text),
         use_chunking,
         threshold,
@@ -271,13 +299,13 @@ def extract_with_auto_chunking(
             validate(obj, schema)
             obj.setdefault("_meta", {})["chunked"] = {"used": False}
             logger.info("EXTRACT: single-pass SUCCESS")
-            return finish(obj, "local-llm")
+            return finish(obj, backend)
         except ValidationError as ve:
             logger.warning("EXTRACT: validation failed, repairing: %s", str(ve)[:200])
             repaired = repair_extraction_obj(obj, text, schema)
             validate(repaired, schema)
             repaired.setdefault("_meta", {})["chunked"] = {"used": False, "repaired": True}
-            return finish(repaired, "local-llm-repaired")
+            return finish(repaired, f"{backend}-repaired")
         except Exception as exc:
             logger.error("EXTRACT: single-pass FAILED: %s", str(exc)[:200])
             stub = _stub(text)

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, ne } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { aiidReports } from "../../schema/aiid/reports.js";
 import {
@@ -12,6 +12,8 @@ import {
   type EtlReportUploadStatus,
 } from "../../schema/aiid/reportUploads.js";
 import { HttpError } from "../../utils/httpError.js";
+import { mergeReportRefSelection } from "./etlReportSelection.js";
+import type { ListReportUploadItemsQuery } from "../../validators/admin.validators.js";
 import type { EtlImportSummary } from "../../etl/etlImport.types.js";
 import {
   deriveEtlExtractionStatus,
@@ -95,6 +97,7 @@ export type EtlReportUploadDto = {
   failedRows: number;
   errorMessage: string | null;
   extractionStatus: EtlExtractionDisplayStatus;
+  archived: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -112,6 +115,7 @@ function toDto(row: EtlReportUpload): EtlReportUploadDto {
     failedRows: row.failedRows,
     errorMessage: row.errorMessage ?? null,
     extractionStatus: deriveEtlExtractionStatus(row),
+    archived: row.archived,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -209,6 +213,48 @@ export async function resolveReportRefsByIds(
   return refs;
 }
 
+export async function resolveSelectedReportRefs(input: {
+  uploadIds?: number[];
+  reportIds?: number[];
+  excludeReportIds?: number[];
+}): Promise<{ refs: ReportItemRef[]; uploadIds: number[] }> {
+  const requestedUploadIds = [...new Set(input.uploadIds ?? [])];
+  const requestedReportIds = [...new Set(input.reportIds ?? [])];
+  const excludeReportIds = [...new Set(input.excludeReportIds ?? [])];
+
+  if (requestedUploadIds.length === 0 && requestedReportIds.length === 0) {
+    throw HttpError.badRequest(
+      "Select at least one upload or report URL to run.",
+    );
+  }
+
+  const reportRefs =
+    requestedReportIds.length > 0
+      ? await resolveReportRefsByIds(requestedReportIds)
+      : [];
+
+  const resolvedUploadIds =
+    requestedUploadIds.length > 0
+      ? (await resolveActiveReportUploadsByIds(requestedUploadIds)).map(
+          (upload) => upload.id,
+        )
+      : [...new Set(reportRefs.map((ref) => ref.uploadId))];
+
+  const uploadRefs =
+    requestedUploadIds.length > 0
+      ? await getReportRefsByUploadIds(resolvedUploadIds)
+      : [];
+
+  return {
+    refs: mergeReportRefSelection({
+      uploadRefs,
+      reportRefs,
+      excludeReportIds,
+    }),
+    uploadIds: resolvedUploadIds,
+  };
+}
+
 export async function getReportRefsByUploadIds(
   uploadIds: number[],
 ): Promise<ReportItemRef[]> {
@@ -251,6 +297,15 @@ export async function getReportRefsByUploadIds(
   }
 
   return refs;
+}
+
+export async function listReportUploads(): Promise<EtlReportUploadDto[]> {
+  const rows = await db
+    .select()
+    .from(etlReportUploads)
+    .orderBy(etlReportUploads.archived, desc(etlReportUploads.createdAt));
+
+  return rows.map(toDto);
 }
 
 export async function listActiveReportUploads(): Promise<EtlReportUploadDto[]> {
@@ -374,19 +429,49 @@ export async function findPriorUploadWithSameFile(
   return row ?? null;
 }
 
-export async function listReportUploadItems(
+export type ListReportUploadItemsResult = {
+  items: EtlReportUploadItemDto[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+};
+
+function mapReportRowsToItems(
+  uploadId: number,
+  reportRows: Array<{
+    id: number;
+    objectId?: string | null;
+    url: string;
+    title?: string | null;
+  }>,
+  rowOrderStart: number,
+): EtlReportUploadItemDto[] {
+  return reportRows.map((row, index) => ({
+    id: row.id,
+    reportId: row.id,
+    uploadId,
+    rowOrder: rowOrderStart + index,
+    objectId: row.objectId ?? null,
+    url: row.url,
+    title: row.title ?? null,
+    extractionStatus: "imported" as const,
+    skipReason: null,
+  }));
+}
+
+export async function listAllReportUploadItems(
   uploadId: number,
 ): Promise<EtlReportUploadItemDto[]> {
   const [upload] = await db
-    .select()
+    .select({ id: etlReportUploads.id })
     .from(etlReportUploads)
     .where(eq(etlReportUploads.id, uploadId));
 
-  if (!upload || upload.archived) {
+  if (!upload) {
     throw HttpError.notFound("Report upload not found.");
   }
 
-  // Only URLs actually stored for this upload (excludes skipped_existing / duplicates).
   const reportRows = await db
     .select({
       id: aiidReports.id,
@@ -398,17 +483,58 @@ export async function listReportUploadItems(
     .where(eq(aiidReports.uploadId, uploadId))
     .orderBy(asc(aiidReports.id));
 
-  return reportRows.map((row, index) => ({
-    id: row.id,
-    reportId: row.id,
+  return mapReportRowsToItems(uploadId, reportRows, 1);
+}
+
+export async function listReportUploadItems(
+  uploadId: number,
+  query: ListReportUploadItemsQuery,
+): Promise<ListReportUploadItemsResult> {
+  const [upload] = await db
+    .select({
+      id: etlReportUploads.id,
+      importedRows: etlReportUploads.importedRows,
+    })
+    .from(etlReportUploads)
+    .where(eq(etlReportUploads.id, uploadId));
+
+  if (!upload) {
+    throw HttpError.notFound("Report upload not found.");
+  }
+
+  const filters = [eq(aiidReports.uploadId, uploadId)];
+  if (query.afterId != null) {
+    filters.push(gt(aiidReports.id, query.afterId));
+  }
+
+  let rowsQuery = db
+    .select({
+      id: aiidReports.id,
+      url: aiidReports.url,
+    })
+    .from(aiidReports)
+    .where(and(...filters))
+    .orderBy(asc(aiidReports.id))
+    .limit(query.limit);
+
+  if (query.afterId == null && query.offset > 0) {
+    rowsQuery = rowsQuery.offset(query.offset) as typeof rowsQuery;
+  }
+
+  const reportRows = await rowsQuery;
+  const items = mapReportRowsToItems(
     uploadId,
-    rowOrder: index + 1,
-    objectId: row.objectId,
-    url: row.url,
-    title: row.title,
-    extractionStatus: "imported" as const,
-    skipReason: null,
-  }));
+    reportRows,
+    query.offset + 1,
+  );
+
+  return {
+    items,
+    total: upload.importedRows,
+    limit: query.limit,
+    offset: query.offset,
+    hasMore: items.length === query.limit,
+  };
 }
 
 export async function archiveReportUpload(id: number): Promise<EtlReportUploadDto> {
@@ -431,6 +557,20 @@ export async function archiveReportUpload(id: number): Promise<EtlReportUploadDt
 
   if (!row) {
     throw HttpError.notFound("Report upload not found.");
+  }
+
+  return toDto(row);
+}
+
+export async function restoreReportUpload(id: number): Promise<EtlReportUploadDto> {
+  const [row] = await db
+    .update(etlReportUploads)
+    .set({ archived: false, updatedAt: new Date() })
+    .where(and(eq(etlReportUploads.id, id), eq(etlReportUploads.archived, true)))
+    .returning();
+
+  if (!row) {
+    throw HttpError.notFound("Archived report upload not found.");
   }
 
   return toDto(row);

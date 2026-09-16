@@ -1,5 +1,6 @@
 import { toast } from "react-toastify";
 import { apiUrl } from "./apiBase";
+import { persistSessionUser } from "./sessionUser";
 
 export type AuthFetchInit = RequestInit & {
   /**
@@ -13,7 +14,7 @@ let sessionExpirySignOutPending = false;
 let idleSignOutPending = false;
 let refreshInFlight: Promise<boolean> | null = null;
 
-const IDLE_LOGOUT_MS = 15 * 60 * 1000;
+const IDLE_LOGOUT_MS = 45 * 60 * 1000;
 
 async function tryRefreshAccessToken(): Promise<boolean> {
   if (refreshInFlight) return refreshInFlight;
@@ -27,10 +28,12 @@ async function tryRefreshAccessToken(): Promise<boolean> {
       if (!res.ok) return false;
       const data = (await res.json().catch(() => ({}))) as {
         accessToken?: string;
+        user?: { username: string; email: string; role?: string };
       };
       const nextToken = data.accessToken?.trim();
       if (!nextToken) return false;
-      sessionStorage.setItem("accessToken", nextToken);
+      if (data.user) persistSessionUser(data.user, nextToken);
+      else sessionStorage.setItem("accessToken", nextToken);
       return true;
     } catch {
       return false;
@@ -52,6 +55,7 @@ export function clearAuthSession(): void {
   sessionStorage.removeItem("accessToken");
   sessionStorage.removeItem("userName");
   sessionStorage.removeItem("userEmail");
+  sessionStorage.removeItem("userRole");
 }
 
 function redirectToSignIn(): void {

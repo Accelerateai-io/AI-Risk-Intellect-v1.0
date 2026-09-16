@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { toast } from "react-toastify";
-import { CircleX, Link2, Play, Tag, X } from "lucide-react";
+import { CircleX, Link2, Play, Save, Tag, X } from "lucide-react";
 import { enqueueIngestUrl } from "../../utils/ingestLinksApi";
 import { enqueueJobUrl } from "../../utils/jobsEnqueueApi";
 import "../pages/Users/usersPage.css";
@@ -31,11 +31,13 @@ export function UrlIngestionDialog({
   const [ingestUrl, setIngestUrl] = useState("");
   const [suggestedName, setSuggestedName] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [urlReason, setUrlReason] = useState("");
 
   const close = useCallback(() => {
     if (submitting) return;
     setIngestUrl("");
     setSuggestedName("");
+    setUrlReason("");
     onClose();
   }, [submitting, onClose]);
 
@@ -66,12 +68,16 @@ export function UrlIngestionDialog({
         toast.success(result.message, { autoClose: 3000 });
         setIngestUrl("");
         setSuggestedName("");
+        setUrlReason("");
         onEnqueued?.();
         onClose();
         return;
       }
 
       if (result.status === "conflict") {
+        if (/do not execute/i.test(result.message)) {
+          setUrlReason(result.message);
+        }
         toast.warning(result.message, { autoClose: 3500 });
         return;
       }
@@ -176,7 +182,7 @@ export function UrlIngestionDialog({
                 value={suggestedName}
                 onChange={(e) => setSuggestedName(e.target.value)}
                 autoComplete="off"
-                maxLength={256}
+                maxLength={2000}
                 disabled={submitting}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -200,7 +206,10 @@ export function UrlIngestionDialog({
               isJobs ? "https://example.com/article" : "https://feeds.example.com/rss.xml"
             }
             value={ingestUrl}
-            onChange={(e) => setIngestUrl(e.target.value)}
+            onChange={(e) => {
+              setIngestUrl(e.target.value);
+              if (urlReason) setUrlReason("");
+            }}
             autoComplete="off"
             disabled={submitting}
             onKeyDown={(e) => {
@@ -210,6 +219,11 @@ export function UrlIngestionDialog({
               }
             }}
           />
+          {urlReason ? (
+            <p className="jobsPage__enqueueFieldReason" role="status">
+              {urlReason}
+            </p>
+          ) : null}
           <div className={actionsClass}>
             <button
               type="button"
@@ -226,7 +240,11 @@ export function UrlIngestionDialog({
               onClick={() => void handleSubmit()}
               disabled={submitting}
             >
-              <Play size={16} strokeWidth={2} aria-hidden />
+              {isJobs ? (
+                <Play size={16} strokeWidth={2} aria-hidden />
+              ) : (
+                <Save size={16} strokeWidth={2} aria-hidden />
+              )}
               {submitting
                 ? isJobs
                   ? "Enqueueing…"

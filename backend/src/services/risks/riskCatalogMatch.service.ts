@@ -1,9 +1,13 @@
+import { eq } from "drizzle-orm";
 import {
   listTaxonomyDomains,
   type TaxonomyDomain,
 } from "../../config/aiqRiskTaxonomy.js";
+import { taxonomyAlignmentScore } from "../../config/riskTaxonomyMap.js";
 import { db } from "../../db/index.js";
 import { riskMappings } from "../../schema/riskMappings/riskMappings.js";
+import { riskMappingEmbeddings } from "../../schema/riskMappings/riskMappingEmbeddings.js";
+import { cosineSimilarity } from "../aws/bedrockEmbeddings.service.js";
 import {
   normalizeLabelToCatalogDomain,
   resolveCatalogDomain,
@@ -26,11 +30,18 @@ export type CatalogRiskMatch = {
   title: string;
   description: string;
   domain: string;
-  /** Combined domain + description relevance, 0–100. */
+  /** Final blended relevance, 0–100 (judge-adjusted when the judge ran). */
   accuracyPercent: number;
   domainMatchPercent: number;
   descriptionMatchPercent: number;
   matchSummary: string;
+  /** Pre-judge heuristic score; kept so judge adjustments stay auditable. */
+  heuristicPercent?: number;
+  embeddingMatchPercent?: number;
+  evidenceMatchPercent?: number;
+  taxonomyMatchPercent?: number;
+  judgeVerdict?: "match" | "no_match";
+  judgeReasoning?: string;
 };
 
 /** Persisted on `risks.extraction_json.catalog_matches` at extraction time. */
@@ -41,6 +52,12 @@ function num(v: unknown, fallback = 0): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function optionalNum(v: unknown): number | undefined {
+  if (v == null) return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n) : undefined;
+}
+
 function str(v: unknown, fallback = ""): string {
   if (v == null) return fallback;
   return String(v).trim();
@@ -49,7 +66,7 @@ function str(v: unknown, fallback = ""): string {
 function mapRawToCatalogMatch(item: Record<string, unknown>): CatalogRiskMatch | null {
   const riskId = str(item.riskId ?? item.risk_id);
   if (!riskId) return null;
-  return {
+  const match: CatalogRiskMatch = {
     riskId,
     title: str(item.title ?? item.risk_title, "Untitled catalog risk"),
     description: str(item.description) || "No description available.",
@@ -63,6 +80,30 @@ function mapRawToCatalogMatch(item: Record<string, unknown>): CatalogRiskMatch |
     ),
     matchSummary: str(item.matchSummary ?? item.match_summary),
   };
+
+  const heuristic = optionalNum(item.heuristicPercent ?? item.heuristic_percent);
+  if (heuristic != null) match.heuristicPercent = heuristic;
+  const embedding = optionalNum(
+    item.embeddingMatchPercent ?? item.embedding_match_percent,
+  );
+  if (embedding != null) match.embeddingMatchPercent = embedding;
+  const evidence = optionalNum(
+    item.evidenceMatchPercent ?? item.evidence_match_percent,
+  );
+  if (evidence != null) match.evidenceMatchPercent = evidence;
+  const taxonomy = optionalNum(
+    item.taxonomyMatchPercent ?? item.taxonomy_match_percent,
+  );
+  if (taxonomy != null) match.taxonomyMatchPercent = taxonomy;
+
+  const verdict = str(item.judgeVerdict ?? item.judge_verdict);
+  if (verdict === "match" || verdict === "no_match") {
+    match.judgeVerdict = verdict;
+  }
+  const reasoning = str(item.judgeReasoning ?? item.judge_reasoning);
+  if (reasoning) match.judgeReasoning = reasoning;
+
+  return match;
 }
 
 /** Read catalog matches saved on the risk row (`extraction_json.catalog_matches`). */
@@ -173,6 +214,92 @@ function textSimilarity(a: Set<string>, b: Set<string>): number {
   return Math.max(j, j * 0.55 + sig * 0.45);
 }
 
+const KEYWORD_TOKEN_WEIGHT = 3;
+const EXCERPT_TOKEN_WEIGHT = 2;
+const BASE_TOKEN_WEIGHT = 1;
+
+/**
+ * Token weights for evidence-based matching: terms the extraction model
+ * cited as its reasons (keyword matches, evidence excerpts) count more than
+ * generic title/description prose. Highest weight wins per token.
+ */
+export function buildEvidenceTokenWeights(input: {
+  title: string;
+  description: string;
+  keywordMatches?: string[];
+  evidenceExcerpts?: string[];
+}): Map<string, number> {
+  const weights = new Map<string, number>();
+  const add = (text: string, weight: number) => {
+    for (const token of tokenize(text)) {
+      const existing = weights.get(token) ?? 0;
+      if (weight > existing) weights.set(token, weight);
+    }
+  };
+  add(`${input.title} ${input.description}`, BASE_TOKEN_WEIGHT);
+  for (const excerpt of input.evidenceExcerpts ?? []) {
+    add(excerpt, EXCERPT_TOKEN_WEIGHT);
+  }
+  for (const keyword of input.keywordMatches ?? []) {
+    add(keyword, KEYWORD_TOKEN_WEIGHT);
+  }
+  return weights;
+}
+
+/**
+ * Weighted overlap coefficient: how much of the extracted evidence appears
+ * in the catalog text. Unlike Jaccard it is not punished by the catalog
+ * texts being ~6x longer than extracted descriptions.
+ */
+export function weightedOverlapCoefficient(
+  weights: Map<string, number>,
+  catalogTokens: Set<string>,
+): number {
+  if (weights.size === 0 || catalogTokens.size === 0) return 0;
+  let totalWeight = 0;
+  let hitWeight = 0;
+  for (const [token, weight] of weights) {
+    totalWeight += weight;
+    if (catalogTokens.has(token)) hitWeight += weight;
+  }
+  if (totalWeight === 0) return 0;
+  const denominator = Math.min(totalWeight, catalogTokens.size);
+  if (denominator === 0) return 0;
+  return Math.min(1, hitWeight / denominator);
+}
+
+/**
+ * Titan cosines on this corpus cluster roughly within [0.30, 0.80]; the
+ * affine rescale restores dynamic range. Calibrate with the
+ * `report:match-distribution` script when the corpus shifts.
+ */
+export const EMBEDDING_SCORE_FLOOR = 0.3;
+export const EMBEDDING_SCORE_CEIL = 0.8;
+
+export function scaledEmbeddingScore(cosine: number): number {
+  const scaled =
+    (cosine - EMBEDDING_SCORE_FLOOR) /
+    (EMBEDDING_SCORE_CEIL - EMBEDDING_SCORE_FLOOR);
+  return Math.max(0, Math.min(1, scaled));
+}
+
+/**
+ * Evidence-strength gate. Disabled by default: the current self-assessment
+ * distribution is degenerate (most risks self-score exactly 0.91), so the
+ * multiplier would be a constant. Enable via MATCH_EVIDENCE_GATE_ENABLED
+ * once the reworked rubric produces spread scores.
+ */
+export function evidenceGateMultiplier(
+  evidenceStrengthScore: number | null | undefined,
+): number {
+  if (process.env.MATCH_EVIDENCE_GATE_ENABLED !== "true") return 1;
+  if (evidenceStrengthScore == null || !Number.isFinite(evidenceStrengthScore)) {
+    return 1;
+  }
+  const unit = Math.max(0, Math.min(1, evidenceStrengthScore / 15));
+  return 0.8 + 0.2 * unit;
+}
+
 /** Map LLM / numbered taxonomy labels to catalog `risk_mappings.domains` values. */
 export function normalizeToCatalogDomain(domain: string): string | null {
   return normalizeLabelToCatalogDomain(domain);
@@ -201,17 +328,83 @@ function domainMatchScore(
 function buildMatchSummary(
   domainPct: number,
   descriptionPct: number,
+  opts?: { semantic?: boolean },
 ): string {
   const parts: string[] = [];
   if (domainPct >= 80) parts.push("Strong domain alignment");
   else if (domainPct >= 50) parts.push("Partial domain alignment");
   else parts.push("Weak domain alignment");
 
-  if (descriptionPct >= 60) parts.push("high description similarity");
-  else if (descriptionPct >= 35) parts.push("moderate description similarity");
-  else parts.push("low description similarity");
+  const kind = opts?.semantic ? "semantic similarity" : "description similarity";
+  if (descriptionPct >= 60) parts.push(`high ${kind}`);
+  else if (descriptionPct >= 35) parts.push(`moderate ${kind}`);
+  else parts.push(`low ${kind}`);
 
   return parts.join("; ");
+}
+
+export type ExtractionMatchSignals = {
+  keywordMatches: string[];
+  evidenceExcerpts: string[];
+  evidenceStrengthScore: number | null;
+};
+
+/**
+ * Pull matching signals out of a stored/fresh extraction object:
+ * taxonomy_mapping keyword matches + evidence excerpts (all three mapping
+ * levels), the optional `risk.matching_keywords` list, and the
+ * self-assessment evidence strength. Defensive against missing/malformed
+ * shapes — older rows predate several of these fields.
+ */
+export function extractMatchSignalsFromExtraction(
+  extractionJson: unknown,
+): ExtractionMatchSignals {
+  const ext = (extractionJson ?? {}) as {
+    risk?: { matching_keywords?: unknown };
+    justification?: {
+      taxonomy_mapping?: Record<string, unknown>;
+      self_assessment?: { evidence_strength_score?: unknown };
+    };
+  };
+
+  const keywordMatches: string[] = [];
+  const evidenceExcerpts: string[] = [];
+
+  const pushStrings = (value: unknown, target: string[]) => {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const s = String(item ?? "").trim();
+        if (s) target.push(s);
+      }
+    } else if (typeof value === "string") {
+      for (const part of value.split(",")) {
+        const s = part.trim();
+        if (s) target.push(s);
+      }
+    }
+  };
+
+  pushStrings(ext.risk?.matching_keywords, keywordMatches);
+
+  const mapping = ext.justification?.taxonomy_mapping;
+  if (mapping && typeof mapping === "object") {
+    for (const entry of Object.values(mapping)) {
+      if (!entry || typeof entry !== "object") continue;
+      const e = entry as { keyword_matches?: unknown; evidence_excerpts?: unknown };
+      pushStrings(e.keyword_matches, keywordMatches);
+      pushStrings(e.evidence_excerpts, evidenceExcerpts);
+    }
+  }
+
+  const rawStrength = ext.justification?.self_assessment?.evidence_strength_score;
+  const strength = Number(rawStrength);
+
+  return {
+    keywordMatches: [...new Set(keywordMatches)],
+    evidenceExcerpts: [...new Set(evidenceExcerpts)],
+    evidenceStrengthScore:
+      rawStrength != null && Number.isFinite(strength) ? strength : null,
+  };
 }
 
 export type CatalogMatchInput = {
@@ -220,6 +413,16 @@ export type CatalogMatchInput = {
   description: string;
   primaryRisk?: string;
   secondaryRisk?: string;
+  /** 0–1 confidence from resolveCatalogDomain; defaults to 1 when absent. */
+  domainConfidence?: number;
+  /** justification.taxonomy_mapping.*.keyword_matches, flattened. */
+  keywordMatches?: string[];
+  /** justification.taxonomy_mapping.*.evidence_excerpts, flattened. */
+  evidenceExcerpts?: string[];
+  /** Precomputed Titan embedding of the risk text; null → lexical fallback. */
+  riskEmbedding?: number[] | null;
+  /** self_assessment.evidence_strength_score (0–15); gate input, see above. */
+  evidenceStrengthScore?: number | null;
   limit?: number;
   minAccuracyPercent?: number;
 };
@@ -231,7 +434,7 @@ export function invalidateCatalogCache(): void {
   catalogDomainFingerprints = null;
 }
 
-let catalogCache: Array<{
+type CatalogCacheRow = {
   riskId: string | null;
   riskTitle: string | null;
   domains: string | null;
@@ -239,11 +442,14 @@ let catalogCache: Array<{
   executiveSummary: string | null;
   primaryRisk: string | null;
   secondaryRisks: string | null;
-}> | null = null;
+  embedding: number[] | null;
+};
+
+let catalogCache: CatalogCacheRow[] | null = null;
 let catalogCacheAt = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-async function loadCatalogRows() {
+async function loadCatalogRows(): Promise<CatalogCacheRow[]> {
   const now = Date.now();
   if (catalogCache && now - catalogCacheAt < CACHE_TTL_MS) {
     return catalogCache;
@@ -257,8 +463,13 @@ async function loadCatalogRows() {
       executiveSummary: riskMappings.executiveSummary,
       primaryRisk: riskMappings.primaryRisk,
       secondaryRisks: riskMappings.secondaryRisks,
+      embedding: riskMappingEmbeddings.embedding,
     })
-    .from(riskMappings);
+    .from(riskMappings)
+    .leftJoin(
+      riskMappingEmbeddings,
+      eq(riskMappingEmbeddings.riskMappingId, riskMappings.riskMappingId),
+    );
   catalogCacheAt = now;
   catalogDomainFingerprints = null;
   return catalogCache;
@@ -297,8 +508,118 @@ export async function isDomainMappedToCatalog(domain: string): Promise<boolean> 
   return catalogFps.has(fingerprint(normalized));
 }
 
+const EMBEDDING_WEIGHTS = {
+  embedding: 0.5,
+  evidence: 0.2,
+  taxonomy: 0.15,
+  domain: 0.15,
+} as const;
+
+const LEXICAL_WEIGHTS = {
+  evidence: 0.35,
+  textSimilarity: 0.3,
+  taxonomy: 0.2,
+  domain: 0.15,
+} as const;
+
+export type ScoreCatalogRowInput = {
+  row: {
+    riskTitle: string | null;
+    domains: string | null;
+    description: string | null;
+    executiveSummary: string | null;
+    primaryRisk: string | null;
+    secondaryRisks: string | null;
+    embedding: number[] | null;
+  };
+  extractedDomain: string;
+  extractedText: string;
+  extractedTokens: Set<string>;
+  evidenceWeights: Map<string, number>;
+  domainConfidence: number;
+  primaryRisk?: string;
+  secondaryRisk?: string;
+  riskEmbedding?: number[] | null;
+  evidenceStrengthScore?: number | null;
+};
+
+/** Score one catalog row; exported for tests and the distribution report. */
+export function scoreCatalogRow(input: ScoreCatalogRowInput): {
+  accuracy: number;
+  domainScore: number;
+  descriptionScore: number;
+  evidenceScore: number;
+  taxonomyScore: number;
+  embeddingScore: number | null;
+} {
+  const { row } = input;
+  const catalogDescription = [row.description ?? "", row.executiveSummary ?? ""]
+    .join(" ")
+    .trim();
+  const catalogText = `${row.riskTitle ?? ""} ${catalogDescription}`.trim();
+  const catalogTokens = tokenize(catalogText);
+
+  const rawDomainScore = domainMatchScore(
+    input.extractedDomain,
+    row.domains ?? "",
+    input.extractedText,
+  );
+  const domainScore = rawDomainScore * (0.5 + 0.5 * input.domainConfidence);
+
+  const taxonomyScore = taxonomyAlignmentScore({
+    primaryRisk: input.primaryRisk ?? null,
+    secondaryRisk: input.secondaryRisk ?? null,
+    catalogPrimary: row.primaryRisk,
+    catalogSecondary: row.secondaryRisks,
+  });
+
+  const evidenceScore = weightedOverlapCoefficient(
+    input.evidenceWeights,
+    catalogTokens,
+  );
+
+  const embeddingScore =
+    input.riskEmbedding && row.embedding && row.embedding.length > 0
+      ? scaledEmbeddingScore(cosineSimilarity(input.riskEmbedding, row.embedding))
+      : null;
+
+  let accuracy: number;
+  let descriptionScore: number;
+  if (embeddingScore != null) {
+    accuracy =
+      EMBEDDING_WEIGHTS.embedding * embeddingScore +
+      EMBEDDING_WEIGHTS.evidence * evidenceScore +
+      EMBEDDING_WEIGHTS.taxonomy * taxonomyScore +
+      EMBEDDING_WEIGHTS.domain * domainScore;
+    descriptionScore = embeddingScore;
+  } else {
+    const lexical = textSimilarity(input.extractedTokens, catalogTokens);
+    accuracy =
+      LEXICAL_WEIGHTS.evidence * evidenceScore +
+      LEXICAL_WEIGHTS.textSimilarity * lexical +
+      LEXICAL_WEIGHTS.taxonomy * taxonomyScore +
+      LEXICAL_WEIGHTS.domain * domainScore;
+    descriptionScore = Math.max(evidenceScore, lexical);
+  }
+
+  accuracy *= evidenceGateMultiplier(input.evidenceStrengthScore);
+
+  return {
+    accuracy,
+    domainScore,
+    descriptionScore,
+    evidenceScore,
+    taxonomyScore,
+    embeddingScore,
+  };
+}
+
 /**
- * Score catalog rows against an extracted risk using domain + description overlap.
+ * Score catalog rows against an extracted risk. Embedding similarity is the
+ * dominant signal when available; the scorer degrades to evidence-weighted
+ * lexical matching otherwise. All catalog rows are scored — the previous
+ * hard domain pre-filter made the flat domain constant, so domain now
+ * contributes as a weighted component instead.
  */
 export async function findCatalogRiskMatches(
   input: CatalogMatchInput,
@@ -311,46 +632,45 @@ export async function findCatalogRiskMatches(
 
   if (!extractedText) return [];
 
-  const normalizedDomain = normalizeToCatalogDomain(extractedDomain);
-  const definitionDomain = scoreDomainsFromDefinitions(extractedText)[0]?.catalogDomain;
-  const resolvedDomain = normalizedDomain ?? definitionDomain ?? null;
+  const domainConfidence = Math.max(
+    0,
+    Math.min(1, input.domainConfidence ?? 1),
+  );
+  const evidenceWeights = buildEvidenceTokenWeights({
+    title: input.title,
+    description: input.description,
+    keywordMatches: input.keywordMatches,
+    evidenceExcerpts: input.evidenceExcerpts,
+  });
+
   const rows = await loadCatalogRows();
 
-  const candidates = resolvedDomain
-    ? rows.filter(
-        (row) =>
-          fingerprint(row.domains ?? "") === fingerprint(resolvedDomain) ||
-          domainMatchScore(extractedDomain, row.domains ?? "", extractedText) >=
-            0.35,
-      )
-    : rows;
-
-  const pool = candidates.length >= 10 ? candidates : rows;
-
-  const scored = pool
+  const scored = rows
     .map((row) => {
+      const score = scoreCatalogRow({
+        row,
+        extractedDomain,
+        extractedText,
+        extractedTokens,
+        evidenceWeights,
+        domainConfidence,
+        primaryRisk: input.primaryRisk,
+        secondaryRisk: input.secondaryRisk,
+        riskEmbedding: input.riskEmbedding,
+        evidenceStrengthScore: input.evidenceStrengthScore,
+      });
+
       const catalogDescription = [
         row.description ?? "",
         row.executiveSummary ?? "",
       ]
         .join(" ")
         .trim();
-      const catalogText = `${row.riskTitle ?? ""} ${catalogDescription}`.trim();
-      const descriptionScore = textSimilarity(
-        extractedTokens,
-        tokenize(catalogText),
-      );
-      const domainScore = domainMatchScore(
-        extractedDomain,
-        row.domains ?? "",
-        extractedText,
-      );
-      const accuracy = 0.35 * domainScore + 0.65 * descriptionScore;
-      const domainPct = Math.round(domainScore * 100);
-      const descriptionPct = Math.round(descriptionScore * 100);
-      const accuracyPct = Math.round(accuracy * 100);
+      const domainPct = Math.round(score.domainScore * 100);
+      const descriptionPct = Math.round(score.descriptionScore * 100);
+      const accuracyPct = Math.round(score.accuracy * 100);
 
-      return {
+      const match: CatalogRiskMatch = {
         riskId: (row.riskId ?? "").trim() || `MAP-${row.riskTitle ?? "unknown"}`,
         title: (row.riskTitle ?? "").trim() || "Untitled catalog risk",
         description:
@@ -361,8 +681,17 @@ export async function findCatalogRiskMatches(
         accuracyPercent: accuracyPct,
         domainMatchPercent: domainPct,
         descriptionMatchPercent: descriptionPct,
-        matchSummary: buildMatchSummary(domainPct, descriptionPct),
+        matchSummary: buildMatchSummary(domainPct, descriptionPct, {
+          semantic: score.embeddingScore != null,
+        }),
+        heuristicPercent: accuracyPct,
+        evidenceMatchPercent: Math.round(score.evidenceScore * 100),
+        taxonomyMatchPercent: Math.round(score.taxonomyScore * 100),
       };
+      if (score.embeddingScore != null) {
+        match.embeddingMatchPercent = Math.round(score.embeddingScore * 100);
+      }
+      return match;
     })
     .filter((m) => m.accuracyPercent >= minAccuracy)
     .sort((a, b) => b.accuracyPercent - a.accuracyPercent);

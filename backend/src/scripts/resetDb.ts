@@ -55,6 +55,7 @@ async function seedUsers() {
       passwordHash,
       fullName: user.fullName,
       accountStatus: "completed",
+      role: user.username === "Admin" ? "admin" : "user",
       isActive: true,
     });
   }

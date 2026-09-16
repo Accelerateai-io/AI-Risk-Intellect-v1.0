@@ -11,3 +11,11 @@ export function verifyPassword(
 ): Promise<boolean> {
   return bcrypt.compare(plain, hash);
 }
+
+export function passwordNeedsRehash(hash: string): boolean {
+  try {
+    return bcrypt.getRounds(hash) !== env.BCRYPT_SALT_ROUNDS;
+  } catch {
+    return false;
+  }
+}

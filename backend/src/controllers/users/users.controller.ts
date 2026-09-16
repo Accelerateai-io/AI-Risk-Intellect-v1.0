@@ -20,9 +20,9 @@ export async function inviteUserHandler(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const { email } = req.body as InviteUserInput;
+  const { email, role } = req.body as InviteUserInput;
   const inviter = req.user!;
-  const { userId } = await upsertInvitedUser(email);
+  const { userId } = await upsertInvitedUser(email, role ?? "user");
   const inviteToken = signInviteSetPasswordToken({ sub: userId, email });
   await sendUserInviteEmail({
     to: email,
@@ -40,7 +40,7 @@ export async function patchUserHandler(
 ): Promise<void> {
   const actor = req.user!;
   const { id: targetUserId } = req.params as { id: string };
-  const { username, fullName, isActive, reason } = req.body as UpdateUserInput;
+  const { username, fullName, isActive, role, reason } = req.body as UpdateUserInput;
 
   const user = await updateUserProfileRecord({
     targetUserId,
@@ -48,6 +48,7 @@ export async function patchUserHandler(
     username,
     fullName,
     isActive,
+    role,
     reason,
   });
 

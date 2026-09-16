@@ -290,6 +290,11 @@ html:not(.app-theme-dark) .riskPage__clearBtn[data-tooltip]::after {
   overflow: hidden;
 }
 
+.riskPage__tableWrap[aria-busy="true"] {
+  opacity: 0.78;
+  transition: opacity 0.15s ease;
+}
+
 .riskPage__tableScroll {
   width: 100%;
   overflow: auto;

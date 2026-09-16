@@ -13,6 +13,7 @@ export const aiidReports = pgTable(
   },
   (table) => [
     index("aiid_reports_upload_id_idx").on(table.uploadId),
+    index("aiid_reports_upload_id_id_idx").on(table.uploadId, table.id),
     uniqueIndex("aiid_reports_object_id_idx").on(table.objectId),
     uniqueIndex("aiid_reports_url_unique_idx").on(table.url),
     index("aiid_reports_report_number_idx").on(table.reportNumber),

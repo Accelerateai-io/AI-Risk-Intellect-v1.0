@@ -1,4 +1,6 @@
-/** Risks at or below this unit score (0–1) require human review. */
+import { isDomainInTaxonomy } from "./riskCatalogMatch.service.js";
+
+/** Risks strictly below this unit score (0–1) require human review. */
 
 export const REVIEW_QUALITY_THRESHOLD = 0.9;
 
@@ -177,7 +179,7 @@ export function needsQualityReview(input: {
 
   if (unit == null) return true;
 
-  return unit <= REVIEW_QUALITY_THRESHOLD;
+  return unit < REVIEW_QUALITY_THRESHOLD;
 
 }
 
@@ -186,7 +188,39 @@ export function needsQualityReview(input: {
 export const NON_ENGLISH_REVIEW_REASON =
   "Non-English source content requires human review before approval.";
 
+export const JUDGE_NO_MATCH_REVIEW_REASON =
+  "Top catalog match was judged not to describe the same risk; this may be a catalog gap.";
 
+export const DUPLICATE_RISK_REVIEW_REASON =
+  "Near-duplicate of an existing risk detected via semantic similarity.";
+
+export const MISSING_JUSTIFICATION_REVIEW_REASON =
+  "Extraction returned no taxonomy justification (keyword matches / evidence excerpts).";
+
+export const QUALITY_REVIEW_REASON =
+  "Quality score below automated approval threshold.";
+
+export const DOMAIN_REVIEW_REASON =
+  "Extracted domain does not match any of the 7 risk taxonomy domains.";
+
+export const FALLBACK_REVIEW_REASON = "Requires human review.";
+
+/** True when semantic dedup flagged this risk as a near-duplicate. */
+export function isDuplicateFlaggedRisk(extractionJson: unknown): boolean {
+  const ext = (extractionJson ?? {}) as {
+    dedup?: { duplicate_of_risk_id?: unknown };
+  };
+  return Boolean(ext.dedup && ext.dedup.duplicate_of_risk_id);
+}
+
+/** True when the match judge rejected the top catalog candidate. */
+export function isJudgeNoMatchRisk(extractionJson: unknown): boolean {
+  const ext = (extractionJson ?? {}) as {
+    catalog_matches?: Array<{ judgeVerdict?: unknown }>;
+  };
+  const top = Array.isArray(ext.catalog_matches) ? ext.catalog_matches[0] : null;
+  return top?.judgeVerdict === "no_match";
+}
 
 export function isNonEnglishRisk(extractionJson: unknown): boolean {
 
@@ -222,7 +256,64 @@ export function needsHumanReview(input: {
 
   if (isNonEnglishRisk(input.extractionJson)) return true;
 
+  if (isDuplicateFlaggedRisk(input.extractionJson)) return true;
+
+  if (isJudgeNoMatchRisk(input.extractionJson)) return true;
+
   return needsQualityReview(input);
 
+}
+
+export type ReviewWhy = {
+  label: string;
+  reason: string;
+};
+
+function storedReviewReason(extractionJson: unknown): string {
+  const ext = (extractionJson ?? {}) as { review_reason?: string };
+  return String(ext.review_reason ?? "").trim();
+}
+
+function isUnknownDomainRisk(input: {
+  domains?: string | null;
+  extractionJson: unknown;
+}): boolean {
+  const ext = (input.extractionJson ?? {}) as {
+    risk?: Record<string, unknown>;
+  };
+  const domain = String(input.domains ?? ext.risk?.domains ?? "").trim();
+  return !isDomainInTaxonomy(domain);
+}
+
+/** One-word queue label plus the full sentence shown on hover. */
+export function resolveReviewWhy(input: {
+  qualityScore: number | null;
+  extractionJson: unknown;
+  domains?: string | null;
+}): ReviewWhy {
+  const stored = storedReviewReason(input.extractionJson);
+
+  if (isNonEnglishRisk(input.extractionJson)) {
+    return { label: "Language", reason: stored || NON_ENGLISH_REVIEW_REASON };
+  }
+  if (isDuplicateFlaggedRisk(input.extractionJson)) {
+    return { label: "Duplicate", reason: stored || DUPLICATE_RISK_REVIEW_REASON };
+  }
+  if (isJudgeNoMatchRisk(input.extractionJson)) {
+    return { label: "Catalog", reason: stored || JUDGE_NO_MATCH_REVIEW_REASON };
+  }
+  if (needsQualityReview(input)) {
+    return { label: "Quality", reason: stored || QUALITY_REVIEW_REASON };
+  }
+  if (isUnknownDomainRisk(input)) {
+    return { label: "Domain", reason: stored || DOMAIN_REVIEW_REASON };
+  }
+  if (stored.includes(MISSING_JUSTIFICATION_REVIEW_REASON)) {
+    return {
+      label: "Evidence",
+      reason: stored || MISSING_JUSTIFICATION_REVIEW_REASON,
+    };
+  }
+  return { label: "Review", reason: stored || FALLBACK_REVIEW_REASON };
 }
 

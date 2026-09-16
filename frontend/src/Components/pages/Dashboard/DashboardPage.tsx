@@ -31,6 +31,7 @@ import { PageHeader } from "../../Layout/PageHeader";
 import { setDocumentPageTitle } from "../../../utils/pageTitle";
 import { usePolling } from "../../../utils/usePolling";
 import { fetchDashboardStats, type DashboardApiStats } from "./dashboardData";
+import { formatDisplayValue } from "../Risk/riskData";
 import "../Users/usersPage.css";
 import "../Jobs/jobsPage.css";
 import "./dashboardPage.css";
@@ -360,7 +361,7 @@ function SectorIndustryPanel({
                   <ul className="dashSectorList__items">
                     {items.map((item) => (
                       <li key={item.name} className="dashSectorList__item">
-                        <span>{item.name}</span>
+                        <span>{formatDisplayValue(item.name)}</span>
                         <span className="dashSectorList__itemCount">
                           {item.count}
                         </span>
@@ -387,6 +388,56 @@ function SectorIndustryPanel({
   );
 }
 
+const SEVERITY_DONUT_ORDER = ["critical", "high", "medium", "low"] as const;
+
+function parseSeverityCount(count: string): number {
+  const parsed = Number(String(count).replace(/,/g, "").trim());
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function buildSeverityDonutGradient(
+  rows: DashboardApiStats["severity"]["rows"],
+  total: number,
+): string {
+  const byKey = new Map(rows.map((row) => [row.key, row]));
+  const ordered = SEVERITY_DONUT_ORDER.map((key) => byKey.get(key)).filter(
+    (row): row is NonNullable<typeof row> => row != null,
+  );
+  const countedTotal = ordered.reduce(
+    (sum, row) => sum + parseSeverityCount(row.count),
+    0,
+  );
+  const sliceTotal = countedTotal > 0 ? countedTotal : total;
+
+  if (sliceTotal <= 0) {
+    return "conic-gradient(from -90deg, #64748b 0turn 1turn)";
+  }
+
+  const stops: string[] = [];
+  let cursor = 0;
+
+  for (const row of ordered) {
+    const count = parseSeverityCount(row.count);
+    if (count <= 0) continue;
+    const start = cursor;
+    cursor += count / sliceTotal;
+    stops.push(`${row.color} ${start}turn ${cursor}turn`);
+  }
+
+  if (stops.length === 0) {
+    return "conic-gradient(from -90deg, #64748b 0turn 1turn)";
+  }
+
+  // Snap the last stop to a full turn so floating-point gaps never appear.
+  const last = stops[stops.length - 1]!;
+  const snapIndex = last.lastIndexOf(" ");
+  if (snapIndex > 0) {
+    stops[stops.length - 1] = `${last.slice(0, snapIndex)} 1turn`;
+  }
+
+  return `conic-gradient(from -90deg, ${stops.join(", ")})`;
+}
+
 function RiskSeverityDistributionCard({
   severity,
 }: {
@@ -397,6 +448,10 @@ function RiskSeverityDistributionCard({
     severity.totalDelta >= 0
       ? `+${severity.totalDelta.toLocaleString("en-US")}`
       : severity.totalDelta.toLocaleString("en-US");
+  const donutGradient = useMemo(
+    () => buildSeverityDonutGradient(severity.rows, severity.total),
+    [severity.rows, severity.total],
+  );
 
   return (
     <article className="dashInsight dashInsight--severity">
@@ -419,7 +474,11 @@ function RiskSeverityDistributionCard({
       </header>
 
       <div className="dashInsight__body dashInsight__body--severity">
-        <div className="dashDonut" aria-hidden>
+        <div
+          className="dashDonut"
+          style={{ background: donutGradient }}
+          aria-hidden
+        >
           <div className="dashDonut__hole" />
         </div>
 
@@ -483,6 +542,79 @@ function RiskSeverityDistributionCard({
           Severity is determined by AI analysis of impact scale, financial
           implications, regulatory factors, affected entities, and urgency
           indicators.
+        </p>
+      </footer>
+    </article>
+  );
+}
+
+function RiskRatingDistributionCard({
+  riskRating,
+}: {
+  riskRating: NonNullable<DashboardApiStats["riskRating"]>;
+}) {
+  const scoredFormatted = riskRating.scored.toLocaleString("en-US");
+  const unscoredFormatted = riskRating.unscored.toLocaleString("en-US");
+
+  return (
+    <article className="dashInsight dashInsight--severity">
+      <header className="dashInsight__head">
+        <h3 className="dashInsight__title">
+          <AlertTriangle
+            size={16}
+            strokeWidth={2}
+            className="dashInsight__titleIcon dashInsight__titleIcon--amber"
+            aria-hidden
+          />
+          Risk rating (Likelihood × Impact)
+        </h3>
+        <p className="dashInsight__confidence">
+          Scored:{" "}
+          <span className="dashInsight__confidenceValue">{scoredFormatted}</span>
+        </p>
+      </header>
+
+      <div className="dashInsight__body dashInsight__body--severity">
+        <div className="dashDonut" aria-hidden>
+          <div className="dashDonut__hole" />
+        </div>
+
+        <div className="dashSeverityLegend">
+          <ul className="dashSeverityLegend__list">
+            {riskRating.rows.map((row) => (
+              <li key={row.key} className="dashSeverityLegend__row">
+                <span className="dashSeverityLegend__label">
+                  <span
+                    className="dashSeverityLegend__dot"
+                    style={{ background: row.color }}
+                  />
+                  {row.label}
+                </span>
+                <span className="dashSeverityLegend__pct">{row.pct}</span>
+                <span className="dashSeverityLegend__count">{row.count}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="dashSeverityLegend__divider" />
+          <div className="dashSeverityLegend__row dashSeverityLegend__row--total">
+            <span className="dashSeverityLegend__label">Unscored</span>
+            <span className="dashSeverityLegend__pct">—</span>
+            <span className="dashSeverityLegend__count">{unscoredFormatted}</span>
+          </div>
+        </div>
+      </div>
+
+      <footer className="dashInsight__foot">
+        <Info
+          size={14}
+          strokeWidth={2}
+          className="dashInsight__footIcon"
+          aria-hidden
+        />
+        <p>
+          Bands come from a FAIR-informed 5×5 matrix: likelihood (1–5) ×
+          impact (1–5), scored per entry during LLM analysis. Unscored entries
+          predate scoring and can be backfilled.
         </p>
       </footer>
     </article>
@@ -1053,6 +1185,9 @@ export function DashboardPage() {
         </h2>
         <div className="dashboardPage__insightsRow">
           <RiskSeverityDistributionCard severity={data.severity} />
+          {data.riskRating ? (
+            <RiskRatingDistributionCard riskRating={data.riskRating} />
+          ) : null}
           <AnalysisConfidenceCard confidence={data.confidence} />
         </div>
       </section>

@@ -1,14 +1,12 @@
 import type { ServiceState } from "../adminServices";
 import { ReportsTab } from "./reports/ReportsTab";
+import type { EtlReportRunSelection } from "../../../../utils/etlReportsApi";
 
 interface EtlSectionProps {
   idPrefix: string;
   workerStatus: ServiceState;
   workerApiRunning: boolean;
-  onReportsStart: (selection: {
-    uploadIds: number[];
-    reportIds: number[];
-  }) => void;
+  onReportsStart: (selection: EtlReportRunSelection) => void;
   onWorkerStop: () => void;
 }
 

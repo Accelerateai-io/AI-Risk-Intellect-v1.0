@@ -15,7 +15,7 @@ const ACTIVITY_EVENTS = [
 
 const MOUSEMOVE_THROTTLE_MS = 1_000;
 
-/** Signs the user out after 15 minutes without user activity. */
+/** Signs the user out after 45 minutes without user activity. */
 export function useIdleLogout(enabled: boolean): void {
   const lastActivityRef = useRef(0);
   const logoutTimerRef = useRef<number | undefined>(undefined);

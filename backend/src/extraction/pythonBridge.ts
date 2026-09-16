@@ -1,13 +1,14 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { signalWithJobTimeout } from "../services/jobs/jobTimeout.service.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../../..");
 const pythonRoot = path.join(repoRoot, "python");
 
 const DEFAULT_PYTHON_URL = "http://localhost:5006";
-const EXTRACT_TIMEOUT_MS = 300_000;
+const EXTRACT_TIMEOUT_MS = 5 * 60 * 1000;
 
 export type RiskExtractionObject = {
   risk?: {
@@ -19,6 +20,18 @@ export type RiskExtractionObject = {
     sector?: string;
     industry?: string;
     intent?: string;
+    ai_product_name?: string | null;
+    ai_product_vendor?: string | null;
+    [key: string]: unknown;
+  };
+  risk_scoring?: {
+    likelihood?: number | null;
+    likelihood_reasoning?: string;
+    impact?: number | null;
+    impact_reasoning?: string;
+    loss_categories?: string[];
+    severity_score?: number | null;
+    severity_band?: string | null;
     [key: string]: unknown;
   };
   justification?: {
@@ -116,6 +129,7 @@ async function runExtractHttp(payload: {
   text: string;
   title: string;
   url: string;
+  modelId?: string;
 }): Promise<PythonExtractResult> {
   const base = pythonUrl();
   let res: Response;
@@ -127,8 +141,11 @@ async function runExtractHttp(payload: {
         text: payload.text,
         title: payload.title,
         url: payload.url,
+        ...(payload.modelId?.trim()
+          ? { modelId: payload.modelId.trim() }
+          : {}),
       }),
-      signal: AbortSignal.timeout(EXTRACT_TIMEOUT_MS),
+      signal: signalWithJobTimeout(EXTRACT_TIMEOUT_MS),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -152,6 +169,7 @@ function runExtractCli(payload: {
   text: string;
   title: string;
   url: string;
+  modelId?: string;
 }): Promise<PythonExtractResult> {
   return new Promise((resolve, reject) => {
     const py = pythonCommand();
@@ -179,15 +197,31 @@ function runExtractCli(payload: {
         text: payload.text,
         title: payload.title,
         url: payload.url,
+        ...(payload.modelId?.trim()
+          ? { modelId: payload.modelId.trim() }
+          : {}),
       }),
     );
     child.stdin.end();
 
+    const jobSignal = signalWithJobTimeout(EXTRACT_TIMEOUT_MS);
+    const onAbort = () => {
+      child.kill("SIGTERM");
+      reject(new Error("Skipped because this URL took more than 5 minutes without finishing — it was taking too long."));
+    };
+    if (jobSignal.aborted) {
+      onAbort();
+      return;
+    }
+    jobSignal.addEventListener("abort", onAbort, { once: true });
+
     child.on("error", (err) => {
+      jobSignal.removeEventListener("abort", onAbort);
       reject(new Error(`Failed to start Python (${py}): ${err.message}`));
     });
 
     child.on("close", (code) => {
+      jobSignal.removeEventListener("abort", onAbort);
       const trimmed = stdout.trim();
       if (!trimmed) {
         reject(
@@ -212,11 +246,13 @@ export async function pythonExtractRisk(payload: {
   text: string;
   title?: string;
   url?: string;
+  modelId?: string;
 }): Promise<PythonExtractResult> {
   const body = {
     text: payload.text,
     title: payload.title ?? "",
     url: payload.url ?? "",
+    ...(payload.modelId?.trim() ? { modelId: payload.modelId.trim() } : {}),
   };
   if (useCliBridge()) {
     return runExtractCli(body);

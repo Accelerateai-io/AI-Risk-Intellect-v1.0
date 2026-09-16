@@ -26,12 +26,12 @@ export async function sendUserInviteEmail(args: {
   const from = env.SENDER_EMAIL_ID!.trim();
   const appBase = env.INVITE_APP_URL.replace(/\/$/, "");
   const setPasswordUrl = `${appBase}/invite/set-password?token=${encodeURIComponent(args.inviteToken)}`;
-  const subject = "You're invited to AI Risk Intellect";
+  const subject = "You're invited to AI Risk Intelligence";
 
   const text = [
     "Hello,",
     "",
-    `You have been invited to join AI Risk Intellect by ${args.invitedByUsername} (${args.invitedByEmail}).`,
+    `You have been invited to join AI Risk Intelligence by ${args.invitedByUsername} (${args.invitedByEmail}).`,
     "",
     `Set your password to get started: ${setPasswordUrl}`,
     "",
@@ -40,7 +40,7 @@ export async function sendUserInviteEmail(args: {
 
   const html = `
     <p>Hello,</p>
-    <p>You have been invited to join <strong>AI Risk Intellect</strong> by
+    <p>You have been invited to join <strong>AI Risk Intelligence</strong> by
       <strong>${escapeHtml(args.invitedByUsername)}</strong>.</p>
     <p style="margin:1.25rem 0">
       <a href="${escapeHtml(setPasswordUrl)}"

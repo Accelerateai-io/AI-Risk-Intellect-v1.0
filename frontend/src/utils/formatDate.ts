@@ -46,6 +46,7 @@ export function formatJobExecutedAt(iso: string | null | undefined): string {
 export function formatDurationMs(ms: number | null | undefined): string {
   if (ms == null || !Number.isFinite(ms) || ms < 0) return "—";
   const totalSeconds = Math.floor(ms / 1000);
+  if (totalSeconds < 1) return "<1s";
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;

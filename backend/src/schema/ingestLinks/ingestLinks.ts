@@ -3,6 +3,7 @@ import {
   index,
   pgTable,
   serial,
+  text,
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -12,7 +13,7 @@ export const ingestLinks = pgTable(
   {
     id: serial("id").primaryKey(),
     url: varchar("url", { length: 2048 }).notNull().unique(),
-    suggestedName: varchar("suggested_name", { length: 256 }),
+    suggestedName: text("suggested_name"),
     archived: boolean("archived").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "react-toastify";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -9,11 +9,11 @@ import {
   Shield,
 } from "lucide-react";
 import { setDocumentPageTitle } from "../../../utils/pageTitle";
-import { usePagination } from "../../../utils/usePagination";
 import { PageHeader } from "../../Layout/PageHeader";
 import "../Users/usersPage.css";
 import { authFetch } from "../../../utils/authFetch";
 import { formatDisplayDate } from "../../../utils/formatDate";
+import { exportRisksToExcel } from "../../../utils/risksExportApi";
 import {
   normalizeRisksFromApi,
   type RiskDetail,
@@ -21,7 +21,6 @@ import {
 } from "./riskData";
 import { RiskListFilters } from "./RiskListFilters";
 import { RiskRecordsTable } from "./RiskRecordsTable";
-import { riskMatchesFilters, sortRiskRows } from "./riskListHelpers";
 import "./riskPage.css";
 
 type RiskMetric = {
@@ -67,15 +66,40 @@ function buildRiskMetrics(m: RiskListMetrics): RiskMetric[] {
 
 type RiskRow = RiskDetail;
 
+function mapRiskListRows(risks: RiskDetail[]): RiskRow[] {
+  return risks.map((r) => {
+    const createdAt = r.createdAt ?? r.ingestedAt;
+    return {
+      ...r,
+      createdAt,
+      ingestedAt: createdAt ? formatDisplayDate(createdAt) : "—",
+    };
+  });
+}
+
+function riskListCacheKey(input: {
+  page: number;
+  pageSize: number;
+  primaryRisk: string;
+  tag: string;
+  order: string;
+  search: string;
+}): string {
+  return `${input.page}|${input.pageSize}|${input.primaryRisk}|${input.tag}|${input.order}|${input.search}`;
+}
+
 export function RiskPage() {
   const baseId = useId();
   const [primaryRisk, setPrimaryRisk] = useState("all");
   const [tag, setTag] = useState("all");
   const [order, setOrder] = useState("newest");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [riskPageSize, setRiskPageSize] = useState(10);
+  const [page, setPage] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [rows, setRows] = useState<RiskRow[]>([]);
+  const [filteredTotal, setFilteredTotal] = useState(0);
   const [metrics, setMetrics] = useState<RiskListMetrics>({
     total: 0,
     technical: 0,
@@ -85,87 +109,202 @@ export function RiskPage() {
   const [loadState, setLoadState] = useState<"idle" | "loading" | "error">(
     "idle",
   );
-
-  const loadRisks = useCallback(async () => {
-    const token = sessionStorage.getItem("accessToken");
-    if (!token) {
-      setRows([]);
-      setLoadState("idle");
-      return;
-    }
-
-    setLoadState("loading");
-    try {
-      const res = await authFetch("/risks");
-      if (!res.ok) {
-        setLoadState("error");
-        return;
-      }
-      const data = normalizeRisksFromApi(await res.json());
-      setRows(
-        data.risks.map((r) => {
-          const createdAt = r.createdAt ?? r.ingestedAt;
-          return {
-            ...r,
-            createdAt,
-            ingestedAt: createdAt ? formatDisplayDate(createdAt) : "—",
-          };
-        }),
-      );
-      setMetrics(data.metrics);
-      setLoadState("idle");
-    } catch {
-      setLoadState("error");
-    }
-  }, []);
+  const [exportPending, setExportPending] = useState(false);
+  const [tableBusy, setTableBusy] = useState(false);
+  const loadGen = useRef(0);
+  const metricsGen = useRef(0);
+  const hasRowsRef = useRef(false);
+  const pageCacheRef = useRef<
+    Map<string, { rows: RiskRow[]; total: number; metrics?: RiskListMetrics }>
+  >(new Map());
+  hasRowsRef.current = rows.length > 0;
 
   useEffect(() => {
-    void loadRisks();
-  }, [loadRisks]);
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
+
+  const prevSearchRef = useRef(debouncedSearch);
+  useEffect(() => {
+    if (prevSearchRef.current === debouncedSearch) return;
+    prevSearchRef.current = debouncedSearch;
+    setFilteredTotal(0);
+    setPage(0);
+  }, [debouncedSearch]);
+
+  const riskListParams = useCallback(
+    (targetPage: number, includeMetrics: boolean, limit = riskPageSize) => {
+      const params = new URLSearchParams({
+        limit: String(limit),
+        offset: String(targetPage * riskPageSize),
+        order,
+        includeMetrics: includeMetrics ? "1" : "0",
+      });
+      if (primaryRisk !== "all") params.set("primaryKey", primaryRisk);
+      if (tag !== "all") params.set("tag", tag);
+      const q = debouncedSearch.trim();
+      if (q) params.set("search", q);
+      return params;
+    },
+    [debouncedSearch, order, primaryRisk, riskPageSize, tag],
+  );
+
+  const rememberPage = useCallback(
+    (key: string, entry: { rows: RiskRow[]; total: number; metrics?: RiskListMetrics }) => {
+      pageCacheRef.current.set(key, entry);
+      while (pageCacheRef.current.size > 24) {
+        const first = pageCacheRef.current.keys().next().value;
+        if (first === undefined) break;
+        pageCacheRef.current.delete(first);
+      }
+    },
+    [],
+  );
+
+  const loadRiskMetrics = useCallback(async () => {
+    const token = sessionStorage.getItem("accessToken");
+    if (!token) return;
+    const gen = ++metricsGen.current;
+    try {
+      const res = await authFetch(`/risks?${riskListParams(0, true, 0).toString()}`);
+      if (!res.ok || gen !== metricsGen.current) return;
+      const parsed = normalizeRisksFromApi(await res.json());
+      if (gen !== metricsGen.current) return;
+      setMetrics(parsed.metrics);
+      setFilteredTotal(parsed.total);
+    } catch {
+      /* table rows still render without metric cards */
+    }
+  }, [riskListParams]);
+
+  const loadRisks = useCallback(
+    async (targetPage: number, background = false) => {
+      const token = sessionStorage.getItem("accessToken");
+      if (!token) {
+        if (!background) {
+          setRows([]);
+          setLoadState("idle");
+          setTableBusy(false);
+        }
+        return;
+      }
+
+      const key = riskListCacheKey({
+        page: targetPage,
+        pageSize: riskPageSize,
+        primaryRisk,
+        tag,
+        order,
+        search: debouncedSearch.trim(),
+      });
+      const cached = pageCacheRef.current.get(key);
+      if (cached) {
+        if (!background) {
+          setRows(cached.rows);
+          if (cached.total > 0) setFilteredTotal(cached.total);
+          if (cached.metrics) setMetrics(cached.metrics);
+          setLoadState("idle");
+          setTableBusy(false);
+        }
+        return;
+      }
+
+      let gen = loadGen.current;
+      if (!background) {
+        gen = ++loadGen.current;
+        setTableBusy(hasRowsRef.current);
+        if (!hasRowsRef.current) setLoadState("loading");
+      }
+      try {
+        const res = await authFetch(
+          `/risks?${riskListParams(targetPage, false).toString()}`,
+        );
+        if (!res.ok) {
+          if (!background && gen === loadGen.current) {
+            setLoadState("error");
+            setTableBusy(false);
+          }
+          return;
+        }
+        const parsed = normalizeRisksFromApi(await res.json());
+        const mapped = mapRiskListRows(parsed.risks);
+        const estimatedTotal =
+          targetPage * riskPageSize + mapped.length + (parsed.hasMore ? 1 : 0);
+        rememberPage(key, { rows: mapped, total: estimatedTotal });
+        if (background || gen !== loadGen.current) return;
+        setRows(mapped);
+        setFilteredTotal((prev) => (prev > 0 ? prev : estimatedTotal));
+        setLoadState("idle");
+        setTableBusy(false);
+      } catch {
+        if (!background && gen === loadGen.current) {
+          setLoadState("error");
+          setTableBusy(false);
+        }
+      }
+    },
+    [debouncedSearch, order, primaryRisk, rememberPage, riskListParams, riskPageSize, tag],
+  );
+
+  useEffect(() => {
+    void loadRisks(page, false);
+  }, [loadRisks, page]);
+
+  useEffect(() => {
+    void loadRiskMetrics();
+  }, [loadRiskMetrics]);
+
+  useEffect(() => {
+    const pageCount = Math.max(1, Math.ceil(filteredTotal / riskPageSize));
+    if (page + 1 < pageCount) {
+      void loadRisks(page + 1, true);
+    }
+  }, [filteredTotal, loadRisks, page, riskPageSize]);
 
   const displayMetrics = useMemo(() => buildRiskMetrics(metrics), [metrics]);
 
-  const filteredRows = useMemo(
-    () =>
-      rows.filter((row) =>
-        riskMatchesFilters(row, primaryRisk, tag, searchQuery),
-      ),
-    [rows, primaryRisk, tag, searchQuery],
-  );
-
-  const sortedRows = useMemo(
-    () => sortRiskRows(filteredRows, order),
-    [filteredRows, order],
-  );
-
-  const pager = usePagination({
-    items: sortedRows,
-    pageSize: riskPageSize,
-    resetKey: `${primaryRisk}|${tag}|${order}|${searchQuery}`,
-  });
+  const pageCount = Math.max(1, Math.ceil(filteredTotal / riskPageSize));
+  const safePage = Math.min(page, pageCount - 1);
+  const from = filteredTotal === 0 ? 0 : safePage * riskPageSize + 1;
+  const to = Math.min((safePage + 1) * riskPageSize, filteredTotal);
 
   useEffect(() => {
     setDocumentPageTitle("Risks");
   }, []);
 
   const handleRefresh = useCallback(async () => {
+    pageCacheRef.current.clear();
     setRefreshing(true);
-    await loadRisks();
+    await Promise.all([loadRisks(page, false), loadRiskMetrics()]);
     setRefreshing(false);
     toast.success("Risk list refreshed.", { autoClose: 2000 });
-  }, [loadRisks]);
+  }, [loadRiskMetrics, loadRisks, page]);
 
-  const handleExport = useCallback(() => {
-    toast.info("Export is not connected to the API yet.", {
-      autoClose: 3000,
-    });
-  }, []);
+  const handleExport = useCallback(async () => {
+    if (exportPending) return;
+    setExportPending(true);
+    try {
+      const result = await exportRisksToExcel();
+      if (!result.ok) {
+        toast.error(result.message, { autoClose: 3000 });
+        return;
+      }
+      toast.success(`Exported ${result.fileName}.`, { autoClose: 2800 });
+    } finally {
+      setExportPending(false);
+    }
+  }, [exportPending]);
 
   const clearFilters = useCallback(() => {
     setPrimaryRisk("all");
     setTag("all");
     setOrder("newest");
     setSearchQuery("");
+    setDebouncedSearch("");
+    setFilteredTotal(0);
+    setPage(0);
   }, []);
 
   return (
@@ -193,10 +332,12 @@ export function RiskPage() {
             <button
               type="button"
               className="usersPage__inviteBtn"
-              onClick={handleExport}
+              onClick={() => void handleExport()}
+              disabled={exportPending}
+              aria-busy={exportPending}
             >
               <Download size={18} strokeWidth={2} aria-hidden />
-              Export
+              {exportPending ? "Exporting…" : "Export"}
             </button>
           </>
         }
@@ -225,25 +366,40 @@ export function RiskPage() {
         tag={tag}
         order={order}
         searchQuery={searchQuery}
-        onPrimaryRiskChange={setPrimaryRisk}
-        onTagChange={setTag}
-        onOrderChange={setOrder}
+        onPrimaryRiskChange={(value) => {
+          setPrimaryRisk(value);
+          setFilteredTotal(0);
+          setPage(0);
+        }}
+        onTagChange={(value) => {
+          setTag(value);
+          setFilteredTotal(0);
+          setPage(0);
+        }}
+        onOrderChange={(value) => {
+          setOrder(value);
+          setPage(0);
+        }}
         onSearchChange={setSearchQuery}
         onClearFilters={clearFilters}
       />
 
       <RiskRecordsTable
-        rows={pager.pageItems}
+        rows={rows}
         loadState={loadState}
+        tableBusy={tableBusy}
         searchQuery={searchQuery}
-        page={pager.page}
-        pageCount={pager.pageCount}
-        total={pager.total}
-        pageSize={pager.pageSize}
-        from={pager.from}
-        to={pager.to}
-        onPageChange={pager.setPage}
-        onPageSizeChange={setRiskPageSize}
+        page={safePage}
+        pageCount={pageCount}
+        total={filteredTotal}
+        pageSize={riskPageSize}
+        from={from}
+        to={to}
+        onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setRiskPageSize(size);
+          setPage(0);
+        }}
       />
     </main>
   );

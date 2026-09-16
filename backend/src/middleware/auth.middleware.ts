@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { refreshTokens } from "../schema/refreshTokens.js";
+import { users } from "../schema/users/users.js";
 import {
   hashToken,
   verifyAccessToken,
@@ -9,6 +10,7 @@ import {
 } from "../utils/jwt.js";
 import { HttpError } from "../utils/httpError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { normalizeUserRole } from "../utils/isAdminUser.js";
 
 declare module "express-serve-static-core" {
   interface Request {
@@ -57,10 +59,24 @@ async function requireAuthImpl(
     return;
   }
 
+  const rawRole = (payload as { role?: unknown }).role;
+  let role: "admin" | "user";
+  if (rawRole == null || rawRole === "") {
+    const [row] = await db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, payload.sub))
+      .limit(1);
+    role = normalizeUserRole(row?.role);
+  } else {
+    role = normalizeUserRole(rawRole);
+  }
+
   req.user = {
     sub: payload.sub,
     email: payload.email,
     username: payload.username,
+    role,
   };
   next();
 }

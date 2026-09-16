@@ -147,6 +147,100 @@ def _clamp01(x, default=0.5):
     if v > 1.0: return 1.0
     return v
 
+
+VALID_LOSS_CATEGORIES = [
+    "Productivity",
+    "Response",
+    "Replacement",
+    "Fines & Judgments",
+    "Competitive Advantage",
+    "Reputation",
+]
+_LOSS_CATEGORY_BY_FINGERPRINT = {
+    _fingerprint(c): c for c in VALID_LOSS_CATEGORIES
+}
+
+_NULLISH_STRINGS = {"", "unknown", "n/a", "na", "none", "null", "not specified", "not applicable"}
+
+
+def _clamp_scale_1_5(x) -> Optional[int]:
+    """Coerce to an int on the 1-5 scale; None when there is no numeric signal."""
+    if x is None or isinstance(x, bool):
+        return None
+    if isinstance(x, str):
+        s = x.strip()
+        if not s or s.lower() in _NULLISH_STRINGS:
+            return None
+        try:
+            v = int(round(float(s)))
+        except Exception:
+            match = re.search(r"\b([1-5])\b", s)
+            if not match:
+                return None
+            v = int(match.group(1))
+        if v < 1:
+            return 1
+        if v > 5:
+            return 5
+        return v
+    try:
+        v = int(round(float(x)))
+    except Exception:
+        return None
+    if v < 1:
+        return 1
+    if v > 5:
+        return 5
+    return v
+
+
+def severity_band_from_score(score: Optional[int]) -> Optional[str]:
+    if score is None:
+        return None
+    if score >= 17:
+        return "Critical"
+    if score >= 10:
+        return "High"
+    if score >= 5:
+        return "Medium"
+    return "Low"
+
+
+def _repair_risk_scoring(scoring) -> dict:
+    """Normalize the model's risk_scoring block; severity is always recomputed."""
+    if not isinstance(scoring, dict):
+        scoring = {}
+    likelihood = _clamp_scale_1_5(scoring.get("likelihood"))
+    impact = _clamp_scale_1_5(scoring.get("impact"))
+    loss_categories = []
+    raw_categories = scoring.get("loss_categories")
+    if isinstance(raw_categories, list):
+        for c in raw_categories:
+            canonical = _LOSS_CATEGORY_BY_FINGERPRINT.get(_fingerprint(str(c)))
+            if canonical and canonical not in loss_categories:
+                loss_categories.append(canonical)
+    severity = likelihood * impact if likelihood is not None and impact is not None else None
+    return {
+        "likelihood": likelihood,
+        "likelihood_reasoning": str(scoring.get("likelihood_reasoning") or "").strip(),
+        "impact": impact,
+        "impact_reasoning": str(scoring.get("impact_reasoning") or "").strip(),
+        "loss_categories": loss_categories,
+        "severity_score": severity,
+        "severity_band": severity_band_from_score(severity),
+    }
+
+
+def _clean_product(value) -> Optional[str]:
+    """Strip placeholder product/vendor values down to None."""
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    if v.lower() in _NULLISH_STRINGS:
+        return None
+    return v[:256]
+
+
 def _repair_against_schema(obj: dict, source_text: str) -> dict:
     """Repair and validate extraction object against new 21-field schema."""
     obj = obj or {}
@@ -400,7 +494,16 @@ def _repair_against_schema(obj: dict, source_text: str) -> dict:
     
     if not analysis.get("alignment_reasoning"):
         analysis["alignment_reasoning"] = "Risk classification aligns with article content and taxonomy."
-    
+
+    obj["risk_scoring"] = _repair_risk_scoring(obj.get("risk_scoring"))
+
+    risk["ai_product_name"] = _clean_product(risk.get("ai_product_name"))
+    risk["ai_product_vendor"] = (
+        _clean_product(risk.get("ai_product_vendor"))
+        if risk["ai_product_name"] is not None
+        else None
+    )
+
     obj["analysis"] = analysis
     obj["justification"] = justification
     obj["risk"] = risk

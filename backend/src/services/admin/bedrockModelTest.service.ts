@@ -1,5 +1,4 @@
 import {
-  BedrockRuntimeClient,
   ConverseCommand,
 } from "@aws-sdk/client-bedrock-runtime";
 import {
@@ -7,13 +6,24 @@ import {
   resolveBedrockModelId,
 } from "../../config/modelsCatalog.js";
 import { resolveBedrockInvokeModelId } from "../../utils/bedrockModelId.js";
+import { formatBedrockTestError } from "../../utils/bedrockErrors.js";
+import {
+  createBedrockRuntimeClient,
+  findInferenceProfileById,
+  fetchAllInferenceProfiles,
+  getCachedWorkingInvokeIdForProfile,
+  inferenceProfilesEnabled,
+  testInferenceProfile,
+  type InferenceProfileTestResult,
+} from "./bedrockInferenceProfiles.service.js";
 import {
   buildModelFulfillmentResponse,
   printModelFulfillmentToTerminal,
   type ModelFulfillmentResponse,
 } from "../../utils/modelFulfillmentResponse.js";
 
-const TEST_PROMPT = "Reply with the single word OK.";
+const TEST_PROMPT = "Hi";
+const PROFILE_TEST_PROMPT = "Hi";
 const TEST_TIMEOUT_MS = 45_000;
 const INVOKE_TIMEOUT_MS = 120_000;
 const DEFAULT_INVOKE_MAX_TOKENS = 512;
@@ -28,41 +38,35 @@ function bedrockRegion(): string {
 
 function isTextGenerationModel(modelId: string): boolean {
   const catalog = getCatalogModel(modelId);
-  if (!catalog) return false;
+  if (catalog) {
+    const outputs = catalog.outputModalities.map((m) => m.toUpperCase());
+    const inputs = catalog.inputModalities.map((m) => m.toUpperCase());
+    return outputs.includes("TEXT") && inputs.includes("TEXT");
+  }
 
-  const outputs = catalog.outputModalities.map((m) => m.toUpperCase());
-  const inputs = catalog.inputModalities.map((m) => m.toUpperCase());
-  return outputs.includes("TEXT") && inputs.includes("TEXT");
+  if (inferenceProfilesEnabled()) {
+    const profile = findInferenceProfileById(modelId);
+    if (profile) return true;
+    if (
+      modelId.includes(":inference-profile/") ||
+      modelId.includes(":application-inference-profile/") ||
+      modelId.startsWith("arn:aws:bedrock:")
+    ) {
+      return true;
+    }
+    if (modelId.includes(".")) return true;
+  }
+
+  return false;
 }
 
-export function formatBedrockTestError(err: unknown): string {
-  const awsErr = err as {
-    name?: string;
-    message?: string;
-    Code?: string;
-    $metadata?: { httpStatusCode?: number };
-  };
-
-  const code = awsErr.name ?? awsErr.Code ?? "";
-  const detail = awsErr.message?.trim() ?? "";
-
-  if (code === "AccessDeniedException") {
-    return "Model is not enabled in your AWS account.";
+function resolveInvokeModelId(modelId: string): string {
+  const trimmed = modelId.trim();
+  if (!trimmed) return trimmed;
+  if (getCatalogModel(trimmed)) {
+    return resolveBedrockInvokeModelId(resolveBedrockModelId(trimmed));
   }
-  if (code === "ValidationException") {
-    return detail || "This model is not supported for inference.";
-  }
-  if (code === "ResourceNotFoundException") {
-    return "Model was not found in Bedrock.";
-  }
-  if (code === "ThrottlingException" || code === "TooManyRequestsException") {
-    return "Bedrock rate limit reached. Try again in a moment.";
-  }
-  if (code === "TimeoutError" || awsErr.name === "AbortError") {
-    return "Model test timed out.";
-  }
-  if (detail) return detail;
-  return "Model test failed.";
+  return trimmed;
 }
 
 export type BedrockModelInvokeResult = {
@@ -79,7 +83,93 @@ export type BedrockModelInvokeResult = {
   };
   latencyMs?: number;
   fulfillmentResponse?: ModelFulfillmentResponse;
+  profileTest?: InferenceProfileTestResult;
+  workingVia?: string;
 };
+
+export function profileTestToValidationResult(
+  profileId: string,
+  profileTest: InferenceProfileTestResult,
+): {
+  success: boolean;
+  message: string;
+  modelId: string;
+  invokeModelId?: string;
+  response?: string;
+  latencyMs?: number;
+  fulfillmentResponse?: ModelFulfillmentResponse;
+  profileTest: InferenceProfileTestResult;
+  workingVia?: string;
+} {
+  const working = profileTest.workingTarget;
+  const success = profileTest.overallStatus === "working";
+
+  const fulfillmentResponse = buildModelFulfillmentResponse({
+    success,
+    text: success
+      ? (profileTest.workingReply ?? "Model works")
+      : "No working identifier found for this inference profile.",
+    modelId: profileId,
+    invokeModelId: working?.value,
+    prompt: profileTest.prompt,
+    latencyMs: profileTest.tests.find((item) => item.status === "working")?.latencyMs,
+  });
+  printModelFulfillmentToTerminal("LLM model test", fulfillmentResponse);
+
+  return {
+    success,
+    message: success
+      ? `Model works via ${working?.identifierType ?? "profile"}`
+      : "No working identifier found for this inference profile.",
+    modelId: profileId,
+    invokeModelId: working?.value,
+    response: profileTest.workingReply,
+    latencyMs: profileTest.tests.find((item) => item.status === "working")?.latencyMs,
+    fulfillmentResponse,
+    profileTest,
+    workingVia: working?.identifierType,
+  };
+}
+
+export async function invokeInferenceProfileTest(profileId: string): Promise<{
+  success: boolean;
+  message: string;
+  modelId?: string;
+  invokeModelId?: string;
+  response?: string;
+  latencyMs?: number;
+  fulfillmentResponse?: ModelFulfillmentResponse;
+  profileTest?: InferenceProfileTestResult;
+  workingVia?: string;
+}> {
+  const trimmed = profileId.trim();
+  if (!trimmed) {
+    return { success: false, message: "This model is not supported" };
+  }
+
+  const profiles = await fetchAllInferenceProfiles();
+  const profile = findInferenceProfileById(trimmed, profiles);
+  if (!profile) {
+    return { success: false, message: "Inference profile not found." };
+  }
+
+  const profileTest = await testInferenceProfile(profile, PROFILE_TEST_PROMPT);
+  return profileTestToValidationResult(trimmed, profileTest);
+}
+
+export async function resolveWorkingInvokeIdForProfile(
+  profileId: string,
+  options?: { forceRetest?: boolean },
+): Promise<string | null> {
+  if (!options?.forceRetest) {
+    const cached = getCachedWorkingInvokeIdForProfile(profileId);
+    if (cached) return cached;
+  }
+
+  const result = await invokeInferenceProfileTest(profileId);
+  if (!result.success || !result.invokeModelId) return null;
+  return result.invokeModelId;
+}
 
 export async function invokeBedrockModelPrompt(input: {
   modelId: string;
@@ -100,8 +190,8 @@ export async function invokeBedrockModelPrompt(input: {
     return { success: false, message: "This model is not supported" };
   }
 
-  const invokeId = resolveBedrockInvokeModelId(resolveBedrockModelId(trimmed));
-  const client = new BedrockRuntimeClient({ region: bedrockRegion() });
+  const invokeId = resolveInvokeModelId(trimmed);
+  const client = createBedrockRuntimeClient();
   const maxTokens = input.maxTokens ?? DEFAULT_INVOKE_MAX_TOKENS;
   const temperature = input.temperature ?? 0.7;
   const startedAt = Date.now();
@@ -221,8 +311,8 @@ export async function invokeBedrockModelTest(modelId: string): Promise<{
     return { success: false, message: "This model is not supported" };
   }
 
-  const invokeId = resolveBedrockInvokeModelId(resolveBedrockModelId(trimmed));
-  const client = new BedrockRuntimeClient({ region: bedrockRegion() });
+  const invokeId = resolveInvokeModelId(trimmed);
+  const client = createBedrockRuntimeClient();
 
   try {
     const response = await client.send(

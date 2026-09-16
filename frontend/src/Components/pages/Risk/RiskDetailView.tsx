@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type RefObject } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useState, type RefObject } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   AlertTriangle,
@@ -19,26 +19,50 @@ import {
   Layers,
   ExternalLink,
   Link2,
+  Package,
   Quote,
   ScrollText,
   SearchCheck,
   ShieldCheck,
   Sparkles,
+  CircleX,
+  Pencil,
+  Save,
   Tags,
   Target,
 } from "lucide-react";
 import {
   EVIDENCE_BREAKDOWN_HEADING_LABELS,
   formatArticleId,
+  formatDisplayValue,
   formatEvidenceFactValue,
   formatEvidenceStrength,
+  formatProductCell,
   formatRiskDomain,
   orderEvidenceBreakdown,
   formatRiskId,
   type CatalogRiskMatch,
   type RiskDetail,
 } from "./riskData";
+import type { RiskEditDraft } from "./riskEditDraft";
+import { FieldEditDialog, type FieldEditSpec } from "./FieldEditDialog";
 import "./riskDetailDialog.css";
+
+type EditableFieldKey =
+  | "articleTitle"
+  | "riskTitle"
+  | "domains"
+  | "primaryRisk"
+  | "secondaryRisk"
+  | "intent"
+  | "aiProduct"
+  | "description"
+  | "attackVector"
+  | "observableIndicators"
+  | "sector"
+  | "industry"
+  | "timing"
+  | "extractedRisk";
 
 export type RiskDetailTab = "overview" | "analysis" | "scores" | "evidence";
 
@@ -71,7 +95,7 @@ type RiskDetailTabBarProps = {
   className?: string;
 };
 
-export function RiskDetailTabBar({
+export const RiskDetailTabBar = memo(function RiskDetailTabBar({
   idPrefix,
   tab,
   onTabChange,
@@ -100,7 +124,7 @@ export function RiskDetailTabBar({
       </div>
     </div>
   );
-}
+});
 
 export function parseRiskDetailTab(value: string | null): RiskDetailTab | undefined {
   if (
@@ -124,7 +148,254 @@ type RiskDetailViewProps = {
   hideTabBar?: boolean;
   idPrefix?: string;
   tabContentRef?: RefObject<HTMLDivElement | null>;
+  editMode?: boolean;
+  draft?: RiskEditDraft;
+  taxonomyDomains?: string[];
+  onDraftChange?: (patch: Partial<RiskEditDraft>) => void;
+  onEdit?: () => void;
+  onSave?: () => void;
+  onCancel?: () => void;
+  saveDisabled?: boolean;
+  saving?: boolean;
 };
+
+function DetailActionBar({
+  editMode,
+  onEdit,
+  onSave,
+  onCancel,
+  saveDisabled,
+  saving,
+}: {
+  editMode: boolean;
+  onEdit?: () => void;
+  onSave?: () => void;
+  onCancel?: () => void;
+  saveDisabled: boolean;
+  saving: boolean;
+}) {
+  if (editMode && onSave) {
+    return (
+      <div className="riskDetail__saveBar">
+        <button
+          type="button"
+          className="riskDetailPage__saveBtn"
+          disabled={saveDisabled || saving}
+          onClick={onSave}
+        >
+          <Save size={16} strokeWidth={2} aria-hidden />
+          {saving ? "Saving…" : "Save"}
+        </button>
+        {onCancel ? (
+          <button
+            type="button"
+            className="riskDetailPage__cancelBtn"
+            disabled={saving}
+            onClick={onCancel}
+          >
+            <CircleX size={16} strokeWidth={2} aria-hidden />
+            Cancel
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+  if (!editMode && onEdit) {
+    return (
+      <div className="riskDetail__saveBar">
+        <button type="button" className="riskDetailPage__saveBtn" onClick={onEdit}>
+          <Pencil size={16} strokeWidth={2} aria-hidden />
+          Edit
+        </button>
+      </div>
+    );
+  }
+  return null;
+}
+
+function EditFieldButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="riskDetail__classCardAction riskDetail__classCardAction--edit"
+      onClick={onClick}
+      aria-label={`Edit ${label}`}
+      title={`Edit ${label}`}
+    >
+      <Pencil size={15} strokeWidth={2} aria-hidden />
+    </button>
+  );
+}
+
+function SectionHeading({
+  id,
+  icon: Icon,
+  children,
+  onEdit,
+}: {
+  id: string;
+  icon: LucideIcon;
+  children: string;
+  onEdit?: () => void;
+}) {
+  return (
+    <div className="riskDetail__sectionTitleRow">
+      <h3 id={id} className="riskDetail__sectionTitle">
+        <Icon size={16} strokeWidth={2} aria-hidden />
+        {children}
+      </h3>
+      {onEdit ? <EditFieldButton label={children} onClick={onEdit} /> : null}
+    </div>
+  );
+}
+
+function domainFieldOptions(current: string, taxonomyDomains: string[]) {
+  const options = [
+    { value: "", label: current ? "Keep current" : "Select a taxonomy domain…" },
+    ...taxonomyDomains.map((domain) => ({ value: domain, label: domain })),
+  ];
+  if (current && !taxonomyDomains.includes(current)) {
+    options.push({ value: current, label: `${current} (current)` });
+  }
+  return options;
+}
+
+function fieldEditSpecFor(
+  key: EditableFieldKey,
+  draft: RiskEditDraft,
+  taxonomyDomains: string[],
+): FieldEditSpec {
+  switch (key) {
+    case "articleTitle":
+      return {
+        key,
+        title: "Title",
+        fields: [{ key: "articleTitle", value: draft.articleTitle, control: "textarea", rows: 8 }],
+      };
+    case "riskTitle":
+      return {
+        key,
+        title: "Risk title",
+        fields: [{ key: "riskTitle", value: draft.riskTitle, control: "textarea", rows: 6 }],
+      };
+    case "domains":
+      return {
+        key,
+        title: "Domain",
+        fields: [
+          {
+            key: "domains",
+            value: draft.domains,
+            control: "select",
+            options: domainFieldOptions(draft.domains, taxonomyDomains),
+          },
+        ],
+      };
+    case "primaryRisk":
+      return {
+        key,
+        title: "Primary Risk",
+        fields: [{ key: "primaryRisk", value: draft.primaryRisk, control: "textarea", rows: 6 }],
+      };
+    case "secondaryRisk":
+      return {
+        key,
+        title: "Secondary Risk",
+        fields: [{ key: "secondaryRisk", value: draft.secondaryRisk, control: "textarea", rows: 6 }],
+      };
+    case "intent":
+      return {
+        key,
+        title: "Intent",
+        fields: [{ key: "intent", value: draft.intent, control: "textarea", rows: 6 }],
+      };
+    case "aiProduct":
+      return {
+        key,
+        title: "AI Product",
+        fields: [
+          {
+            key: "aiProductName",
+            label: "Product name",
+            value: draft.aiProductName,
+            control: "textarea",
+            rows: 4,
+          },
+          {
+            key: "aiProductVendor",
+            label: "Vendor",
+            value: draft.aiProductVendor,
+            control: "textarea",
+            rows: 4,
+          },
+        ],
+      };
+    case "description":
+      return {
+        key,
+        title: "Description",
+        fields: [{ key: "description", value: draft.description, control: "textarea", rows: 12 }],
+      };
+    case "attackVector":
+      return {
+        key,
+        title: "Attack Vector",
+        fields: [{ key: "attackVector", value: draft.attackVector, control: "textarea", rows: 10 }],
+      };
+    case "observableIndicators":
+      return {
+        key,
+        title: "Observable Indicators",
+        fields: [
+          {
+            key: "observableIndicators",
+            value: draft.observableIndicators,
+            control: "textarea",
+            rows: 10,
+          },
+        ],
+      };
+    case "sector":
+      return {
+        key,
+        title: "Sector",
+        fields: [{ key: "sector", value: draft.sector, control: "textarea", rows: 6 }],
+      };
+    case "industry":
+      return {
+        key,
+        title: "Industry",
+        fields: [{ key: "industry", value: draft.industry, control: "textarea", rows: 6 }],
+      };
+    case "timing":
+      return {
+        key,
+        title: "Timing",
+        fields: [{ key: "timing", value: draft.timing, control: "textarea", rows: 6 }],
+      };
+    case "extractedRisk":
+      return {
+        key,
+        title: "Extracted Risk",
+        fields: [
+          {
+            key: "riskTitle",
+            label: "Risk title",
+            value: draft.riskTitle,
+            control: "textarea",
+            rows: 4,
+          },
+          {
+            key: "description",
+            label: "Description",
+            value: draft.description,
+            control: "textarea",
+            rows: 10,
+          },
+        ],
+      };
+  }
+}
 
 function confidenceLabel(level: RiskDetail["confidence"]): string {
   switch (level) {
@@ -147,7 +418,7 @@ function ScoreMetricIcon({ label }: { label: string }) {
   return <Icon size={16} strokeWidth={2} aria-hidden />;
 }
 
-function ScoreBar({ value, max }: { value: number; max: number }) {
+const ScoreBar = memo(function ScoreBar({ value, max }: { value: number; max: number }) {
   const pct = scorePercent(value, max);
   return (
     <div
@@ -161,7 +432,7 @@ function ScoreBar({ value, max }: { value: number; max: number }) {
       <div className="riskDetail__scoreBarFill" style={{ width: `${pct}%` }} />
     </div>
   );
-}
+});
 
 function DetailText({ children }: { children: string }) {
   const text = children.trim();
@@ -171,7 +442,7 @@ function DetailText({ children }: { children: string }) {
   return <p className="riskDetail__description">{text}</p>;
 }
 
-function AnalysisBlock({
+const AnalysisBlock = memo(function AnalysisBlock({
   label,
   text,
   icon,
@@ -198,9 +469,9 @@ function AnalysisBlock({
       <DetailText>{text}</DetailText>
     </div>
   );
-}
+});
 
-function DetailInfoCard({
+const DetailInfoCard = memo(function DetailInfoCard({
   title,
   value,
   children,
@@ -208,6 +479,7 @@ function DetailInfoCard({
   icon: Icon,
   headerHref,
   headerActionLabel,
+  onEdit,
 }: {
   title: string;
   value?: string;
@@ -216,10 +488,11 @@ function DetailInfoCard({
   icon?: LucideIcon;
   headerHref?: string;
   headerActionLabel?: string;
+  onEdit?: () => void;
 }) {
   const body = children ?? value ?? "—";
   const openHref = headerHref?.trim();
-  const showHeaderAction = Boolean(openHref);
+  const showHeaderAction = Boolean(openHref) || Boolean(onEdit);
 
   const cardHead = Icon ? (
     <div className="riskDetail__classCardHead">
@@ -234,21 +507,26 @@ function DetailInfoCard({
 
   return (
     <div
-      className={`riskDetail__classCard${Icon ? "" : " riskDetail__classCard--noIcon"}${showHeaderAction ? " riskDetail__classCard--withAction" : ""}`}
+      className={`riskDetail__classCard${Icon ? "" : " riskDetail__classCard--noIcon"}${showHeaderAction ? " riskDetail__classCard--withAction" : ""}${onEdit ? " riskDetail__classCard--editable" : ""}`}
     >
       {showHeaderAction ? (
         <div className="riskDetail__classCardHeadRow">
           {cardHead}
-          <a
-            href={openHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="riskDetail__classCardAction"
-            aria-label={headerActionLabel ?? `Open ${title}`}
-            title={headerActionLabel ?? `Open ${title}`}
-          >
-            <ExternalLink size={16} strokeWidth={2} aria-hidden />
-          </a>
+          <div className="riskDetail__classCardActions">
+            {onEdit ? <EditFieldButton label={title} onClick={onEdit} /> : null}
+            {openHref ? (
+              <a
+                href={openHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="riskDetail__classCardAction"
+                aria-label={headerActionLabel ?? `Open ${title}`}
+                title={headerActionLabel ?? `Open ${title}`}
+              >
+                <ExternalLink size={16} strokeWidth={2} aria-hidden />
+              </a>
+            ) : null}
+          </div>
         </div>
       ) : (
         cardHead
@@ -256,22 +534,45 @@ function DetailInfoCard({
       <dd className={ddClassName}>{body}</dd>
     </div>
   );
-}
+});
 
-function CatalogMatchCard({ match }: { match: CatalogRiskMatch }) {
+const CatalogMatchScores = memo(function CatalogMatchScores({
+  accuracyPercent,
+  domainMatchPercent,
+  descriptionMatchPercent,
+}: Pick<
+  CatalogRiskMatch,
+  "accuracyPercent" | "domainMatchPercent" | "descriptionMatchPercent"
+>) {
+  return (
+    <div className="riskDetail__catalogMatchScores">
+      <span className="riskDetail__catalogMatchScoresLabel">Match</span>
+      <span className="riskDetail__catalogMatchScore">
+        {accuracyPercent}% accuracy score
+      </span>
+      <span className="riskDetail__catalogMatchScore riskDetail__catalogMatchScore--domain">
+        {domainMatchPercent}% domain
+      </span>
+      <span className="riskDetail__catalogMatchScore riskDetail__catalogMatchScore--description">
+        {descriptionMatchPercent}% description
+      </span>
+    </div>
+  );
+});
+
+const CatalogMatchCard = memo(function CatalogMatchCard({ match }: { match: CatalogRiskMatch }) {
   return (
     <li className="riskDetail__catalogMatch">
       <div className="riskDetail__catalogMatchHead">
         <span className="riskDetail__riskIdPill">{match.riskId}</span>
-        <span
-          className="riskDetail__catalogMatchScore"
-          title={`Domain: ${match.domainMatchPercent}% · Description: ${match.descriptionMatchPercent}%`}
-        >
-          {match.accuracyPercent}% match
-        </span>
+        <CatalogMatchScores
+          accuracyPercent={match.accuracyPercent}
+          domainMatchPercent={match.domainMatchPercent}
+          descriptionMatchPercent={match.descriptionMatchPercent}
+        />
       </div>
       <div className="riskDetail__catalogMatchTitleRow">
-        <p className="riskDetail__innerCardTitle riskDetail__catalogMatchTitle">{match.title}</p>
+        <p className="riskDetail__innerCardTitle riskDetail__catalogMatchTitle">{formatDisplayValue(match.title)}</p>
         <span className="riskDetail__domainHighlight riskDetail__domainHighlight--inline">
           {formatRiskDomain(match.domain)}
         </span>
@@ -280,9 +581,9 @@ function CatalogMatchCard({ match }: { match: CatalogRiskMatch }) {
       <p className="riskDetail__catalogMatchSummary">{match.matchSummary}</p>
     </li>
   );
-}
+});
 
-export function RiskDetailView({
+export const RiskDetailView = memo(function RiskDetailView({
   risk,
   initialTab = "overview",
   titleElementId,
@@ -291,6 +592,15 @@ export function RiskDetailView({
   hideTabBar = false,
   idPrefix: idPrefixProp,
   tabContentRef,
+  editMode = false,
+  draft,
+  taxonomyDomains = [],
+  onDraftChange,
+  onEdit,
+  onSave,
+  onCancel,
+  saveDisabled = true,
+  saving = false,
 }: RiskDetailViewProps) {
   const generatedId = useId();
   const baseId = idPrefixProp ?? generatedId;
@@ -306,7 +616,45 @@ export function RiskDetailView({
     if (controlledTab === undefined) setInternalTab(initialTab);
   }, [risk.id, initialTab, controlledTab]);
 
+  const [editingKey, setEditingKey] = useState<EditableFieldKey | null>(null);
+  const live = editMode && draft && onDraftChange ? draft : null;
+
+  const requestEdit = useCallback((key: EditableFieldKey) => {
+    setEditingKey(key);
+  }, []);
+
+  const fieldEditSpec = useMemo(() => {
+    if (!editingKey || !live) return null;
+    return fieldEditSpecFor(editingKey, live, taxonomyDomains);
+  }, [editingKey, live, taxonomyDomains]);
+
+  const handleFieldApply = useCallback(
+    (values: Record<string, string>) => {
+      if (!onDraftChange || !editingKey) return;
+      if (editingKey === "aiProduct") {
+        onDraftChange({
+          aiProductName: values.aiProductName ?? "",
+          aiProductVendor: values.aiProductVendor ?? "",
+        });
+      } else if (editingKey === "extractedRisk") {
+        onDraftChange({
+          riskTitle: values.riskTitle ?? "",
+          description: values.description ?? "",
+        });
+      } else {
+        onDraftChange({ [editingKey]: values[editingKey] ?? "" } as Partial<RiskEditDraft>);
+      }
+      setEditingKey(null);
+    },
+    [editingKey, onDraftChange],
+  );
+
+  useEffect(() => {
+    if (!editMode) setEditingKey(null);
+  }, [editMode]);
+
   const tabPanelId = `${baseId}-panel`;
+  const bestCatalogMatch = (risk.riskAnalysis.catalogMatches ?? [])[0];
 
   return (
     <div className="riskDetail riskDetail--page">
@@ -317,7 +665,7 @@ export function RiskDetailView({
         {!titleElementId ? (
           <>
             <h2 id={`${baseId}-title`} className="riskDetail__srTitle">
-              {risk.title}
+              {formatDisplayValue(risk.title)}
             </h2>
             <header className="riskDetail__header">
               <div className="riskDetail__headerMain">
@@ -358,6 +706,14 @@ export function RiskDetailView({
         >
           {tab === "overview" ? (
             <>
+              <DetailActionBar
+                editMode={editMode}
+                onEdit={onEdit}
+                onSave={onSave}
+                onCancel={onCancel}
+                saveDisabled={saveDisabled}
+                saving={saving}
+              />
               <section
                 className="riskDetail__section riskDetail__section--source riskDetail__cardSection"
                 aria-labelledby={`${baseId}-source`}
@@ -370,9 +726,11 @@ export function RiskDetailView({
                   <dl className="riskDetail__classification riskDetail__sourceGrid">
                     <DetailInfoCard
                       title="Title"
-                      value={risk.articleTitle}
                       icon={BookOpen}
-                    />
+                      onEdit={live ? () => requestEdit("articleTitle") : undefined}
+                    >
+                      {formatDisplayValue(live ? live.articleTitle : risk.articleTitle)}
+                    </DetailInfoCard>
                     <DetailInfoCard
                       title="URL"
                       icon={Link2}
@@ -421,21 +779,100 @@ export function RiskDetailView({
                 </h3>
                 <dl className="riskDetail__classification">
                   <DetailInfoCard
+                    title="Risk title"
+                    icon={FileText}
+                    onEdit={live ? () => requestEdit("riskTitle") : undefined}
+                  >
+                    {formatDisplayValue(live ? live.riskTitle : risk.title)}
+                  </DetailInfoCard>
+                  <DetailInfoCard
                     title="Domain"
-                    value={formatRiskDomain(risk.domain)}
                     icon={Globe}
-                  />
+                    onEdit={live ? () => requestEdit("domains") : undefined}
+                  >
+                    {formatRiskDomain(live ? live.domains : risk.domain)}
+                  </DetailInfoCard>
                   <DetailInfoCard
                     title="Primary Risk"
-                    value={risk.primaryRisk}
                     icon={AlertTriangle}
-                  />
+                    onEdit={live ? () => requestEdit("primaryRisk") : undefined}
+                  >
+                    {formatDisplayValue(live ? live.primaryRisk : risk.primaryRisk)}
+                  </DetailInfoCard>
                   <DetailInfoCard
                     title="Secondary Risk"
-                    value={risk.secondaryRisk}
                     icon={ShieldCheck}
-                  />
-                  <DetailInfoCard title="Intent" value={risk.intent} icon={Flag} />
+                    onEdit={live ? () => requestEdit("secondaryRisk") : undefined}
+                  >
+                    {formatDisplayValue(live ? live.secondaryRisk : risk.secondaryRisk)}
+                  </DetailInfoCard>
+                  <DetailInfoCard
+                    title="Intent"
+                    icon={Flag}
+                    onEdit={live ? () => requestEdit("intent") : undefined}
+                  >
+                    {formatDisplayValue(live ? live.intent : risk.intent)}
+                  </DetailInfoCard>
+                  <DetailInfoCard
+                    title="AI Product"
+                    icon={Package}
+                    onEdit={live ? () => requestEdit("aiProduct") : undefined}
+                  >
+                    {formatProductCell(
+                      live
+                        ? { name: live.aiProductName, vendor: live.aiProductVendor }
+                        : risk.product,
+                    )}
+                  </DetailInfoCard>
+                </dl>
+              </section>
+
+              <section
+                className="riskDetail__section riskDetail__cardSection"
+                aria-labelledby={`${baseId}-riskRating`}
+              >
+                <h3 id={`${baseId}-riskRating`} className="riskDetail__sectionTitle">
+                  <Gauge size={16} strokeWidth={2} aria-hidden />
+                  Risk Rating (Likelihood × Impact)
+                </h3>
+                <dl className="riskDetail__classification riskDetail__classification--rating">
+                  <DetailInfoCard title="Likelihood" icon={BarChart3}>
+                    <span>
+                      {risk.riskScoring?.likelihood != null
+                        ? `${risk.riskScoring.likelihood} — ${risk.riskScoring.likelihoodLabel}`
+                        : "—"}
+                    </span>
+                    {risk.riskScoring?.likelihoodReasoning ? (
+                      <p className="riskDetail__ratingReasoning">
+                        {risk.riskScoring.likelihoodReasoning}
+                      </p>
+                    ) : null}
+                  </DetailInfoCard>
+                  <DetailInfoCard title="Impact" icon={AlertTriangle}>
+                    <span>
+                      {risk.riskScoring?.impact != null
+                        ? `${risk.riskScoring.impact} — ${risk.riskScoring.impactLabel}`
+                        : "—"}
+                    </span>
+                    {risk.riskScoring?.impactReasoning ? (
+                      <p className="riskDetail__ratingReasoning">
+                        {risk.riskScoring.impactReasoning}
+                      </p>
+                    ) : null}
+                  </DetailInfoCard>
+                  <DetailInfoCard title="Severity" icon={Gauge}>
+                    <span>
+                      {risk.riskScoring?.severityScore != null
+                        ? `${risk.riskScoring.severityScore} / 25 — ${risk.riskScoring.severityBand}`
+                        : "—"}
+                    </span>
+                    {risk.riskScoring?.lossCategories?.length ? (
+                      <p className="riskDetail__ratingReasoning">
+                        Loss categories (FAIR):{" "}
+                        {risk.riskScoring.lossCategories.join(", ")}
+                      </p>
+                    ) : null}
+                  </DetailInfoCard>
                 </dl>
               </section>
 
@@ -443,11 +880,14 @@ export function RiskDetailView({
                 className="riskDetail__section"
                 aria-labelledby={`${baseId}-description`}
               >
-                <h3 id={`${baseId}-description`} className="riskDetail__sectionTitle">
-                  <ScrollText size={16} strokeWidth={2} aria-hidden />
+                <SectionHeading
+                  id={`${baseId}-description`}
+                  icon={ScrollText}
+                  onEdit={live ? () => requestEdit("description") : undefined}
+                >
                   Description
-                </h3>
-                <DetailText>{risk.description}</DetailText>
+                </SectionHeading>
+                <DetailText>{formatDisplayValue(live ? live.description : risk.description)}</DetailText>
               </section>
 
               <div className="riskDetail__dualColRow">
@@ -456,21 +896,29 @@ export function RiskDetailView({
                     className="riskDetail__section"
                     aria-labelledby={`${baseId}-attack`}
                   >
-                    <h3 id={`${baseId}-attack`} className="riskDetail__sectionTitle">
-                      <AlertTriangle size={16} strokeWidth={2} aria-hidden />
+                    <SectionHeading
+                      id={`${baseId}-attack`}
+                      icon={AlertTriangle}
+                      onEdit={live ? () => requestEdit("attackVector") : undefined}
+                    >
                       Attack Vector
-                    </h3>
-                    <DetailText>{risk.attackVector}</DetailText>
+                    </SectionHeading>
+                    <DetailText>{formatDisplayValue(live ? live.attackVector : risk.attackVector)}</DetailText>
                   </section>
                   <section
                     className="riskDetail__section"
                     aria-labelledby={`${baseId}-indicators`}
                   >
-                    <h3 id={`${baseId}-indicators`} className="riskDetail__sectionTitle">
-                      <Eye size={16} strokeWidth={2} aria-hidden />
+                    <SectionHeading
+                      id={`${baseId}-indicators`}
+                      icon={Eye}
+                      onEdit={live ? () => requestEdit("observableIndicators") : undefined}
+                    >
                       Observable Indicators
-                    </h3>
-                    <DetailText>{risk.observableIndicators}</DetailText>
+                    </SectionHeading>
+                    <DetailText>
+                      {formatDisplayValue(live ? live.observableIndicators : risk.observableIndicators)}
+                    </DetailText>
                   </section>
                 </div>
                 <div className="riskDetail__dualCol riskDetail__dualCol--stack">
@@ -478,56 +926,89 @@ export function RiskDetailView({
                     className="riskDetail__section"
                     aria-labelledby={`${baseId}-sector`}
                   >
-                    <h3 id={`${baseId}-sector`} className="riskDetail__sectionTitle">
-                      <Building2 size={16} strokeWidth={2} aria-hidden />
+                    <SectionHeading
+                      id={`${baseId}-sector`}
+                      icon={Building2}
+                      onEdit={live ? () => requestEdit("sector") : undefined}
+                    >
                       Sector
-                    </h3>
-                    <DetailText>{risk.sector}</DetailText>
+                    </SectionHeading>
+                    <DetailText>{formatDisplayValue(live ? live.sector : risk.sector)}</DetailText>
                   </section>
                   <section
                     className="riskDetail__section"
                     aria-labelledby={`${baseId}-industry`}
                   >
-                    <h3 id={`${baseId}-industry`} className="riskDetail__sectionTitle">
-                      <Factory size={16} strokeWidth={2} aria-hidden />
+                    <SectionHeading
+                      id={`${baseId}-industry`}
+                      icon={Factory}
+                      onEdit={live ? () => requestEdit("industry") : undefined}
+                    >
                       Industry
-                    </h3>
-                    <DetailText>{risk.industry}</DetailText>
+                    </SectionHeading>
+                    <DetailText>{formatDisplayValue(live ? live.industry : risk.industry)}</DetailText>
                   </section>
                   <section
                     className="riskDetail__section"
                     aria-labelledby={`${baseId}-timing`}
                   >
-                    <h3 id={`${baseId}-timing`} className="riskDetail__sectionTitle">
-                      <Clock size={16} strokeWidth={2} aria-hidden />
+                    <SectionHeading
+                      id={`${baseId}-timing`}
+                      icon={Clock}
+                      onEdit={live ? () => requestEdit("timing") : undefined}
+                    >
                       Timing
-                    </h3>
-                    <DetailText>{risk.timing}</DetailText>
+                    </SectionHeading>
+                    <DetailText>{formatDisplayValue(live ? live.timing : risk.timing)}</DetailText>
                   </section>
                 </div>
               </div>
             </>
           ) : tab === "analysis" ? (
             <>
+              <DetailActionBar
+                editMode={editMode}
+                onEdit={onEdit}
+                onSave={onSave}
+                onCancel={onCancel}
+                saveDisabled={saveDisabled}
+                saving={saving}
+              />
               <section
                 className="riskDetail__section"
                 aria-labelledby={`${baseId}-extracted-risk`}
               >
-                <h3 id={`${baseId}-extracted-risk`} className="riskDetail__sectionTitle">
-                  <FileText size={16} strokeWidth={2} aria-hidden />
+                <SectionHeading
+                  id={`${baseId}-extracted-risk`}
+                  icon={FileText}
+                  onEdit={live ? () => requestEdit("extractedRisk") : undefined}
+                >
                   Extracted Risk (from article)
-                </h3>
+                </SectionHeading>
                 <div className="riskDetail__extractedRisk">
-                  <span className="riskDetail__riskIdPill riskDetail__extractedRiskId">
-                    {formatRiskId(risk)}
-                  </span>
+                  <div className="riskDetail__catalogMatchHead">
+                    <span className="riskDetail__riskIdPill riskDetail__extractedRiskId">
+                      {formatRiskId(risk)}
+                    </span>
+                    {bestCatalogMatch ? (
+                      <CatalogMatchScores
+                        accuracyPercent={bestCatalogMatch.accuracyPercent}
+                        domainMatchPercent={bestCatalogMatch.domainMatchPercent}
+                        descriptionMatchPercent={
+                          bestCatalogMatch.descriptionMatchPercent
+                        }
+                      />
+                    ) : null}
+                  </div>
                   <div className="riskDetail__catalogMatchTitleRow">
-                    <p className="riskDetail__extractedRiskTitle">{risk.title}</p>
+                    <p className="riskDetail__extractedRiskTitle">
+                      {formatDisplayValue(live ? live.riskTitle : risk.title)}
+                    </p>
                     <span className="riskDetail__domainHighlight riskDetail__domainHighlight--inline">
-                      {formatRiskDomain(risk.domain)}
+                      {formatRiskDomain(live ? live.domains : risk.domain)}
                     </span>
                   </div>
-                  <DetailText>{risk.description}</DetailText>
+                  <DetailText>{formatDisplayValue(live ? live.description : risk.description)}</DetailText>
                 </div>
               </section>
 
@@ -622,7 +1103,7 @@ export function RiskDetailView({
                   value={risk.scores.overall.value}
                   max={risk.scores.overall.max}
                 />
-                <DetailText>{risk.scores.justification.decision_rationale}</DetailText>
+                <DetailText>{formatDisplayValue(risk.scores.justification.decision_rationale)}</DetailText>
               </section>
 
               <ul className="riskDetail__evidenceList riskDetail__evidenceList--scores">
@@ -700,7 +1181,7 @@ export function RiskDetailView({
                     <Database size={16} strokeWidth={2} aria-hidden />
                     Data to Identify Risk
                   </h3>
-                  <DetailText>{risk.evidence.dataToIdentifyRisk}</DetailText>
+                  <DetailText>{formatDisplayValue(risk.evidence.dataToIdentifyRisk)}</DetailText>
                 </section>
 
                 <section
@@ -711,7 +1192,7 @@ export function RiskDetailView({
                     <Link2 size={16} strokeWidth={2} aria-hidden />
                     Evidence Sources
                   </h3>
-                  <DetailText>{risk.evidence.sources}</DetailText>
+                  <DetailText>{formatDisplayValue(risk.evidence.sources)}</DetailText>
                 </section>
               </div>
 
@@ -782,6 +1263,14 @@ export function RiskDetailView({
           )}
         </div>
       </article>
+      {fieldEditSpec ? (
+        <FieldEditDialog
+          key={fieldEditSpec.key}
+          spec={fieldEditSpec}
+          onClose={() => setEditingKey(null)}
+          onApply={handleFieldApply}
+        />
+      ) : null}
     </div>
   );
-}
+});

@@ -169,7 +169,7 @@ export function ReportsUploadDialog({
             value={suggestedName}
             onChange={(e) => setSuggestedName(e.target.value)}
             autoComplete="off"
-            maxLength={256}
+            maxLength={2000}
             disabled={uploading}
           />
 

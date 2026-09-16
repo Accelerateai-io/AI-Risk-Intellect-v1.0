@@ -13,13 +13,16 @@ export type LlmModelConfig = {
   options: LlmModelOption[];
   requiresPythonRestart?: boolean;
   pythonSynced?: boolean;
+  inferenceProfiles?: boolean;
 };
 
 export type LlmModelValidationResponse = {
   success: boolean;
   message: string;
   modelId?: string;
+  invokeModelId?: string;
   response?: string;
+  workingVia?: string;
   fulfillmentResponse?: {
     status: "success" | "error";
     fulfillmentText: string;
@@ -58,7 +61,25 @@ export async function fetchLlmModelConfig(): Promise<
       };
     }
 
-    return { ok: true, config: data };
+    if (!Array.isArray(data.options)) {
+      return {
+        ok: false,
+        message: "Invalid LLM model configuration from server.",
+      };
+    }
+
+    return {
+      ok: true,
+      config: {
+        modelId: data.modelId ?? "",
+        modelLabel: data.modelLabel ?? data.modelId ?? "",
+        backend: data.backend ?? "bedrock",
+        options: data.options,
+        requiresPythonRestart: data.requiresPythonRestart,
+        pythonSynced: data.pythonSynced,
+        inferenceProfiles: data.inferenceProfiles,
+      },
+    };
   } catch {
     return { ok: false, message: "Network error while loading LLM models." };
   }
@@ -92,7 +113,9 @@ export async function testLlmModel(
         success: data.success,
         message: data.message,
         modelId: data.modelId,
+        invokeModelId: data.invokeModelId,
         response: data.response,
+        workingVia: data.workingVia,
         fulfillmentResponse: data.fulfillmentResponse,
       },
     };

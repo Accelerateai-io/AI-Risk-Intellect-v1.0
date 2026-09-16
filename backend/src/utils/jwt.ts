@@ -6,6 +6,7 @@ export type AccessTokenPayload = {
   sub: string;
   email: string;
   username: string;
+  role: "admin" | "user";
 };
 
 export type RefreshTokenPayload = {

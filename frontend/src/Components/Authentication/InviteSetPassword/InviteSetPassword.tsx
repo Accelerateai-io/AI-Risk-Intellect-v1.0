@@ -5,6 +5,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import "../ResetPassword/resetPassword.css";
 import { apiUrl } from "../../../utils/apiBase";
 import { setDocumentPageTitle } from "../../../utils/pageTitle";
+import { persistSessionUser } from "../../../utils/sessionUser";
 import { AuthShell } from "../AuthShell";
 
 type PreviewState = "loading" | "ready" | "error";
@@ -111,7 +112,7 @@ const InviteSetPassword = () => {
         body: JSON.stringify({ token, password: newPassword }),
       });
       const data = (await res.json().catch(() => ({}))) as {
-        user?: { username: string; email: string };
+        user?: { username: string; email: string; role?: string };
         accessToken?: string;
         error?: { message?: string };
       };
@@ -124,9 +125,7 @@ const InviteSetPassword = () => {
         return;
       }
       if (data.user && data.accessToken) {
-        sessionStorage.setItem("accessToken", data.accessToken);
-        sessionStorage.setItem("userName", data.user.username);
-        sessionStorage.setItem("userEmail", data.user.email);
+        persistSessionUser(data.user, data.accessToken);
         setSubmitStatus("success");
         toast.success("Password set. You're signed in.", { autoClose: 2000 });
         window.setTimeout(() => navigate("/dashboard"), 1200);

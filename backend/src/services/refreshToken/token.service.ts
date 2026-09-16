@@ -14,7 +14,7 @@ import {
 import { HttpError } from "../../utils/httpError.js";
 
 export type IssueTokensArgs = {
-  user: { id: string; email: string; username: string };
+  user: { id: string; email: string; username: string; role: "admin" | "user" };
   userAgent?: string | null;
   ipAddress?: string | null;
 };
@@ -26,7 +26,12 @@ export type TokenPair = {
 };
 
 function buildAccessPayload(user: IssueTokensArgs["user"]): AccessTokenPayload {
-  return { sub: user.id, email: user.email, username: user.username };
+  return {
+    sub: user.id,
+    email: user.email,
+    username: user.username,
+    role: user.role,
+  };
 }
 
 export async function issueTokenPair(

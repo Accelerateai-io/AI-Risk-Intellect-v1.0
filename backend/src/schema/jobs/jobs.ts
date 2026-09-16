@@ -9,6 +9,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { articles } from "../articles/articles.js";
+import { batchRuns } from "../batchRuns/batchRuns.js";
 import { ingestLinkItems } from "../ingestLinks/ingestLinkItems.js";
 import { ingestLinks } from "../ingestLinks/ingestLinks.js";
 
@@ -55,6 +56,12 @@ export const jobs = pgTable(
       () => ingestLinkItems.id,
       { onDelete: "set null" },
     ),
+    batchRunId: integer("batch_run_id").references(() => batchRuns.id, {
+      onDelete: "set null",
+    }),
+    /** LLM model assigned when the job was queued (not the live Controls model). */
+    modelName: varchar("model_name", { length: 128 }),
+    modelLabel: text("model_label"),
     tries: integer("tries").notNull().default(0),
     errorMessage: text("error_message"),
     startedAt: timestamp("started_at", { withTimezone: true }),
@@ -72,6 +79,7 @@ export const jobs = pgTable(
     index("jobs_created_at_idx").on(table.createdAt),
     index("jobs_ingest_link_id_idx").on(table.ingestLinkId),
     index("jobs_ingest_link_item_id_idx").on(table.ingestLinkItemId),
+    index("jobs_batch_run_id_idx").on(table.batchRunId),
   ],
 );
 

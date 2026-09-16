@@ -281,6 +281,111 @@
       "when": 1782300000000,
       "tag": "0039_etl_report_upload_items_extraction",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1783814401000,
+      "tag": "0040_batch_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1783814402000,
+      "tag": "0041_jobs_batch_run_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1783814403000,
+      "tag": "0042_jobs_model_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1783814404000,
+      "tag": "0043_api_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1782800000000,
+      "tag": "0044_risks_scoring_product",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1782900000000,
+      "tag": "0045_risk_embeddings",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1783900000000,
+      "tag": "0046_url_execution_blocks",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1784000000000,
+      "tag": "0047_url_execution_blocks_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1784100000000,
+      "tag": "0048_batch_runs_disabled",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1788286717491,
+      "tag": "0049_human_review_ops",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1788386717491,
+      "tag": "0050_user_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1788486717491,
+      "tag": "0051_varchar_to_text",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1788586717491,
+      "tag": "0052_risk_review_logs",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1788686717491,
+      "tag": "0053_aiid_reports_upload_id_id_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1788786717491,
+      "tag": "0054_articles_risk_count_idx",
+      "breakpoints": true
     }
   ]
 }

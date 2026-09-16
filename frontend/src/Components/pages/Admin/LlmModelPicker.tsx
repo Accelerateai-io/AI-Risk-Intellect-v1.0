@@ -11,21 +11,41 @@ type LlmModelPickerProps = {
   idPrefix: string;
   options: LlmModelOption[];
   value: string;
+  selectedLabel?: string;
+  inferenceProfiles?: boolean;
   onChange: (modelId: string) => void;
   disabled?: boolean;
   loading?: boolean;
 };
 
+function findSelectedOption(
+  options: LlmModelOption[],
+  value: string,
+): LlmModelOption | undefined {
+  if (!value) return undefined;
+  const exact = options.find((option) => option.id === value);
+  if (exact) return exact;
+  const lower = value.toLowerCase();
+  return options.find(
+    (option) =>
+      option.id.toLowerCase() === lower ||
+      option.label.toLowerCase() === lower,
+  );
+}
+
 export function LlmModelPicker({
   idPrefix,
   options,
   value,
+  selectedLabel,
+  inferenceProfiles = false,
   onChange,
   disabled = false,
   loading = false,
 }: LlmModelPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [lastSelectedLabel, setLastSelectedLabel] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -33,7 +53,12 @@ export function LlmModelPicker({
   const searchId = `${idPrefix}-search`;
   const listId = `${idPrefix}-list`;
 
-  const selected = options.find((option) => option.id === value);
+  const selected = findSelectedOption(options, value);
+
+  useEffect(() => {
+    const label = selected?.label ?? selectedLabel?.trim();
+    if (label) setLastSelectedLabel(label);
+  }, [selected?.label, selectedLabel]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -77,16 +102,30 @@ export function LlmModelPicker({
   }, [open]);
 
   const handleSelect = (modelId: string) => {
+    const option = findSelectedOption(options, modelId);
+    if (option?.label) setLastSelectedLabel(option.label);
     onChange(modelId);
     setOpen(false);
     setQuery("");
   };
 
+  const resolvedLabel =
+    selected?.label ?? selectedLabel?.trim() ?? lastSelectedLabel.trim();
+
+  const itemNoun = inferenceProfiles ? "profile" : "model";
+  const itemNounPlural = inferenceProfiles ? "profiles" : "models";
+  const totalCount = options.length;
+  const isFiltering = query.trim().length > 0;
+  const countLabel = isFiltering
+    ? `${filtered.length} / ${totalCount}`
+  : `${totalCount} ${totalCount === 1 ? itemNoun : itemNounPlural}`;
+
   const triggerLabel = loading
-    ? "Loading models…"
+    ? `Loading ${itemNounPlural}…`
     : options.length === 0
-      ? "No models available"
-      : selected?.label ?? (value ? value : "Select a model…");
+      ? `No ${itemNounPlural} available`
+      : resolvedLabel ||
+        (value ? value : `Select a ${itemNoun}…`);
 
   useEffect(() => {
     if (inactive && open) {
@@ -115,6 +154,7 @@ export function LlmModelPicker({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
+        title={value || undefined}
       >
         <span className="adminPage__modelTriggerText">{triggerLabel}</span>
         <ChevronDown
@@ -139,14 +179,22 @@ export function LlmModelPicker({
               id={searchId}
               type="search"
               className="adminPage__modelSearchInput"
-              placeholder="Search models…"
+              placeholder={`Search ${itemNounPlural}…`}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               autoComplete="off"
               spellCheck={false}
               aria-controls={listId}
+              aria-describedby={`${idPrefix}-count`}
               onKeyDown={(e) => e.stopPropagation()}
             />
+            <span
+              id={`${idPrefix}-count`}
+              className="adminPage__modelSearchCount"
+              aria-live="polite"
+            >
+              {countLabel}
+            </span>
           </div>
           <ul
             id={listId}
@@ -156,11 +204,11 @@ export function LlmModelPicker({
           >
             {filtered.length === 0 ? (
               <li className="adminPage__modelListEmpty" role="presentation">
-                No models match your search.
+                No {itemNounPlural} match your search.
               </li>
             ) : (
               filtered.map((option) => {
-                const isSelected = option.id === value;
+                const isSelected = selected?.id === option.id;
                 return (
                   <li key={option.id} role="presentation">
                     <button

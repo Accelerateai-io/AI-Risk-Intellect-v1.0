@@ -4,6 +4,7 @@ import {
   isNonEnglishRisk,
   needsHumanReview,
   needsQualityReview,
+  resolveReviewWhy,
 } from "./riskQuality.js";
 import {
   isRiskInReviewQueue,
@@ -35,6 +36,17 @@ test("needsHumanReview routes high-quality non-English risks to review", () => {
   assert.equal(isRiskInReviewQueue(highQualityNonEnglish), true);
 });
 
+test("needsQualityReview excludes exactly 0.90 and includes scores below it", () => {
+  assert.equal(
+    needsQualityReview({ qualityScore: 90, extractionJson: {} }),
+    false,
+  );
+  assert.equal(
+    needsQualityReview({ qualityScore: 89, extractionJson: {} }),
+    true,
+  );
+});
+
 test("needsHumanReview keeps high-quality English risks on main list", () => {
   const highQualityEnglish = {
     domains: "discrimination",
@@ -48,4 +60,71 @@ test("needsHumanReview keeps high-quality English risks on main list", () => {
   assert.equal(needsHumanReview(highQualityEnglish), false);
   assert.equal(isRiskVisibleInMainList(highQualityEnglish), true);
   assert.equal(isRiskInReviewQueue(highQualityEnglish), false);
+});
+
+test("needsHumanReview flags semantic duplicates regardless of quality", () => {
+  const duplicate = {
+    qualityScore: 95,
+    extractionJson: {
+      source_language: "en",
+      dedup: { duplicate_of_risk_id: "abc", similarity: 0.97 },
+    },
+  };
+  assert.equal(needsHumanReview(duplicate), true);
+});
+
+test("resolveReviewWhy returns a one-word label for each gate", () => {
+  assert.equal(
+    resolveReviewWhy({
+      qualityScore: 95,
+      extractionJson: { is_non_english: true, source_language: "de" },
+    }).label,
+    "Language",
+  );
+  assert.equal(
+    resolveReviewWhy({
+      qualityScore: 95,
+      extractionJson: { dedup: { duplicate_of_risk_id: "abc" } },
+    }).label,
+    "Duplicate",
+  );
+  assert.equal(
+    resolveReviewWhy({
+      qualityScore: 95,
+      extractionJson: { catalog_matches: [{ judgeVerdict: "no_match" }] },
+    }).label,
+    "Catalog",
+  );
+  assert.equal(
+    resolveReviewWhy({ qualityScore: 80, extractionJson: {} }).label,
+    "Quality",
+  );
+  assert.equal(
+    resolveReviewWhy({
+      qualityScore: 95,
+      domains: "not-a-taxonomy-domain",
+      extractionJson: { source_language: "en" },
+    }).label,
+    "Domain",
+  );
+});
+
+test("needsHumanReview flags judge-rejected top matches", () => {
+  const judged = {
+    qualityScore: 95,
+    extractionJson: {
+      source_language: "en",
+      catalog_matches: [{ judgeVerdict: "no_match" }],
+    },
+  };
+  assert.equal(needsHumanReview(judged), true);
+
+  const matched = {
+    qualityScore: 95,
+    extractionJson: {
+      source_language: "en",
+      catalog_matches: [{ judgeVerdict: "match" }],
+    },
+  };
+  assert.equal(needsHumanReview(matched), false);
 });

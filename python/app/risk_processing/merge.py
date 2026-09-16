@@ -53,6 +53,38 @@ def _pick_best_self_assessment(
     return best
 
 
+def _scoring_rank(scoring: dict[str, Any]) -> int:
+    likelihood = scoring.get("likelihood")
+    impact = scoring.get("impact")
+    try:
+        l = int(round(float(likelihood)))  # type: ignore[arg-type]
+        i = int(round(float(impact)))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return -1
+    if not (1 <= l <= 5 and 1 <= i <= 5):
+        return -1
+    return l * i
+
+
+def _pick_max_severity_scoring(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Pick the whole risk_scoring block from the highest-severity chunk.
+
+    Taking the block as a unit keeps each score paired with its reasoning
+    sentence; mixing max(likelihood) and max(impact) across chunks would not.
+    """
+    best: dict[str, Any] | None = None
+    best_rank = -1
+    for obj in objs:
+        scoring = obj.get("risk_scoring")
+        if not isinstance(scoring, dict):
+            continue
+        rank = _scoring_rank(scoring)
+        if rank > best_rank:
+            best_rank = rank
+            best = dict(scoring)
+    return best
+
+
 def merge_extractions(objs: list[dict[str, Any]]) -> dict[str, Any]:
     if not objs:
         raise ValueError("no extractions to merge")
@@ -72,7 +104,19 @@ def merge_extractions(objs: list[dict[str, Any]]) -> dict[str, Any]:
     if descriptions:
         combined = " ".join(descriptions[:5])
         risk["description"] = normalize_narrative_text(combined)
+
+    if not risk.get("ai_product_name"):
+        for o in objs:
+            r = o.get("risk") or {}
+            if r.get("ai_product_name"):
+                risk["ai_product_name"] = r.get("ai_product_name")
+                risk["ai_product_vendor"] = r.get("ai_product_vendor")
+                break
     base["risk"] = risk
+
+    best_scoring = _pick_max_severity_scoring(objs)
+    if best_scoring:
+        base["risk_scoring"] = best_scoring
 
     best_sa = _pick_best_self_assessment(objs)
     if best_sa:

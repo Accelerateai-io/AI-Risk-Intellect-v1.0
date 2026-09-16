@@ -43,6 +43,10 @@ export type DiscoveryStartDialogProps = {
   logs: DiscoveryLogRow[];
   linksLoading?: boolean;
   starting?: boolean;
+  title?: string;
+  hint?: string;
+  confirmLabel?: string;
+  confirmingLabel?: string;
   onClose: () => void;
   onStart: (selection: {
     ingestLinkIds: number[];
@@ -56,6 +60,10 @@ export function DiscoveryStartDialog({
   logs,
   linksLoading = false,
   starting = false,
+  title = "Start discovery service",
+  hint = "Choose extracted URLs to run. Discovery will enqueue ingest jobs only for the selected URLs (run Extract on the Links tab first).",
+  confirmLabel = "Start discovery",
+  confirmingLabel = "Starting…",
   onClose,
   onStart,
 }: DiscoveryStartDialogProps) {
@@ -241,7 +249,7 @@ export function DiscoveryStartDialog({
       >
         <div className="usersPage__dialogHead">
           <h2 id={titleId} className="usersPage__dialogTitle">
-            Start discovery service
+            {title}
           </h2>
           <button
             type="button"
@@ -255,8 +263,7 @@ export function DiscoveryStartDialog({
         </div>
         <div className="usersPage__dialogBody">
           <p className="adminPage__discoveryDialogHint">
-            Choose extracted URLs to run. Discovery will enqueue ingest jobs only
-            for the selected URLs (run Extract on the Links tab first).
+            {hint}
           </p>
 
           {linksLoading || itemsLoading ? (
@@ -412,7 +419,7 @@ export function DiscoveryStartDialog({
               }
             >
               <Play size={16} strokeWidth={2} aria-hidden />
-              {starting ? "Starting…" : "Start discovery"}
+              {starting ? confirmingLabel : confirmLabel}
             </button>
           </div>
         </div>

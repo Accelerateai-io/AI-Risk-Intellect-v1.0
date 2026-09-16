@@ -1,3 +1,4 @@
+import "../bootstrap.js";
 import bcrypt from "bcryptjs";
 import { eq, or } from "drizzle-orm";
 import { db, pool } from "../database/db.js";
@@ -30,6 +31,7 @@ async function main() {
     passwordHash,
     fullName: "Administrator",
     accountStatus: "completed",
+    role: "admin",
   });
 
   console.log(`Seeded user: ${EMAIL} / username: ${USERNAME}`);

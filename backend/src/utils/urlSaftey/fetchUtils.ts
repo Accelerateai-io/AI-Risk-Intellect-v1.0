@@ -358,9 +358,19 @@ export type PageFetchOutcome =
 export async function fetchPageContentDetailed(
   url: string,
   timeoutMs = 30_000,
+  externalSignal?: AbortSignal,
 ): Promise<PageFetchOutcome> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const onExternalAbort = () => controller.abort();
+  if (externalSignal?.aborted) {
+    clearTimeout(timer);
+    return {
+      ok: false,
+      reason: "The site did not respond in time (connection timed out).",
+    };
+  }
+  externalSignal?.addEventListener("abort", onExternalAbort, { once: true });
 
   try {
     const getRes = await fetch(url, {
@@ -423,6 +433,7 @@ export async function fetchPageContentDetailed(
     return { ok: false, reason: describeFetchNetworkError(err) };
   } finally {
     clearTimeout(timer);
+    externalSignal?.removeEventListener("abort", onExternalAbort);
   }
 }
 

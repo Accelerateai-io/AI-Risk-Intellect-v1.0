@@ -18,7 +18,7 @@ export const refreshTokens = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     tokenHash: text("token_hash").notNull().unique(),
     accessTokenHash: text("access_token_hash").unique(),
-    userAgent: varchar("user_agent", { length: 512 }),
+    userAgent: text("user_agent"),
     ipAddress: varchar("ip_address", { length: 64 }),
     revoked: boolean("revoked").notNull().default(false),
     replacedById: uuid("replaced_by_id"),

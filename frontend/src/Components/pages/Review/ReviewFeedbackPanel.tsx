@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { memo, useEffect, useId, useMemo, useState } from "react";
 import {
   type ReviewFeedbackClassification,
   type ReviewFeedbackCounts,
@@ -48,7 +48,7 @@ function buildEmptyMessage(
   return `No ${label.toLowerCase()} feedback in this tab.`;
 }
 
-export function ReviewFeedbackPanel({
+export const ReviewFeedbackPanel = memo(function ReviewFeedbackPanel({
   idPrefix,
   samples,
   counts,
@@ -147,4 +147,4 @@ export function ReviewFeedbackPanel({
       })}
     </div>
   );
-}
+});

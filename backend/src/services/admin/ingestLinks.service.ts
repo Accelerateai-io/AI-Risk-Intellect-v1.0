@@ -331,9 +331,7 @@ export async function listIngestLinkItems(
   const [parent] = await db
     .select({ id: ingestLinks.id })
     .from(ingestLinks)
-    .where(
-      and(eq(ingestLinks.id, ingestLinkId), eq(ingestLinks.archived, false)),
-    )
+    .where(eq(ingestLinks.id, ingestLinkId))
     .limit(1);
 
   if (!parent) {
@@ -367,7 +365,7 @@ export async function createIngestLink(
     if (existing) {
       if (existing.archived) {
         throw HttpError.conflict(
-          "This URL is archived. Restore it from the RSS feeds table instead of adding it again.",
+          "This URL is archived. Restore it from the Archive tab instead of adding it again.",
         );
       }
 

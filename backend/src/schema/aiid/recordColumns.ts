@@ -6,7 +6,7 @@ export const aiidRecordColumns = {
   objectId: varchar("object_id", { length: 24 }).notNull(),
   datePublished: timestamp("date_published", { withTimezone: true }),
   reportNumber: varchar("report_number", { length: 128 }),
-  sourceDomain: varchar("source_domain", { length: 512 }),
+  sourceDomain: text("source_domain"),
   description: text("description"),
   title: text("title").notNull(),
   url: varchar("url", { length: 2048 }).notNull(),

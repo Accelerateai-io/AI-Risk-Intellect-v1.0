@@ -12,7 +12,8 @@ BEGIN;
 SELECT tablename AS will_be_truncated
 FROM pg_tables
 WHERE schemaname = 'public'
-  AND tablename NOT IN ('users', 'risk_mappings')
+  AND tablename NOT IN ('users', 'risk_mappings', 'ingest_link_items', 'ingest_links')
+  -- AND tablename NOT IN ('users', 'risk_mappings')
 ORDER BY tablename;
 
 DO $$
@@ -23,7 +24,8 @@ BEGIN
     SELECT tablename
     FROM pg_tables
     WHERE schemaname = 'public'
-      AND tablename NOT IN ('users', 'risk_mappings')
+      AND tablename NOT IN ('users', 'risk_mappings', 'ingest_link_items', 'ingest_links')
+      -- AND tablename NOT IN ('users', 'risk_mappings')
   LOOP
     RAISE NOTICE 'Truncating table: %', r.tablename;
     EXECUTE format(
@@ -39,5 +41,6 @@ COMMIT;
 SELECT tablename AS preserved_table
 FROM pg_tables
 WHERE schemaname = 'public'
-  AND tablename IN ('users', 'risk_mappings')
+  AND tablename IN ('users', 'risk_mappings', 'ingest_link_items', 'ingest_links')
+  -- AND tablename IN ('users', 'risk_mappings')
 ORDER BY tablename;

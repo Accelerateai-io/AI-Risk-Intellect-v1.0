@@ -1,0 +1,293 @@
+.apiKeysPage {
+  --ak-accent: var(--main-auth-button-color, #1cb0d4);
+  --ak-border: rgba(28, 176, 212, 0.22);
+  --ak-muted: #636161;
+  --ak-danger: #b91c1c;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.25rem 1.5rem 2rem;
+  min-width: 0;
+}
+
+.apiKeysPage__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.apiKeysPage__panel {
+  border: 1px solid var(--ak-border);
+  border-radius: 8px;
+  background: #fff;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.apiKeysPage__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 3rem 1.5rem;
+  color: var(--ak-muted);
+  text-align: center;
+}
+
+.apiKeysPage__tableWrap {
+  overflow-x: auto;
+}
+
+.apiKeysPage__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.apiKeysPage__table th,
+.apiKeysPage__table td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+  vertical-align: middle;
+}
+
+.apiKeysPage__table th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ak-muted);
+  font-weight: 600;
+  background: #fafafa;
+}
+
+.apiKeysPage__prefix {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  color: #0f172a;
+}
+
+.apiKeysPage__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.apiKeysPage__badge--active {
+  background: rgba(28, 176, 212, 0.15);
+  color: #0e7490;
+}
+
+.apiKeysPage__badge--revoked {
+  background: #fee2e2;
+  color: var(--ak-danger);
+}
+
+.apiKeysPage__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: inherit;
+}
+
+.apiKeysPage__btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.apiKeysPage__btn--primary {
+  background: var(--ak-accent, #1cb0d4);
+  color: #fff;
+  min-width: 10rem;
+  justify-content: center;
+}
+
+.apiKeysPage__btn--primary:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+
+.apiKeysPage__btn--ghost {
+  border-color: var(--ak-border);
+  color: #334155;
+  background: #fff;
+}
+
+.apiKeysPage__btn--ghost:hover:not(:disabled) {
+  background: rgba(28, 176, 212, 0.08);
+}
+
+.apiKeysPage__btn--danger {
+  border-color: #fecaca;
+  color: var(--ak-danger);
+  background: #fff;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+}
+
+.apiKeysPage__btn--danger:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.apiKeysPage__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.apiKeysPage__dialog {
+  width: min(520px, 100%);
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid var(--ak-border);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+  padding: 1.25rem 1.35rem 1.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.apiKeysPage__dialogHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.apiKeysPage__dialogHead h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.apiKeysPage__iconBtn {
+  border: none;
+  background: transparent;
+  color: var(--ak-muted);
+  cursor: pointer;
+  padding: 0.25rem;
+  display: inline-flex;
+}
+
+.apiKeysPage__dialogHint {
+  margin: 0;
+  color: var(--ak-muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.apiKeysPage__dialogHint--warn {
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  padding: 0.65rem 0.75rem;
+}
+
+.apiKeysPage__label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.apiKeysPage__input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.9rem;
+}
+
+.apiKeysPage__input:focus {
+  outline: 2px solid rgba(28, 176, 212, 0.35);
+  border-color: var(--ak-accent);
+}
+
+.apiKeysPage__dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.apiKeysPage__secretRow {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.25rem 0.35rem 0.25rem 0.65rem;
+  border-radius: 6px;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+}
+
+.apiKeysPage__secretInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: #e2e8f0;
+  font-size: 0.78rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  padding: 0.5rem 0;
+  outline: none;
+}
+
+.apiKeysPage__copyIconBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+}
+
+.apiKeysPage__copyIconBtn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.apiKeysPage__spin {
+  animation: apiKeysSpin 0.8s linear infinite;
+}
+
+@keyframes apiKeysSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -5,6 +5,8 @@ TASK:
 2. Classify using the taxonomy
 3. Generate detailed JUSTIFICATION explaining your decisions
 4. SCORE your own accuracy (0-100 points)
+5. Score likelihood and impact (integers 1-5, or null) under risk_scoring.
+   Severity is derived downstream as likelihood x impact — do not invent it.
 
 Return ONLY valid JSON. NO markdown, NO comments, NO explanation outside the JSON.
 
@@ -77,6 +79,48 @@ Extract factual information directly supported by the text:
 - risk_type_detected: Type based on content
 - sector: Public, Private, or Non-Profit
 - industry: Specific industry within sector
+- ai_product_name: The specific AI product/system/model named in the article
+  (e.g. "ChatGPT", "Tesla Autopilot", "COMPAS"). Use the product's proper name
+  verbatim — do NOT translate product names even for non-English articles.
+  Use null if no specific product is identifiable. Do NOT guess.
+- ai_product_vendor: The company/organization behind that product
+  (e.g. "OpenAI", "Tesla"). Use null if not stated in the article and not
+  widely known. Do NOT guess. If ai_product_name is null, this must be null.
+
+=== RISK SCORING (LIKELIHOOD x IMPACT) ===
+
+Score the extracted risk on two 5-point scales (NIST AI RMF / ISO 31000 style,
+informed by the FAIR model). Base scores ONLY on evidence in the article.
+Provide exactly ONE sentence of reasoning for each score.
+
+LIKELIHOOD — probability the risk occurs or recurs. Consider FAIR Loss Event
+Frequency factors: how often threat events like this occur, and how susceptible
+the affected systems/population are.
+1 = Rare — theoretical/speculative; no occurrence described and strong barriers exist
+2 = Unlikely — could occur but described as an edge case or well mitigated
+3 = Possible — plausible under normal conditions; near-misses or pilot findings reported
+4 = Likely — incident already occurred once, or conditions make recurrence probable
+5 = Almost Certain — recurring/widespread incidents, or a systemic flaw affecting all users
+
+IMPACT — severity of consequences if the risk occurs. Consider FAIR Loss
+Magnitude: the scale of primary and secondary losses.
+1 = Negligible — minimal harm; easily reversible; no material, legal, or safety effect
+2 = Minor — limited harm to few individuals or one organization; recoverable
+3 = Moderate — meaningful harm: financial loss, privacy violation, or reputational damage
+4 = Major — serious harm at scale: large breach, discrimination affecting many, major outage
+5 = Severe — catastrophic: loss of life, critical-infrastructure failure, societal-scale harm
+
+LOSS CATEGORIES — list ALL that apply from FAIR's six forms of loss, based on
+the harms described or clearly implied in the article:
+"Productivity", "Response", "Replacement", "Fines & Judgments",
+"Competitive Advantage", "Reputation"
+
+Rules:
+- likelihood and impact must be integers 1-5, or null if the article gives
+  no basis for a score. Use null rather than guessing.
+- likelihood_reasoning / impact_reasoning: one sentence each, citing article evidence.
+- Do NOT compute a combined severity number; it is derived downstream as
+  likelihood x impact.
 
 === ANALYSIS & JUSTIFICATION REQUIREMENTS ===
 
@@ -182,7 +226,16 @@ CRITICAL: Be honest in self-assessment. Lower scores help identify improvement a
     "timing": "string",
     "risk_type_detected": "string",
     "sector": "Public|Private|Non-Profit",
-    "industry": "string"
+    "industry": "string",
+    "ai_product_name": "string or null",
+    "ai_product_vendor": "string or null"
+  },
+  "risk_scoring": {
+    "likelihood": "integer 1-5 or null",
+    "likelihood_reasoning": "string (one sentence)",
+    "impact": "integer 1-5 or null",
+    "impact_reasoning": "string (one sentence)",
+    "loss_categories": ["Productivity|Response|Replacement|Fines & Judgments|Competitive Advantage|Reputation"]
   },
   "controls": [
     {

@@ -9,7 +9,7 @@ import {
   resolveExtractedItemRefsByIds,
 } from "../../services/admin/ingestLinks.service.js";
 import {
-  getLlmModelConfig,
+  getLlmModelConfigAsync,
   invokeLlmModel,
   setLlmModel,
   validateLlmModel,
@@ -122,7 +122,8 @@ export async function getLlmModelHandler(
   _req: Request,
   res: Response,
 ): Promise<void> {
-  res.status(200).json({ ok: true, ...getLlmModelConfig() });
+  const config = await getLlmModelConfigAsync();
+  res.status(200).json({ ok: true, ...config });
 }
 
 export async function testLlmModelHandler(

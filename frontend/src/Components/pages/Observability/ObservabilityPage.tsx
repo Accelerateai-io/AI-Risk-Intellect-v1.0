@@ -72,7 +72,7 @@ function displayUrl(url: string): string {
 function rowMatchesSearch(row: ObservabilityTableRow, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return [row.modelName, row.url, String(row.wordCount), String(row.tokensGenerated)]
+  return [row.modelName, row.modelLabel, row.url, String(row.wordCount), String(row.tokensGenerated)]
     .join(" ")
     .toLowerCase()
     .includes(q);
@@ -177,7 +177,7 @@ function TableSkeleton() {
     <>
       {Array.from({ length: 5 }, (_, i) => (
         <tr key={i} className="observabilityPage__skeletonRow">
-          <td colSpan={7}>
+          <td colSpan={8}>
             <div className="observabilityPage__skeletonBar" />
           </td>
         </tr>
@@ -465,7 +465,7 @@ export function ObservabilityPage() {
             id={filterId("search")}
             type="search"
             className="jobsPage__searchInput"
-            placeholder="Search URL, model…"
+            placeholder="Search URL, model, model name…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             disabled={filtersDisabled}
@@ -484,6 +484,7 @@ export function ObservabilityPage() {
                 <thead>
                   <tr>
                     <th scope="col">Model</th>
+                    <th scope="col">Model Name</th>
                     <th scope="col">URL</th>
                     <th scope="col">Words</th>
                     <th scope="col">Tokens</th>
@@ -527,6 +528,7 @@ export function ObservabilityPage() {
                 <thead>
                   <tr>
                     <th scope="col">Model</th>
+                    <th scope="col">Model Name</th>
                     <th scope="col">URL</th>
                     <th scope="col">Words</th>
                     <th scope="col">Tokens</th>
@@ -544,6 +546,14 @@ export function ObservabilityPage() {
                           title={row.modelName}
                         >
                           {row.modelName}
+                        </span>
+                      </td>
+                      <td>
+                        <span
+                          className="observabilityPage__modelLabel"
+                          title={row.modelLabel}
+                        >
+                          {row.modelLabel}
                         </span>
                       </td>
                       <td className="observabilityPage__urlCell">

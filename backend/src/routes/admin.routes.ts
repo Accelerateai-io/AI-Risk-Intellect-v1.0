@@ -29,11 +29,14 @@ import {
   enqueueJobUrlSchema,
   enqueueUrlSchema,
   ingestLinkIdSchema,
+  listReportUploadItemsQuerySchema,
   setLlmModelSchema,
   invokeLlmModelSchema,
   startDiscoverySchema,
   updateIngestLinkSchema,
   startReportsRunSchema,
+  startBatchRunSchema,
+  batchRunIdSchema,
   saveCronJobSchema,
   cronJobIdSchema,
 } from "../validators/admin.validators.js";
@@ -48,8 +51,16 @@ import {
   exportReportUploadItemsHandler,
   listReportUploadItemsHandler,
   listReportUploadsHandler,
+  restoreReportUploadHandler,
 } from "../controllers/admin/etlReportUploads.controller.js";
 import { startReportsRunHandler } from "../controllers/admin/etlReportsRun.controller.js";
+import {
+  disableBatchRunHandler,
+  enableBatchRunHandler,
+  getBatchRunHandler,
+  listBatchRunsHandler,
+  startBatchRunHandler,
+} from "../controllers/admin/batchRuns.controller.js";
 import { listReportsLogsHandler } from "../controllers/admin/reportsLogs.controller.js";
 import {
   listCronJobsHandler,
@@ -58,6 +69,11 @@ import {
 } from "../controllers/admin/cronJobs.controller.js";
 import { listCronJobLogsHandler } from "../controllers/admin/cronLogs.controller.js";
 import { listApplicationLogsHandler } from "../controllers/admin/applicationLogs.controller.js";
+import {
+  exportArticlesHandler,
+  exportReviewHandler,
+  exportRisksHandler,
+} from "../controllers/admin/dataManagement.controller.js";
 
 
 export const adminRouter: Router = Router();
@@ -240,6 +256,7 @@ adminRouter.get(
   "/etl/reports/uploads/:id/items",
   requireAuth,
   validate(ingestLinkIdSchema, "params"),
+  validate(listReportUploadItemsQuerySchema, "query"),
   asyncHandler(listReportUploadItemsHandler),
 );
 
@@ -255,6 +272,13 @@ adminRouter.post(
   requireAuth,
   validate(ingestLinkIdSchema, "params"),
   asyncHandler(archiveReportUploadHandler),
+);
+
+adminRouter.post(
+  "/etl/reports/uploads/:id/restore",
+  requireAuth,
+  validate(ingestLinkIdSchema, "params"),
+  asyncHandler(restoreReportUploadHandler),
 );
 
 adminRouter.post(
@@ -280,7 +304,66 @@ adminRouter.post(
 );
 
 adminRouter.get(
+  "/batch-runs",
+  requireAuth,
+  asyncHandler(listBatchRunsHandler),
+);
+
+adminRouter.get(
+  "/batch-runs/:id",
+  requireAuth,
+  validate(batchRunIdSchema, "params"),
+  asyncHandler(getBatchRunHandler),
+);
+
+adminRouter.post(
+  "/batch-runs/:id/disable",
+  requireAuth,
+  validate(batchRunIdSchema, "params"),
+  asyncHandler(disableBatchRunHandler),
+);
+
+adminRouter.post(
+  "/batch-runs/:id/enable",
+  requireAuth,
+  validate(batchRunIdSchema, "params"),
+  asyncHandler(enableBatchRunHandler),
+);
+
+adminRouter.delete(
+  "/batch-runs/:id",
+  requireAuth,
+  validate(batchRunIdSchema, "params"),
+  asyncHandler(disableBatchRunHandler),
+);
+
+adminRouter.post(
+  "/batch-runs/start",
+  requireAuth,
+  validate(startBatchRunSchema),
+  asyncHandler(startBatchRunHandler),
+);
+
+adminRouter.get(
   "/etl/reports/logs",
   requireAuth,
   asyncHandler(listReportsLogsHandler),
+);
+
+adminRouter.get(
+  "/risks/export",
+  requireAuth,
+  asyncHandler(exportRisksHandler),
+);
+
+adminRouter.get(
+  "/articles/export",
+  requireAuth,
+  asyncHandler(exportArticlesHandler),
+);
+
+adminRouter.get(
+  "/review/export",
+  requireAuth,
+  asyncHandler(exportReviewHandler),
 );

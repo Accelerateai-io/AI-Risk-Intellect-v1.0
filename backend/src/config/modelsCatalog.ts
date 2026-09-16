@@ -41,8 +41,6 @@ function loadCatalogFile(): z.infer<typeof modelsFileSchema> {
 
   console.log(`[models.json] Reading catalog from ${modelsJsonPath}`);
   const raw = fs.readFileSync(modelsJsonPath, "utf8");
-  console.log("[models.json] Complete stored file contents:");
-  console.log(raw);
 
   const parsed = modelsFileSchema.parse(JSON.parse(raw));
   console.log(
@@ -96,6 +94,14 @@ function buildCache(): void {
 export function getCatalogModel(modelId: string): BedrockCatalogModel | undefined {
   if (!cachedById) buildCache();
   const normalized = modelId.trim();
+  if (
+    normalized.startsWith("arn:aws:bedrock:") ||
+    normalized.includes(":inference-profile/") ||
+    normalized.includes(":application-inference-profile/")
+  ) {
+    return undefined;
+  }
+
   const candidates = [
     normalized,
     stripUsModelPrefix(normalized),
@@ -107,19 +113,6 @@ export function getCatalogModel(modelId: string): BedrockCatalogModel | undefine
     if (exact) return exact;
   }
 
-  for (const candidate of candidates) {
-    for (const [id, model] of cachedById!.entries()) {
-      if (
-        candidate === id ||
-        candidate.endsWith(id) ||
-        id.endsWith(candidate) ||
-        candidate.includes(id) ||
-        id.includes(candidate)
-      ) {
-        return model;
-      }
-    }
-  }
   return undefined;
 }
 

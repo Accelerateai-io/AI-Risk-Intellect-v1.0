@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
 import './App.css'
 import 'react-toastify/dist/ReactToastify.css'
 import './styles/toastify-overrides.css'
@@ -20,41 +20,48 @@ import { ReviewPage } from './Components/pages/Review/ReviewPage'
 import { SettingsPage } from './Components/pages/Settings/SettingsPage'
 import { AccountPage } from './Components/pages/Account/AccountPage'
 import { ObservabilityPage } from './Components/pages/Observability/ObservabilityPage'
+import { ApiKeysPage } from './Components/pages/ApiKeys/ApiKeysPage'
 import { RequireAuth } from './Components/RequireAuth'
+
+const router = createBrowserRouter([
+  { path: "/signin", element: <Signin /> },
+  { path: "/forgotPassword", element: <ForgotPassword /> },
+  { path: "/reset-password", element: <ResetPassword /> },
+  { path: "/resetPassword", element: <ResetPassword /> },
+  { path: "/invite/set-password", element: <InviteSetPassword /> },
+  {
+    element: <RequireAuth />,
+    children: [
+      {
+        element: <MainLayout />,
+        children: [
+          { path: "/dashboard", element: <DashboardPage /> },
+          { path: "/jobs", element: <JobsPage /> },
+          { path: "/risk", element: <RiskPage /> },
+          { path: "/risk/:riskId", element: <RiskDetailPage /> },
+          { path: "/articles", element: <ArticlesPage /> },
+          { path: "/controls", element: <AdminPage /> },
+          { path: "/observability", element: <ObservabilityPage /> },
+          { path: "/review", element: <ReviewPage /> },
+          { path: "/users", element: <UsersPage /> },
+          { path: "/api-keys", element: <ApiKeysPage /> },
+          { path: "/settings", element: <SettingsPage /> },
+          { path: "/admin", element: <Navigate to="/controls" replace /> },
+          { path: "/account", element: <AccountPage /> },
+        ],
+      },
+    ],
+  },
+  { path: "/", element: <Navigate to="/signin" replace /> },
+  { path: "*", element: <Navigate to="/signin" replace /> },
+])
 
 function App() {
   return (
-    <BrowserRouter>
+    <>
       <ThemeToastContainer />
-      <Routes>
-        <Route path="/signin" element={<Signin />} />
-        <Route path="/forgotPassword" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/resetPassword" element={<ResetPassword />} />
-        <Route path="/invite/set-password" element={<InviteSetPassword />} />
-
-        <Route element={<RequireAuth />}>
-          <Route element={<MainLayout />}>
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/jobs" element={<JobsPage />} />
-            <Route path="/risk" element={<RiskPage />} />
-            <Route path="/risk/:riskId" element={<RiskDetailPage />} />
-            <Route path="/articles" element={<ArticlesPage />} />
-            <Route path="/controls" element={<AdminPage />} />
-            <Route path="/observability" element={<ObservabilityPage />} />
-            <Route path="/review" element={<ReviewPage />} />
-            <Route path="/users" element={<UsersPage />} />
-            {/* Settings content lives on Controls; redirect legacy URLs */}
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/admin" element={<Navigate to="/controls" replace />} />
-            <Route path="/account" element={<AccountPage />} />
-          </Route>
-        </Route>
-
-        <Route path="/" element={<Navigate to="/signin" replace />} />
-        <Route path="*" element={<Navigate to="/signin" replace />} />
-      </Routes>
-    </BrowserRouter>
+      <RouterProvider router={router} />
+    </>
   )
 }
 

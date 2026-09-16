@@ -2,6 +2,8 @@ import { db } from "../../db/index.js";
 import { createArticleWithIngestJob } from "../../jobs/jobFactory.js";
 import { HttpError } from "../../utils/httpError.js";
 import { normalizeUrl } from "../../utils/fetchUtils.js";
+import { resolveEnqueueModel } from "./discoveryEnqueue.service.js";
+import { isUrlDoNotExecute } from "../jobs/urlExecutionBlocks.service.js";
 
 export type ManualJobEnqueueResult = {
   job: {
@@ -29,10 +31,20 @@ export async function enqueueManualJobUrl(
     throw HttpError.badRequest("URL is not valid.");
   }
 
+  const model = await resolveEnqueueModel();
+
+  if (await isUrlDoNotExecute(normalized)) {
+    throw HttpError.conflict(
+      "This URL is marked do not execute. Use Execute on the job row to run it again.",
+    );
+  }
+
   const result = await db.transaction(async (tx) =>
     createArticleWithIngestJob(tx, {
       url: normalized,
       source: "manual",
+      modelName: model.modelName,
+      modelLabel: model.modelLabel,
     }),
   );
 

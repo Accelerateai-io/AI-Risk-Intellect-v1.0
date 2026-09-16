@@ -1,20 +1,25 @@
 import { useCallback, useEffect, useId, useState } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import type { LucideIcon } from "lucide-react";
 import {
-  AlertTriangle,
   Cpu,
   Database,
   Download,
-  RotateCw,
+  FileText,
+  Layers,
+  ListChecks,
   Rss,
   Settings2,
-  Trash2,
-  Upload,
   Workflow,
 } from "lucide-react";
 import { authFetch } from "../../../utils/authFetch";
-import { startEtlReportsRun } from "../../../utils/etlReportsApi";
+import { startEtlReportsRun, type EtlReportRunSelection } from "../../../utils/etlReportsApi";
+import {
+  exportArticlesToExcel,
+  exportReviewToExcel,
+  exportRisksToExcel,
+} from "../../../utils/risksExportApi";
 import { setDocumentPageTitle } from "../../../utils/pageTitle";
 import { PageHeader } from "../../Layout/PageHeader";
 import {
@@ -24,6 +29,7 @@ import {
 } from "../Settings/SettingsSections";
 import "../Users/usersPage.css";
 import "../Settings/settingsPage.css";
+import { AdminBatchRunSection } from "./AdminBatchRunSection";
 import { AdminCronJobsSection } from "./AdminCronJobsSection";
 import { AdminRssFeedsSection } from "./AdminRssFeedsSection";
 import { EtlSection } from "./etl/EtlSection";
@@ -40,19 +46,23 @@ import {
   type ServiceKey,
 } from "./adminServices";
 import { ModelCompatibilityChecker } from "./ModelCompatibilityChecker";
+import { EXECUTE_JOB_SEARCH_PARAM } from "../../../utils/pendingUrlExecute";
 import "./adminPage.css";
 
-type AdminTab = "controls" | "rss" | "etl";
-type RssSubTab = "links" | "logs";
+type AdminTab = "controls" | "rss" | "etl" | "batches";
+type RssSubTab = "links" | "archive" | "logs";
 
 const ADMIN_TABS: { key: AdminTab; label: string; icon: LucideIcon }[] = [
   { key: "controls", label: "Controls", icon: Settings2 },
   { key: "rss", label: "RSS Feeds", icon: Rss },
   { key: "etl", label: "ETL", icon: Workflow },
+  { key: "batches", label: "Batches", icon: Layers },
 ];
 
 export function AdminPage() {
   const baseId = useId();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const [tab, setTab] = useState<AdminTab>("controls");
   const [rssTab, setRssTab] = useState<RssSubTab>("links");
   const [apiStatus, setApiStatus] =
@@ -63,12 +73,24 @@ export function AdminPage() {
   // const [incidentsFile, setIncidentsFile] = useState<File | null>(null);
   // const [reportsFile, setReportsFile] = useState<File | null>(null);
   // const [dryRun, setDryRun] = useState(false);
-  const [backupFile, setBackupFile] = useState<File | null>(null);
-  const [resetConfirm, setResetConfirm] = useState("");
+  const [exportRisksPending, setExportRisksPending] = useState(false);
+  const [exportArticlesPending, setExportArticlesPending] = useState(false);
+  const [exportReviewPending, setExportReviewPending] = useState(false);
   useEffect(() => {
     const activeTab = ADMIN_TABS.find((item) => item.key === tab);
     setDocumentPageTitle(activeTab?.label ?? "Controls");
   }, [tab]);
+
+  useEffect(() => {
+    const fromExecutePopup =
+      searchParams.has(EXECUTE_JOB_SEARCH_PARAM) ||
+      Boolean(
+        location.state &&
+          typeof location.state === "object" &&
+          "pendingUrlExecute" in location.state,
+      );
+    if (fromExecutePopup) setTab("controls");
+  }, [location.state, searchParams]);
 
   const loadServiceStatus = useCallback(async () => {
     const token = sessionStorage.getItem("accessToken");
@@ -92,11 +114,36 @@ export function AdminPage() {
 
   const fid = (name: string) => `${baseId}-${name}`;
 
-  const stub = useCallback((action: string) => {
-    toast.info(`${action} is not connected to the API yet.`, {
-      autoClose: 3200,
-    });
-  }, []);
+  const runDataExport = useCallback(
+    async (
+      exportFn: () => Promise<
+        { ok: true; fileName: string } | { ok: false; message: string }
+      >,
+      setPending: (value: boolean) => void,
+    ) => {
+      setPending(true);
+      try {
+        const result = await exportFn();
+        if (result.ok === false) {
+          toast.error(result.message, { autoClose: 3000 });
+          return;
+        }
+        toast.success(`Exported ${result.fileName}.`, { autoClose: 2800 });
+      } finally {
+        setPending(false);
+      }
+    },
+    [],
+  );
+
+  const handleExportRisks = () =>
+    void runDataExport(exportRisksToExcel, setExportRisksPending);
+
+  const handleExportArticles = () =>
+    void runDataExport(exportArticlesToExcel, setExportArticlesPending);
+
+  const handleExportReview = () =>
+    void runDataExport(exportReviewToExcel, setExportReviewPending);
 
   const clearPending = useCallback((key: ServiceKey) => {
     setPendingAction((pending) => {
@@ -107,10 +154,7 @@ export function AdminPage() {
     });
   }, []);
 
-  const handleReportsStart = async (selection: {
-    uploadIds: number[];
-    reportIds: number[];
-  }) => {
+  const handleReportsStart = async (selection: EtlReportRunSelection) => {
     setPendingAction((pending) => ({ ...pending, worker: "starting" }));
 
     try {
@@ -162,22 +206,22 @@ export function AdminPage() {
     try {
       const discoveryPayload =
         key === "discovery" &&
-        options &&
-        ((options.ingestLinkIds?.length ?? 0) > 0 ||
-          (options.ingestLinkItemIds?.length ?? 0) > 0)
+          options &&
+          ((options.ingestLinkIds?.length ?? 0) > 0 ||
+            (options.ingestLinkItemIds?.length ?? 0) > 0)
           ? {
-              ingestLinkIds: options.ingestLinkIds,
-              ingestLinkItemIds: options.ingestLinkItemIds,
-            }
+            ingestLinkIds: options.ingestLinkIds,
+            ingestLinkItemIds: options.ingestLinkItemIds,
+          }
           : null;
 
       const res = await authFetch(path, {
         method: "POST",
         ...(discoveryPayload
           ? {
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(discoveryPayload),
-            }
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(discoveryPayload),
+          }
           : {}),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -193,7 +237,7 @@ export function AdminPage() {
         }
         toast.error(
           data.error?.message ??
-            `Could not start ${key === "worker" ? "worker" : "discovery"} service.`,
+          `Could not start ${key === "worker" ? "worker" : "discovery"} service.`,
           { autoClose: 3500 },
         );
         void loadServiceStatus();
@@ -265,7 +309,7 @@ export function AdminPage() {
         clearPending(key);
         toast.error(
           data.error?.message ??
-            `Could not stop ${key === "worker" ? "worker" : "discovery"} service.`,
+          `Could not stop ${key === "worker" ? "worker" : "discovery"} service.`,
           { autoClose: 3500 },
         );
         void loadServiceStatus();
@@ -304,24 +348,6 @@ export function AdminPage() {
   //   );
   // };
 
-  const handleExportExcel = () => stub("Export risks to Excel");
-
-  const handleRestore = () => {
-    if (!backupFile) {
-      toast.error("Select a backup file to restore.", { autoClose: 2500 });
-      return;
-    }
-    stub("Restore backup");
-  };
-
-  const handleResetDatabase = () => {
-    if (resetConfirm !== "RESET") return;
-    stub("Reset database");
-    setResetConfirm("");
-  };
-
-  const resetEnabled = resetConfirm === "RESET";
-
   return (
     <main className="mainLayout__content adminPage">
       <PageHeader
@@ -347,87 +373,89 @@ export function AdminPage() {
 
       {tab === "controls" && (
         <>
-      <div className="adminPage__topRow">
-        <section className="adminPage__card adminPage__topRowCell" aria-labelledby={fid("services-title")}>
-        <div className="adminPage__cardHead">
-          <span className="settingsPage__cardIconWrap" aria-hidden>
-            <Cpu size={20} strokeWidth={2} />
-          </span>
-          <div className="adminPage__cardHeadText">
-            <h2 id={fid("services-title")} className="adminPage__cardTitle">
-              System services
-            </h2>
-            <p className="adminPage__cardHint">
-              Start and stop the worker service and choose the LLM for risk extraction.
-            </p>
+          <div className="adminPage__topRow">
+            <section className="adminPage__card adminPage__topRowCell" aria-labelledby={fid("services-title")}>
+              <div className="adminPage__cardHead">
+                <span className="settingsPage__cardIconWrap" aria-hidden>
+                  <Cpu size={20} strokeWidth={2} />
+                </span>
+                <div className="adminPage__cardHeadText">
+                  <h2 id={fid("services-title")} className="adminPage__cardTitle">
+                    System services
+                  </h2>
+                  <p className="adminPage__cardHint">
+                    Start and stop the worker service and choose the LLM for risk extraction.
+                  </p>
+                </div>
+              </div>
+              <ul className="adminPage__serviceList">
+                <AdminServiceRow
+                  label="Worker Service"
+                  status={displayServiceStatus("worker", apiStatus, pendingAction)}
+                  apiRunning={apiStatus.worker === "running"}
+                  onStart={() => void handleStart("worker")}
+                  onStop={() => void handleStop("worker")}
+                />
+              </ul>
+
+              <ModelCompatibilityChecker idPrefix={fid("llm-model")} />
+            </section>
+
+            <div className="settingsPage adminPage__topRowCell">
+              <SettingsApiSection />
+            </div>
           </div>
-        </div>
-        <ul className="adminPage__serviceList">
-          <AdminServiceRow
-            label="Worker Service"
-            status={displayServiceStatus("worker", apiStatus, pendingAction)}
-            apiRunning={apiStatus.worker === "running"}
-            onStart={() => void handleStart("worker")}
-            onStop={() => void handleStop("worker")}
+
+
+
+          <AdminCronJobsSection
+            idPrefix={baseId}
+            discoveryStatus={displayServiceStatus(
+              "discovery",
+              apiStatus,
+              pendingAction,
+            )}
+            onScheduleSaved={async (job) => {
+              void loadServiceStatus();
+              if (!job.running) {
+                return;
+              }
+              setPendingAction((pending) => ({
+                ...pending,
+                worker: "starting",
+              }));
+              const workerUp = await waitForWorkerRunning(15_000);
+              clearPending("worker");
+              void loadServiceStatus();
+              if (!workerUp) {
+                toast.warning(
+                  "Discovery started, but the worker has not reported running yet. It may still be starting, or Python ingest may be unavailable.",
+                  { autoClose: 5000 },
+                );
+              }
+            }}
+            onScheduleStopped={async () => {
+              setPendingAction((pending) => ({
+                ...pending,
+                discovery: "stopping",
+              }));
+              const stopped = await waitForServiceApiState("discovery", false);
+              clearPending("discovery");
+              void loadServiceStatus();
+              if (!stopped) {
+                toast.warning(
+                  "CRON job stop requested, but discovery has not reported stopped yet.",
+                  { autoClose: 4000 },
+                );
+              }
+            }}
           />
-        </ul>
 
-        <ModelCompatibilityChecker idPrefix={fid("llm-model")} />
-      </section>
+          <div className="settingsPage adminPage__settings">
+            <SettingsSections />
+          </div>
 
-        <div className="settingsPage adminPage__topRowCell">
-          <SettingsApiSection />
-        </div>
-      </div>
-
-      <AdminCronJobsSection
-        idPrefix={baseId}
-        discoveryStatus={displayServiceStatus(
-          "discovery",
-          apiStatus,
-          pendingAction,
-        )}
-        onScheduleSaved={async (job) => {
-          void loadServiceStatus();
-          if (!job.running) {
-            return;
-          }
-          setPendingAction((pending) => ({
-            ...pending,
-            worker: "starting",
-          }));
-          const workerUp = await waitForWorkerRunning(15_000);
-          clearPending("worker");
-          void loadServiceStatus();
-          if (!workerUp) {
-            toast.warning(
-              "Discovery started, but the worker has not reported running yet. It may still be starting, or Python ingest may be unavailable.",
-              { autoClose: 5000 },
-            );
-          }
-        }}
-        onScheduleStopped={async () => {
-          setPendingAction((pending) => ({
-            ...pending,
-            discovery: "stopping",
-          }));
-          const stopped = await waitForServiceApiState("discovery", false);
-          clearPending("discovery");
-          void loadServiceStatus();
-          if (!stopped) {
-            toast.warning(
-              "CRON job stop requested, but discovery has not reported stopped yet.",
-              { autoClose: 4000 },
-            );
-          }
-        }}
-      />
-
-      <div className="settingsPage adminPage__settings">
-        <SettingsSections />
-      </div>
-
-      {/* AIID import — disabled until API is connected
+          {/* AIID import — disabled until API is connected
       <section className="adminPage__card" aria-labelledby={fid("aiid-title")}>
           <div className="adminPage__cardHead">
             <span className="adminPage__cardIconWrap" aria-hidden>
@@ -491,98 +519,85 @@ export function AdminPage() {
       </section>
       */}
 
-      <section className="adminPage__card" aria-labelledby={fid("data-title")}>
-        <div className="adminPage__cardHead">
-          <span className="settingsPage__cardIconWrap" aria-hidden>
-            <Database size={20} strokeWidth={2} />
-          </span>
-          <div className="adminPage__cardHeadText">
-            <h2 id={fid("data-title")} className="adminPage__cardTitle">
-              Data management
-            </h2>
-            <p className="adminPage__cardHint">
-              Export, backup, restore, or reset the database.
-            </p>
-          </div>
-        </div>
-        <div className="adminPage__dataGrid">
-          <div className="adminPage__dataCol">
-            <h3 className="adminPage__dataColTitle">
-              <Download size={16} strokeWidth={2} aria-hidden />
-              Export risks
-            </h3>
-            <p className="adminPage__dataColDesc">
-              Download all risks as an Excel spreadsheet with Risks, Articles, and
-              Tags sheets.
-            </p>
-            <button
-              type="button"
-              className="adminPage__ghostBtn"
-              onClick={handleExportExcel}
-            >
-              <Download size={18} strokeWidth={2} aria-hidden />
-              Export to Excel
-            </button>
-          </div>
-          <div className="adminPage__dataCol">
-            <h3 className="adminPage__dataColTitle">
-              <RotateCw size={16} strokeWidth={2} aria-hidden />
-              Restore backup
-            </h3>
-            <div className="adminPage__fileField adminPage__fileField--tight">
-              <label className="adminPage__visuallyHidden" htmlFor={fid("backup")}>
-                Backup file
-              </label>
-              <input
-                id={fid("backup")}
-                type="file"
-                className="adminPage__fileInput"
-                onChange={(e) => setBackupFile(e.target.files?.[0] ?? null)}
-              />
+          <section className="adminPage__card" aria-labelledby={fid("data-title")}>
+            <div className="adminPage__cardHead">
+              <span className="settingsPage__cardIconWrap" aria-hidden>
+                <Database size={20} strokeWidth={2} />
+              </span>
+              <div className="adminPage__cardHeadText">
+                <h2 id={fid("data-title")} className="adminPage__cardTitle">
+                  Data management
+                </h2>
+                <p className="adminPage__cardHint">
+                  Export risks, articles, and review queue data to Excel.
+                </p>
+              </div>
             </div>
-            <button
-              type="button"
-              className="adminPage__ghostBtn"
-              onClick={handleRestore}
-            >
-              <Upload size={18} strokeWidth={2} aria-hidden />
-              Restore
-            </button>
-          </div>
-          <div className="adminPage__dataCol adminPage__dataCol--danger">
-            <h3 className="adminPage__dataColTitle">
-              <Trash2 size={16} strokeWidth={2} aria-hidden />
-              Reset database
-            </h3>
-            <p className="adminPage__dataColDesc">
-              Permanently deletes all articles, risks, and jobs. This cannot be
-              undone.
-            </p>
-            <input
-              type="text"
-              className="adminPage__dangerInput"
-              placeholder='Type "RESET" to confirm'
-              value={resetConfirm}
-              onChange={(e) => setResetConfirm(e.target.value)}
-              autoComplete="off"
-              aria-label="Type RESET to confirm database reset"
-            />
-            <button
-              type="button"
-              className="adminPage__dangerBtn"
-              disabled={!resetEnabled}
-              onClick={handleResetDatabase}
-            >
-              <AlertTriangle size={18} strokeWidth={2} aria-hidden />
-              Reset Database
-            </button>
-          </div>
-        </div>
-      </section>
+            <div className="adminPage__dataGrid">
+              <div className="adminPage__dataCol">
+                <h3 className="adminPage__dataColTitle">
+                  <Download size={16} strokeWidth={2} aria-hidden />
+                  Export risks
+                </h3>
+                <p className="adminPage__dataColDesc">
+                  Download all extracted risks with domain, taxonomy, quality score,
+                  description, review status, and linked article details. Includes
+                  Risks, Articles, and Tags sheets.
+                </p>
+                <button
+                  type="button"
+                  className="adminPage__ghostBtn"
+                  onClick={handleExportRisks}
+                  disabled={exportRisksPending}
+                >
+                  <Download size={18} strokeWidth={2} aria-hidden />
+                  {exportRisksPending ? "Exporting…" : "Export to Excel"}
+                </button>
+              </div>
+              <div className="adminPage__dataCol">
+                <h3 className="adminPage__dataColTitle">
+                  <FileText size={16} strokeWidth={2} aria-hidden />
+                  Export articles
+                </h3>
+                <p className="adminPage__dataColDesc">
+                  Download every ingested article with URL, title, risk count,
+                  content hash (SHA-256), and created/updated timestamps.
+                </p>
+                <button
+                  type="button"
+                  className="adminPage__ghostBtn"
+                  onClick={handleExportArticles}
+                  disabled={exportArticlesPending}
+                >
+                  <Download size={18} strokeWidth={2} aria-hidden />
+                  {exportArticlesPending ? "Exporting…" : "Export to Excel"}
+                </button>
+              </div>
+              <div className="adminPage__dataCol">
+                <h3 className="adminPage__dataColTitle">
+                  <ListChecks size={16} strokeWidth={2} aria-hidden />
+                  Export review
+                </h3>
+                <p className="adminPage__dataColDesc">
+                  Download review queue items with domain, quality score, review
+                  reason, status, reviewer feedback, and source article details.
+                </p>
+                <button
+                  type="button"
+                  className="adminPage__ghostBtn"
+                  onClick={handleExportReview}
+                  disabled={exportReviewPending}
+                >
+                  <Download size={18} strokeWidth={2} aria-hidden />
+                  {exportReviewPending ? "Exporting…" : "Export to Excel"}
+                </button>
+              </div>
+            </div>
+          </section>
 
-      <div className="settingsPage settingsPage__sections adminPage__settingsAbout">
-        <SettingsAboutSection />
-      </div>
+          <div className="settingsPage settingsPage__sections adminPage__settingsAbout">
+            <SettingsAboutSection />
+          </div>
         </>
       )}
 
@@ -618,6 +633,27 @@ export function AdminPage() {
           workerApiRunning={apiStatus.worker === "running"}
           onReportsStart={(selection) => void handleReportsStart(selection)}
           onWorkerStop={() => void handleStop("worker")}
+        />
+      )}
+
+      {tab === "batches" && (
+        <AdminBatchRunSection
+          idPrefix={baseId}
+          busy={Boolean(pendingAction.discovery || pendingAction.worker)}
+          onRunStart={({ rss, etl }) =>
+            setPendingAction((pending) => ({
+              ...pending,
+              ...(rss ? { discovery: "starting" as const } : {}),
+              ...(rss || etl ? { worker: "starting" as const } : {}),
+            }))
+          }
+          onRunEnd={() => {
+            clearPending("discovery");
+            clearPending("worker");
+          }}
+          onServicesChanged={() => {
+            void loadServiceStatus();
+          }}
         />
       )}
     </main>

@@ -1,9 +1,5 @@
 import type { Request, Response } from "express";
-import {
-  getReportRefsByUploadIds,
-  resolveActiveReportUploadsByIds,
-  resolveReportRefsByIds,
-} from "../../services/admin/etlReportUploads.service.js";
+import { resolveSelectedReportRefs } from "../../services/admin/etlReportUploads.service.js";
 import { enqueueReportRefs } from "../../services/admin/reportsEnqueue.service.js";
 import { getServicesStatus } from "../../services/admin/discoveryManager.service.js";
 import { startWorkerProcess } from "../../services/admin/workerManager.service.js";
@@ -16,23 +12,15 @@ export async function startReportsRunHandler(
   const {
     uploadIds: requestedUploadIds = [],
     reportIds: requestedReportIds = [],
+    excludeReportIds = [],
   } = req.body as StartReportsRunInput;
 
-  let refs =
-    requestedReportIds.length > 0
-      ? await resolveReportRefsByIds(requestedReportIds)
-      : [];
-
-  const resolvedUploadIds =
-    requestedUploadIds.length > 0
-      ? (await resolveActiveReportUploadsByIds(requestedUploadIds)).map(
-          (upload) => upload.id,
-        )
-      : [...new Set(refs.map((ref) => ref.uploadId))];
-
-  if (refs.length === 0 && resolvedUploadIds.length > 0) {
-    refs = await getReportRefsByUploadIds(resolvedUploadIds);
-  }
+  const { refs, uploadIds: resolvedUploadIds } =
+    await resolveSelectedReportRefs({
+      uploadIds: requestedUploadIds,
+      reportIds: requestedReportIds,
+      excludeReportIds,
+    });
 
   if (refs.length === 0) {
     res.status(400).json({

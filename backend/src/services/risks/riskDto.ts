@@ -1,6 +1,12 @@
 import { normalizeNarrativeText } from "../../utils/normalizeNarrativeText.js";
+import { decodeDisplayTitle } from "../../utils/decodeHtmlEntities.js";
 import { parseCatalogMatchesFromExtraction } from "./riskCatalogMatch.service.js";
-import { resolveQualityScore100 } from "./riskQuality.js";
+import { resolveQualityScore100, resolveReviewWhy } from "./riskQuality.js";
+import {
+  impactLabel,
+  likelihoodLabel,
+  resolveRiskScoring,
+} from "./riskScoring.js";
 
 export type EvidenceBreakdownItem = {
   field: string;
@@ -21,6 +27,7 @@ export type ReviewQueueItemDto = {
   scoreLabel: string;
   priority: "Low" | "Medium" | "High";
   category: string;
+  reviewWhy: string;
   reviewReason: string;
   articleUrl: string;
   ingestedAt: string;
@@ -57,7 +64,12 @@ export type RiskDto = {
   sector: string;
   industry: string;
   intent: string;
+  /** Display string on the 0–1 scale, or "—" when unscored. Not machine-safe. */
   qualityScore: string;
+  /** Same value as a number on the 0–1 scale, or null. Use this for thresholds. */
+  qualityScoreUnit: number | null;
+  reviewWhy: string;
+  reviewReason: string;
   primaryKey: string;
   tagKey: string;
   confidence: "HIGH" | "MEDIUM" | "LOW";
@@ -70,6 +82,21 @@ export type RiskDto = {
   articleUrl: string;
   ingestedAt: string;
   modelName: string | null;
+  riskScoring: {
+    likelihood: number | null;
+    likelihoodLabel: string;
+    impact: number | null;
+    impactLabel: string;
+    severityScore: number | null;
+    severityBand: string;
+    likelihoodReasoning: string;
+    impactReasoning: string;
+    lossCategories: string[];
+  };
+  product: {
+    name: string | null;
+    vendor: string | null;
+  };
   humanReview: HumanReviewInfo;
   riskAnalysis: {
     risk_identified: string;
@@ -107,6 +134,7 @@ export type RiskDto = {
 
 type ExtractionJson = {
   risk?: Record<string, unknown>;
+  risk_scoring?: Record<string, unknown>;
   analysis?: Record<string, unknown>;
   review_status?: string;
   review_classification?: string;
@@ -147,6 +175,12 @@ type RiskRowInput = {
   industry: string | null;
   intent: string | null;
   qualityScore: number | null;
+  likelihood: number | null;
+  impact: number | null;
+  severityScore: number | null;
+  severityBand: string | null;
+  aiProductName: string | null;
+  aiProductVendor: string | null;
   extractionJson: unknown;
   modelName: string | null;
   createdAt: Date;
@@ -164,12 +198,12 @@ function resolveEnglishRiskTitle(
   ext: ExtractionJson,
   risk: Record<string, unknown>,
 ): string {
-  const english = str(ext.english_risk_title);
+  const english = decodeDisplayTitle(str(ext.english_risk_title));
   if (english) return english;
 
-  const fromJson = str(risk.risk_title);
-  const fromColumn = str(row.riskTitle);
-  const original = str(ext.original_risk_title);
+  const fromJson = decodeDisplayTitle(str(risk.risk_title));
+  const fromColumn = decodeDisplayTitle(str(row.riskTitle));
+  const original = decodeDisplayTitle(str(ext.original_risk_title));
 
   if (fromJson && original && fromJson !== original) return fromJson;
   if (fromColumn && original && fromColumn !== original) return fromColumn;
@@ -180,11 +214,11 @@ function resolveEnglishArticleTitle(
   row: Pick<RiskRowInput, "articleTitle" | "articleUrl">,
   ext: ExtractionJson,
 ): string {
-  const english = str(ext.english_article_title);
+  const english = decodeDisplayTitle(str(ext.english_article_title));
   if (english) return english;
 
-  const fromColumn = str(row.articleTitle);
-  const original = str(ext.original_article_title);
+  const fromColumn = decodeDisplayTitle(str(row.articleTitle));
+  const original = decodeDisplayTitle(str(ext.original_article_title));
   if (fromColumn && original && fromColumn !== original) return fromColumn;
   return fromColumn || row.articleUrl;
 }
@@ -225,10 +259,15 @@ function confidenceFromScore(
   return "LOW";
 }
 
+/** Stored scores are 0–100; the API publishes 0–1. */
+function qualityScoreToUnit(score: number | null): number | null {
+  if (score == null) return null;
+  return Number((score <= 1 ? score : score / 100).toFixed(2));
+}
+
 function formatQualityScore(score: number | null): string {
-  if (score == null) return "—";
-  if (score <= 1) return score.toFixed(2);
-  return (score / 100).toFixed(2);
+  const unit = qualityScoreToUnit(score);
+  return unit == null ? "—" : unit.toFixed(2);
 }
 
 function mapEvidenceBreakdown(
@@ -346,6 +385,22 @@ export function mapRiskRowToDto(
     self.decision_rationale ?? justification.decision_rationale,
   );
 
+  const reviewWhy = resolveReviewWhy({
+    qualityScore: row.qualityScore,
+    extractionJson: ext,
+    domains: row.domains,
+  });
+  const scoring = resolveRiskScoring({
+    likelihood: row.likelihood,
+    impact: row.impact,
+    extractionJson: ext,
+  });
+  const productName =
+    str(row.aiProductName ?? risk.ai_product_name) || null;
+  const productVendor = productName
+    ? str(row.aiProductVendor ?? risk.ai_product_vendor) || null
+    : null;
+
   return {
     id: row.id,
     displayId,
@@ -359,6 +414,11 @@ export function mapRiskRowToDto(
     qualityScore: formatQualityScore(
       typeof quality === "number" && !Number.isNaN(quality) ? quality : null,
     ),
+    qualityScoreUnit: qualityScoreToUnit(
+      typeof quality === "number" && !Number.isNaN(quality) ? quality : null,
+    ),
+    reviewWhy: reviewWhy.label,
+    reviewReason: reviewWhy.reason,
     primaryKey: primaryKeyFromLabel(primaryRisk),
     tagKey: tagKeyFromDomain(domain),
     confidence: confidenceFromScore(
@@ -374,6 +434,21 @@ export function mapRiskRowToDto(
     articleUrl: row.articleUrl,
     ingestedAt: row.createdAt.toISOString(),
     modelName: row.modelName,
+    riskScoring: {
+      likelihood: scoring.likelihood,
+      likelihoodLabel: likelihoodLabel(scoring.likelihood) ?? "—",
+      impact: scoring.impact,
+      impactLabel: impactLabel(scoring.impact) ?? "—",
+      severityScore: scoring.severityScore,
+      severityBand: scoring.severityBand ?? "—",
+      likelihoodReasoning: scoring.likelihoodReasoning,
+      impactReasoning: scoring.impactReasoning,
+      lossCategories: scoring.lossCategories,
+    },
+    product: {
+      name: productName,
+      vendor: productVendor,
+    },
     humanReview: parseHumanReview(ext),
     riskAnalysis: {
       risk_identified: narrative(analysis.risk_identified),

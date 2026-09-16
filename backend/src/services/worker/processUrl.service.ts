@@ -20,6 +20,7 @@ import {
   validateUrl,
   UrlFetchError,
 } from "../../utils/fetchUtils.js";
+import { getJobRunSignal } from "../jobs/jobTimeout.service.js";
 
 export type ProcessUrlSuccess = {
   outcome: "done";
@@ -63,7 +64,11 @@ export async function processUrlToDb(
     return { outcome: "skipped", reason: excludedBeforeFetch };
   }
 
-  const fetched = await fetchPageContentDetailed(url);
+  const fetched = await fetchPageContentDetailed(
+    url,
+    30_000,
+    getJobRunSignal(),
+  );
   if (!fetched.ok) {
     return {
       outcome: "skipped",

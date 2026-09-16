@@ -233,12 +233,16 @@ function attachEphemeralDiscoveryHandlers(child: ChildProcess): void {
 function spawnManualDiscoveryProcess(options: {
   ingestLinkIds: number[];
   ingestLinkItemIds: number[];
+  batchRunId?: number;
 }): ChildProcess {
   return spawnBackendScript("src/workers/discoveryService.ts", {
     env: {
       DISCOVERY_INGEST_LINK_IDS: options.ingestLinkIds.join(","),
       DISCOVERY_INGEST_LINK_ITEM_IDS: options.ingestLinkItemIds.join(","),
       RUN_ONCE: "true",
+      ...(options.batchRunId != null
+        ? { BATCH_RUN_ID: String(options.batchRunId) }
+        : {}),
     },
   });
 }
@@ -381,9 +385,11 @@ export async function restartAndRescheduleCronDiscovery(): Promise<void> {
 export function startDiscoveryProcess(options: {
   ingestLinkIds?: number[];
   ingestLinkItemIds?: number[];
+  batchRunId?: number;
 }): { pid: number } {
   const ingestLinkIds = options.ingestLinkIds ?? [];
   const ingestLinkItemIds = options.ingestLinkItemIds ?? [];
+  const batchRunId = options.batchRunId;
 
   if (isRunning() && workerState.discoveryRunMode === "once") {
     return { pid: workerState.discoveryChild!.pid! };
@@ -398,6 +404,7 @@ export function startDiscoveryProcess(options: {
     const child = spawnManualDiscoveryProcess({
       ingestLinkIds,
       ingestLinkItemIds,
+      batchRunId,
     });
     attachEphemeralDiscoveryHandlers(child);
     if (!child.pid) {
@@ -413,6 +420,7 @@ export function startDiscoveryProcess(options: {
   const child = spawnManualDiscoveryProcess({
     ingestLinkIds,
     ingestLinkItemIds,
+    batchRunId,
   });
 
   workerState.discoveryChild = child;

@@ -59,15 +59,27 @@ export function mapWinstonInfoToLogRow(
   };
 }
 
-export async function persistApplicationLog(
+const inflight = new Set<Promise<void>>();
+
+export function persistApplicationLog(
   info: Record<string, unknown>,
 ): Promise<void> {
-  const row = mapWinstonInfoToLogRow(info);
+  const write = (async () => {
+    const row = mapWinstonInfoToLogRow(info);
+    const { db } = await import("../../database/db.js");
+    const { applicationLogs } = await import(
+      "../../schema/observability/applicationLogs.js"
+    );
+    await db.insert(applicationLogs).values(row);
+  })();
 
-  const { db } = await import("../../database/db.js");
-  const { applicationLogs } = await import(
-    "../../schema/observability/applicationLogs.js"
-  );
+  inflight.add(write);
+  return write.finally(() => {
+    inflight.delete(write);
+  });
+}
 
-  await db.insert(applicationLogs).values(row);
+/** Wait for queued DB log writes before closing the pool (CLI scripts). */
+export async function flushApplicationLogs(): Promise<void> {
+  await Promise.allSettled([...inflight]);
 }

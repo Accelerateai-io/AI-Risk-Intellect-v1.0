@@ -3,6 +3,7 @@ import { registerSchema } from "./auth.validators.js";
 
 export const inviteUserSchema = z.object({
   email: z.email("Invalid email address").max(255).toLowerCase().trim(),
+  role: z.enum(["admin", "user"]).optional().default("user"),
 });
 
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;
@@ -19,6 +20,7 @@ export const updateUserSchema = z.object({
     .trim()
     .optional(),
   isActive: z.boolean().optional(),
+  role: z.enum(["admin", "user"]).optional(),
   reason: z
     .string()
     .min(1, "Please enter a reason for this change")

@@ -23,12 +23,29 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ): void {
-  if (err instanceof HttpError) {
-    res.status(err.status).json({
+  const httpLike =
+    err instanceof HttpError
+      ? err
+      : err &&
+          typeof err === "object" &&
+          typeof (err as { status?: unknown }).status === "number" &&
+          typeof (err as { message?: unknown }).message === "string" &&
+          (err as { status: number }).status >= 400 &&
+          (err as { status: number }).status < 600
+        ? (err as {
+            status: number;
+            message: string;
+            code?: string;
+            details?: unknown;
+          })
+        : null;
+
+  if (httpLike) {
+    res.status(httpLike.status).json({
       error: {
-        code: err.code,
-        message: err.message,
-        details: err.details ?? undefined,
+        code: httpLike.code ?? (httpLike.status === 409 ? "CONFLICT" : "ERROR"),
+        message: httpLike.message,
+        details: httpLike.details ?? undefined,
       },
     });
     return;
@@ -65,11 +82,19 @@ export function errorHandler(
     method: req.method,
     path: req.originalUrl,
   });
-  res.status(500).json({
+
+  const rawMessage = err instanceof Error ? err.message : String(err);
+  const pgMessage = /value too long/i.test(rawMessage)
+    ? "The model id is too long to save on this job."
+    : /does not exist/i.test(rawMessage)
+      ? "A required database column is missing. Restart the API so schema updates can apply."
+      : null;
+
+  res.status(pgMessage ? 400 : 500).json({
     error: {
-      code: "INTERNAL",
-      message: "Internal server error",
-      details: env.NODE_ENV === "development" ? String(err) : undefined,
+      code: pgMessage ? "BAD_REQUEST" : "INTERNAL",
+      message: pgMessage ?? "Internal server error",
+      details: env.NODE_ENV === "development" ? rawMessage : undefined,
     },
   });
 }

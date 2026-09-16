@@ -1,3 +1,5 @@
+import { decodeDisplayTitle } from "../../../utils/decodeHtmlEntities";
+
 export type CatalogRiskMatch = {
   riskId: string;
   title: string;
@@ -18,6 +20,57 @@ export type HumanReviewInfo = {
   feedback: string | null;
 };
 
+export type RiskScoringInfo = {
+  likelihood: number | null;
+  likelihoodLabel: string;
+  impact: number | null;
+  impactLabel: string;
+  severityScore: number | null;
+  severityBand: string;
+  likelihoodReasoning: string;
+  impactReasoning: string;
+  lossCategories: string[];
+};
+
+export type ProductInfo = {
+  name: string | null;
+  vendor: string | null;
+};
+
+export const EMPTY_RISK_SCORING: RiskScoringInfo = {
+  likelihood: null,
+  likelihoodLabel: "—",
+  impact: null,
+  impactLabel: "—",
+  severityScore: null,
+  severityBand: "—",
+  likelihoodReasoning: "",
+  impactReasoning: "",
+  lossCategories: [],
+};
+
+/** Display-time vocabulary: first letter capital, empty values as an em dash. */
+export function formatDisplayValue(value: string | null | undefined): string {
+  const raw = value?.trim() ?? "";
+  if (!raw || raw === "—") return "—";
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+/** Table cell text for severity, e.g. "High (12)" or "—". */
+export function formatSeverityCell(scoring: RiskScoringInfo | undefined): string {
+  if (!scoring || scoring.severityScore == null || scoring.severityBand === "—") {
+    return "—";
+  }
+  return `${formatDisplayValue(scoring.severityBand)} (${scoring.severityScore})`;
+}
+
+/** Table cell text for AI product, e.g. "ChatGPT — OpenAI" or "—". */
+export function formatProductCell(product: ProductInfo | undefined): string {
+  if (!product?.name) return "—";
+  const name = formatDisplayValue(product.name);
+  return product.vendor ? `${name} — ${formatDisplayValue(product.vendor)}` : name;
+}
+
 export type RiskDetail = {
   id: string;
   /** Sequential display id from API (R-1, R-01, R-10, …). */
@@ -30,6 +83,8 @@ export type RiskDetail = {
   industry: string;
   intent: string;
   qualityScore: string;
+  reviewWhy?: string;
+  reviewReason?: string;
   primaryKey: string;
   tagKey: string;
   confidence: "HIGH" | "MEDIUM" | "LOW";
@@ -71,6 +126,18 @@ export type RiskDetail = {
   };
   modelName?: string | null;
   humanReview?: HumanReviewInfo;
+  riskScoring?: RiskScoringInfo;
+  product?: ProductInfo;
+  /** Present on Review Queue rows: who the review is assigned to (may be null). */
+  assignment?: ReviewAssignmentInfo;
+};
+
+export type ReviewAssignmentInfo = {
+  assignedTo: string | null;
+  assignedAt: string | null;
+  assignedBy: string | null;
+  assigneeUsername: string | null;
+  assigneeName: string | null;
 };
 
 export type EvidenceBreakdownItem = {
@@ -165,7 +232,7 @@ export function riskBackNavTitle(
     .replace(new RegExp(`^\\s*${escaped}\\s*(?:[:\\-|–—]\\s*)?`, "i"), "")
     .trim();
 
-  return withoutId || title;
+  return formatDisplayValue(withoutId || title);
 }
 
 /** Article id for display (matches articles list: #123). */
@@ -190,7 +257,7 @@ export function formatEvidenceFactValue(value: string): string {
   if (!/\s/.test(trimmed)) {
     return formatEvidenceStrength(trimmed);
   }
-  return trimmed;
+  return formatDisplayValue(trimmed);
 }
 
 /** Domain label without catalog numbering (e.g. "7. AI SYSTEM SAFETY" → "AI SYSTEM SAFETY"). */
@@ -213,6 +280,20 @@ export const MOCK_RISK_ROWS: RiskDetail[] = [
     industry: "Government Administration and Public Services",
     intent: "Accidental",
     qualityScore: "0.91",
+    riskScoring: {
+      likelihood: 4,
+      likelihoodLabel: "Likely",
+      impact: 3,
+      impactLabel: "Moderate",
+      severityScore: 12,
+      severityBand: "High",
+      likelihoodReasoning:
+        "Hallucination is described as a recurring failure mode for language models operating without retrieval grounding.",
+      impactReasoning:
+        "Incorrect policy guidance and misclassified citizen requests cause meaningful reputational and operational harm to government services.",
+      lossCategories: ["Productivity", "Response", "Reputation"],
+    },
+    product: { name: null, vendor: null },
     primaryKey: "technical",
     tagKey: "safety",
     confidence: "HIGH",
@@ -315,6 +396,20 @@ export const MOCK_RISK_ROWS: RiskDetail[] = [
     industry: "HR Technology",
     intent: "Commercial",
     qualityScore: "0.87",
+    riskScoring: {
+      likelihood: 4,
+      likelihoodLabel: "Likely",
+      impact: 4,
+      impactLabel: "Major",
+      severityScore: 16,
+      severityBand: "High",
+      likelihoodReasoning:
+        "The pilot study documented statistically significant disparate impact already occurring across multiple employers.",
+      impactReasoning:
+        "Discriminatory screening at scale affects many applicants and exposes employers to regulatory and legal consequences.",
+      lossCategories: ["Fines & Judgments", "Reputation"],
+    },
+    product: { name: null, vendor: null },
     primaryKey: "technical",
     tagKey: "bias",
     confidence: "MEDIUM",
@@ -428,17 +523,23 @@ export type RiskListMetrics = {
 export function normalizeRisksFromApi(raw: unknown): {
   risks: RiskDetail[];
   metrics: RiskListMetrics;
+  total: number;
+  hasMore: boolean;
+  metricsIncluded: boolean;
 } {
   const data = raw as {
     risks?: RiskDetail[];
     metrics?: Partial<RiskListMetrics>;
+    total?: number;
+    hasMore?: boolean;
+    metricsIncluded?: boolean;
   };
 
   const risks = (data.risks ?? []).map((r) => ({
     ...r,
     id: r.id ?? "",
     displayId: r.displayId?.trim() || undefined,
-    title: r.title ?? "Untitled risk",
+    title: decodeDisplayTitle(r.title, "Untitled risk"),
     domain: r.domain ?? "—",
     primaryRisk: r.primaryRisk ?? "—",
     secondaryRisk: r.secondaryRisk ?? "—",
@@ -446,6 +547,8 @@ export function normalizeRisksFromApi(raw: unknown): {
     industry: r.industry ?? "—",
     intent: r.intent ?? "—",
     qualityScore: r.qualityScore ?? "—",
+    reviewWhy: r.reviewWhy?.trim() || "Review",
+    reviewReason: r.reviewReason?.trim() || "",
     primaryKey: r.primaryKey ?? "technical",
     tagKey: r.tagKey ?? "general",
     confidence: r.confidence ?? "MEDIUM",
@@ -454,7 +557,7 @@ export function normalizeRisksFromApi(raw: unknown): {
     observableIndicators: r.observableIndicators ?? "",
     timing: r.timing ?? "",
     articleId: r.articleId ?? undefined,
-    articleTitle: r.articleTitle ?? "",
+    articleTitle: decodeDisplayTitle(r.articleTitle, ""),
     articleUrl: r.articleUrl ?? "",
     ingestedAt: r.ingestedAt ?? "",
     createdAt: r.createdAt ?? r.ingestedAt ?? "",
@@ -479,6 +582,21 @@ export function normalizeRisksFromApi(raw: unknown): {
       breakdown: r.evidence?.breakdown ?? [],
     },
     modelName: r.modelName ?? null,
+    riskScoring: {
+      likelihood: r.riskScoring?.likelihood ?? null,
+      likelihoodLabel: r.riskScoring?.likelihoodLabel ?? "—",
+      impact: r.riskScoring?.impact ?? null,
+      impactLabel: r.riskScoring?.impactLabel ?? "—",
+      severityScore: r.riskScoring?.severityScore ?? null,
+      severityBand: r.riskScoring?.severityBand ?? "—",
+      likelihoodReasoning: r.riskScoring?.likelihoodReasoning ?? "",
+      impactReasoning: r.riskScoring?.impactReasoning ?? "",
+      lossCategories: r.riskScoring?.lossCategories ?? [],
+    },
+    product: {
+      name: r.product?.name ?? null,
+      vendor: r.product?.vendor ?? null,
+    },
     humanReview: {
       status: r.humanReview?.status ?? null,
       classification: r.humanReview?.classification ?? null,
@@ -487,16 +605,31 @@ export function normalizeRisksFromApi(raw: unknown): {
       reviewedAt: r.humanReview?.reviewedAt ?? null,
       feedback: r.humanReview?.feedback ?? null,
     },
+    assignment: r.assignment
+      ? {
+          assignedTo: r.assignment.assignedTo ?? null,
+          assignedAt: r.assignment.assignedAt ?? null,
+          assignedBy: r.assignment.assignedBy ?? null,
+          assigneeUsername: r.assignment.assigneeUsername ?? null,
+          assigneeName: r.assignment.assigneeName ?? null,
+        }
+      : undefined,
   }));
+
+  const metrics = {
+    total: data.metrics?.total ?? risks.length,
+    technical: data.metrics?.technical ?? 0,
+    operational: data.metrics?.operational ?? 0,
+    business: data.metrics?.business ?? 0,
+  };
+  const metricsIncluded = data.metricsIncluded !== false && data.metrics != null;
 
   return {
     risks,
-    metrics: {
-      total: data.metrics?.total ?? risks.length,
-      technical: data.metrics?.technical ?? 0,
-      operational: data.metrics?.operational ?? 0,
-      business: data.metrics?.business ?? 0,
-    },
+    metrics,
+    total: typeof data.total === "number" ? data.total : metrics.total,
+    hasMore: Boolean(data.hasMore),
+    metricsIncluded,
   };
 }
 

@@ -28,6 +28,22 @@ export type DashboardApiStats = {
     totalDeltaPct: string;
     confidencePct: number;
   };
+  /** Real likelihood×impact severity distribution (5×5 matrix bands). */
+  riskRating?: {
+    rows: Array<{
+      key: string;
+      label: string;
+      color: string;
+      pct: string;
+      count: string;
+      delta: string;
+      deltaPct: string;
+      trend: "up" | "down";
+    }>;
+    total: number;
+    scored: number;
+    unscored: number;
+  };
   confidence: {
     avgPct: number;
     breakdown: { high: number; medium: number; low: number };

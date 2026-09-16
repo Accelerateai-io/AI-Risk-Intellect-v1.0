@@ -229,21 +229,30 @@ export async function restoreIngestLink(
 
 export async function archiveIngestLink(
   id: number,
-): Promise<{ ok: true; message: string } | { ok: false; message: string }> {
+): Promise<
+  | { ok: true; message: string; link: IngestLinkRow }
+  | { ok: false; message: string }
+> {
   try {
     const res = await authFetch(`/admin/ingest-links/${id}/archive`, {
       method: "POST",
     });
-    const data = (await res.json().catch(() => ({}))) as ApiErrorBody;
+    const data = (await res.json().catch(() => ({}))) as ApiErrorBody & {
+      link?: IngestLinkRow;
+    };
     if (!res.ok) {
       return {
         ok: false,
         message: errorMessage(data, "Could not archive this link."),
       };
     }
+    if (!data.link) {
+      return { ok: false, message: "Could not archive this link." };
+    }
     return {
       ok: true,
       message: data.message ?? "Ingest link archived.",
+      link: data.link,
     };
   } catch {
     return { ok: false, message: "Network error while archiving link." };

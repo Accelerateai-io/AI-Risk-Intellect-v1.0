@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SkipIngest } from "./filters.js";
+import { signalWithJobTimeout } from "../services/jobs/jobTimeout.service.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../../..");
@@ -100,7 +101,7 @@ async function runPythonIngestHttp(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(route.body),
-      signal: AbortSignal.timeout(INGEST_TIMEOUT_MS),
+      signal: signalWithJobTimeout(INGEST_TIMEOUT_MS),
     });
   } catch (err) {
     const hint =
@@ -157,7 +158,23 @@ function runPythonIngestCli(
     child.stdin.write(JSON.stringify(payload));
     child.stdin.end();
 
+    const jobSignal = signalWithJobTimeout(INGEST_TIMEOUT_MS);
+    const onAbort = () => {
+      child.kill("SIGTERM");
+      reject(
+        new Error(
+          "Skipped because this URL took more than 5 minutes without finishing — it was taking too long.",
+        ),
+      );
+    };
+    if (jobSignal.aborted) {
+      onAbort();
+      return;
+    }
+    jobSignal.addEventListener("abort", onAbort, { once: true });
+
     child.on("error", (err) => {
+      jobSignal.removeEventListener("abort", onAbort);
       reject(
         new Error(
           `Failed to start Python (${py}). Install Python 3 and run: pip install -r python/requirements.txt. ${err.message}`,
@@ -166,6 +183,7 @@ function runPythonIngestCli(
     });
 
     child.on("close", (code) => {
+      jobSignal.removeEventListener("abort", onAbort);
       const trimmed = stdout.trim();
       if (!trimmed) {
         reject(

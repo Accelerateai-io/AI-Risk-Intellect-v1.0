@@ -26,7 +26,18 @@ def _char_chunk(
     return chunks
 
 
+def _is_huggingface_model_id(model_id: str) -> bool:
+    mid = (model_id or "").strip().lower()
+    if not mid or "/" not in mid:
+        return False
+    if mid.startswith(("anthropic.", "us.anthropic.", "amazon.", "us.amazon.", "arn:aws:")):
+        return False
+    return True
+
+
 def get_tokenizer(model_id: str):
+    if not _is_huggingface_model_id(model_id):
+        return None
     if model_id in _TOKENIZERS:
         return _TOKENIZERS[model_id]
     try:

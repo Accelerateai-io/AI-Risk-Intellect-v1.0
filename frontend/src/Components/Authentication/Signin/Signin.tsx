@@ -4,6 +4,7 @@ import { Eye, EyeOff, CheckCircle, Loader2, User, Lock, MoveRightIcon } from "lu
 import { Link, useNavigate, useLocation, type Location } from "react-router-dom";
 import { apiUrl } from "../../../utils/apiBase";
 import { setDocumentPageTitle } from "../../../utils/pageTitle";
+import { persistSessionUser } from "../../../utils/sessionUser";
 import { AuthShell } from "../AuthShell";
 
 const Signin = () => {
@@ -40,7 +41,7 @@ const Signin = () => {
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
-        user?: { username: string; email: string };
+        user?: { username: string; email: string; role?: string };
         accessToken?: string;
         error?: { message?: string };
       };
@@ -52,9 +53,7 @@ const Signin = () => {
         return;
       }
       if (data.user && data.accessToken) {
-        sessionStorage.setItem("accessToken", data.accessToken);
-        sessionStorage.setItem("userName", data.user.username);
-        sessionStorage.setItem("userEmail", data.user.email);
+        persistSessionUser(data.user, data.accessToken);
         toast.success("Signed in.", { autoClose: 1500 });
         const from = (location.state as { from?: Location } | null)?.from;
         const target =

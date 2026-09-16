@@ -1,4 +1,5 @@
 import { formatDisplayDate } from "../../../utils/formatDate";
+import { capitalizeDisplayName } from "../../../utils/reviewOpsApi";
 import type { HumanReviewInfo } from "./riskData";
 
 export type ReviewClassification = "raw" | "structured";
@@ -37,7 +38,9 @@ export function formatHumanReviewTooltip(
 ): string | null {
   if (!review?.status || review.status === "pending") return null;
 
-  const reviewer = review.reviewedBy ?? "Unknown reviewer";
+  const reviewer = review.reviewedBy
+    ? capitalizeDisplayName(review.reviewedBy)
+    : "Unknown reviewer";
   const when = review.reviewedAt
     ? formatDisplayDate(review.reviewedAt)
     : "unknown date";
@@ -73,7 +76,9 @@ export function getHumanReviewMoveDetails(
 ): HumanReviewMoveDetails | null {
   if (review?.status !== "approved") return null;
 
-  const reviewer = review.reviewedBy?.trim() || "Unknown reviewer";
+  const reviewer = review.reviewedBy?.trim()
+    ? capitalizeDisplayName(review.reviewedBy)
+    : "Unknown reviewer";
   const reviewedAtDisplay = review.reviewedAt
     ? formatDisplayDate(review.reviewedAt)
     : "Unknown date";

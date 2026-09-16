@@ -11,6 +11,7 @@ export type ObservabilityHourlyPoint = {
 export type ObservabilityTableRow = {
   id: number;
   modelName: string;
+  modelLabel: string;
   url: string;
   wordCount: number;
   tokensGenerated: number;

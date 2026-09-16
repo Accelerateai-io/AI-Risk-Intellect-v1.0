@@ -1,1 +1,1 @@
-# AI Risk Intellect — Python ingestion helpers
+# AI Risk Intelligence — Python ingestion helpers

@@ -1,3 +1,15 @@
+export const REVIEW_WHY_LABELS = [
+  "Language",
+  "Duplicate",
+  "Catalog",
+  "Quality",
+  "Domain",
+  "Evidence",
+  "Review",
+] as const;
+
+export type ReviewWhyLabel = (typeof REVIEW_WHY_LABELS)[number];
+
 export type ReviewQueueItem = {
   id: string;
   displayId: string;
@@ -9,6 +21,7 @@ export type ReviewQueueItem = {
   scoreLabel: string;
   priority: "Low" | "Medium" | "High";
   category: string;
+  reviewWhy: string;
   reviewReason: string;
   articleUrl: string;
   ingestedAt: string;
@@ -42,6 +55,7 @@ export function normalizeReviewQueueFromApi(raw: unknown): {
     scoreLabel: item.scoreLabel ?? "—/100",
     priority: item.priority ?? "Medium",
     category: item.category ?? "—",
+    reviewWhy: item.reviewWhy ?? "Review",
     reviewReason:
       item.reviewReason ??
       "Extracted domain does not match any of the 7 risk taxonomy domains.",

@@ -6,6 +6,7 @@ const limiter = rateLimit({
   max: config.max,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false },
   message: {
     success: false,
     message: "Too many requests",

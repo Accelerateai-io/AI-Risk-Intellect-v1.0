@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "required": ["risk", "controls", "justification"],
+  "required": ["risk", "risk_scoring", "controls", "justification"],
   "properties": {
     "_source": { "type": "string" },
     "_meta": { "type": "object" },
@@ -21,7 +21,34 @@
         "primary_risk": { "type": "string" },
         "secondary_risks": { "type": "string" },
         "sector": { "type": "string" },
-        "industry": { "type": "string" }
+        "industry": { "type": "string" },
+        "ai_product_name": { "type": ["string", "null"] },
+        "ai_product_vendor": { "type": ["string", "null"] }
+      }
+    },
+    "risk_scoring": {
+      "type": "object",
+      "properties": {
+        "likelihood": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
+        "likelihood_reasoning": { "type": "string" },
+        "impact": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
+        "impact_reasoning": { "type": "string" },
+        "loss_categories": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "Productivity",
+              "Response",
+              "Replacement",
+              "Fines & Judgments",
+              "Competitive Advantage",
+              "Reputation"
+            ]
+          }
+        },
+        "severity_score": { "type": ["integer", "null"], "minimum": 1, "maximum": 25 },
+        "severity_band": { "type": ["string", "null"] }
       }
     },
     "controls": {

@@ -48,9 +48,20 @@ def bootstrap_env() -> None:
         if py_env.is_file():
             load_dotenv(py_env)
 
-    if os.getenv("AWS_ACCESS_KEY_ID", "").strip() or os.getenv(
-        "BEDROCK_MODEL_ID", ""
-    ).strip():
+    has_bedrock_creds = any(
+        os.getenv(key, "").strip()
+        for key in (
+            "AWS_ACCESS_KEY_ID",
+            "AWS_BEARER_TOKEN_BEDROCK",
+            "BEDROCK_MODEL_ID",
+            "BEDROCK_MODEL",
+        )
+    )
+    other_backend = any(
+        os.getenv(key, "").lower() == "true"
+        for key in ("USE_OPENAI", "USE_SAGEMAKER", "USE_CISCO")
+    )
+    if has_bedrock_creds and not other_backend:
         os.environ["USE_BEDROCK"] = "true"
     region = (
         os.getenv("AWS_REGION", "").strip()
