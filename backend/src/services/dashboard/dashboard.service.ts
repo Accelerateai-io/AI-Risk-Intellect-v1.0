@@ -4,6 +4,7 @@ import { articles } from "../../schema/articles/articles.js";
 import { jobs } from "../../schema/jobs/jobs.js";
 import { risks } from "../../schema/risks/risks.js";
 import { resolveQualityScore100 } from "../risks/riskQuality.js";
+import { isRiskVisibleInMainList } from "../risks/risks.service.js";
 
 export type DashboardMetricCard = {
   value: string;
@@ -110,6 +111,28 @@ const HEATMAP_LABELS = [
   "7 weeks ago",
   "8 weeks ago",
 ] as const;
+
+type DashboardRiskRow = {
+  domains: string | null;
+  qualityScore: number | null;
+  extractionJson: unknown;
+};
+
+/**
+ * Risks that belong on the register. A catalog hold (and any other review hold)
+ * stays in the review queue and must not be counted as mapped.
+ */
+export function filterDashboardMappedRisks<T extends DashboardRiskRow>(
+  rows: T[],
+): T[] {
+  return rows.filter((row) =>
+    isRiskVisibleInMainList({
+      domains: row.domains,
+      qualityScore: row.qualityScore,
+      extractionJson: row.extractionJson,
+    }),
+  );
+}
 
 function taxonomyKeyFromDomain(domain: string): (typeof TAXONOMY_KEYS)[number] | null {
   const d = domain.toLowerCase();
@@ -328,15 +351,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     .where(sql`${articles.createdAt} >= ${since84d}`)
     .groupBy(sql`date_trunc('day', ${articles.createdAt})`);
 
-  const riskDailyRows = await db
-    .select({
-      day: sql<string>`to_char(date_trunc('day', ${risks.createdAt}), 'YYYY-MM-DD')`,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(risks)
-    .where(sql`${risks.createdAt} >= ${since56d}`)
-    .groupBy(sql`date_trunc('day', ${risks.createdAt})`);
-
   const riskRows = await db
     .select({
       domains: risks.domains,
@@ -355,13 +369,19 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     articleDailyMap.set(row.day, row.count);
   }
 
+  const mappedRiskRows = filterDashboardMappedRisks(riskRows);
+
   const riskDailyMap = new Map<string, number>();
-  for (const row of riskDailyRows) {
-    riskDailyMap.set(row.day, row.count);
+  const since56dMs = since56d.getTime();
+  for (const row of mappedRiskRows) {
+    const created = new Date(row.createdAt);
+    if (Number.isNaN(created.getTime()) || created.getTime() < since56dMs) continue;
+    const key = dateKey(created);
+    riskDailyMap.set(key, (riskDailyMap.get(key) ?? 0) + 1);
   }
 
   const totalArticles = articleAgg?.total ?? 0;
-  const totalRisks = riskRows.length;
+  const totalRisks = mappedRiskRows.length;
   const jobTotal = jobAgg?.total ?? 0;
   const jobDone = jobAgg?.done ?? 0;
   const successRate = jobTotal > 0 ? Math.round((jobDone / jobTotal) * 100) : 0;
@@ -403,7 +423,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   let scoreSum = 0;
   let scoreCount = 0;
 
-  for (const row of riskRows) {
+  for (const row of mappedRiskRows) {
     const score = resolveQualityScore100({
       qualityScore: row.qualityScore,
       extractionJson: row.extractionJson,

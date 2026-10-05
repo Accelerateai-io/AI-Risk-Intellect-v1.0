@@ -345,7 +345,10 @@ function buildMetrics(m: JobMetrics): Metric[] {
     {
       key: "avgProc",
       label: "AVG PROCESSING",
-      value: m.avgProcessingSeconds > 0 ? `${m.avgProcessingSeconds}s` : "0s",
+      value:
+        m.avgProcessingSeconds > 0
+          ? formatDurationMs(m.avgProcessingSeconds * 1000)
+          : "0s",
       accent: "slate",
       Icon: Timer,
     },

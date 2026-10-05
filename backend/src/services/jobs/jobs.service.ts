@@ -9,6 +9,10 @@ import { urlExecutionBlocks } from "../../schema/jobs/urlExecutionBlocks.js";
 import { HttpError } from "../../utils/httpError.js";
 import { normalizeUrl } from "../../utils/fetchUtils.js";
 import type { ListJobsQuery } from "../../validators/jobs.validators.js";
+import {
+  averageProcessingSeconds,
+  completedJobProcessingMs,
+} from "./jobProcessingTime.js";
 import { getDoNotExecuteBlocks } from "./urlExecutionBlocks.service.js";
 import { skipStaleRunningJobs } from "./jobTimeout.service.js";
 
@@ -474,17 +478,37 @@ export async function listJobs(query: ListJobsQuery = DEFAULT_LIST_JOBS_QUERY): 
 
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-  const [counts] = await db
-    .select({
-      total: sql<number>`count(*)::int`,
-      pending: sql<number>`count(*) filter (where ${jobs.status} = 'pending')::int`,
-      running: sql<number>`count(*) filter (where ${jobs.status} = 'running')::int`,
-      done: sql<number>`count(*) filter (where ${jobs.status} in ('done', 'completed'))::int`,
-      error: sql<number>`count(*) filter (where ${jobs.status} in ('error', 'failed'))::int`,
-      skipped: sql<number>`count(*) filter (where ${jobs.status} = 'skipped')::int`,
-      done24h: sql<number>`count(*) filter (where ${jobs.status} in ('done', 'completed') and ${jobs.updatedAt} >= ${since24h})::int`,
-    })
-    .from(jobs);
+  const [[counts], completedSpans] = await Promise.all([
+    db
+      .select({
+        total: sql<number>`count(*)::int`,
+        pending: sql<number>`count(*) filter (where ${jobs.status} = 'pending')::int`,
+        running: sql<number>`count(*) filter (where ${jobs.status} = 'running')::int`,
+        done: sql<number>`count(*) filter (where ${jobs.status} in ('done', 'completed'))::int`,
+        error: sql<number>`count(*) filter (where ${jobs.status} in ('error', 'failed'))::int`,
+        skipped: sql<number>`count(*) filter (where ${jobs.status} = 'skipped')::int`,
+        done24h: sql<number>`count(*) filter (where ${jobs.status} in ('done', 'completed') and ${jobs.updatedAt} >= ${since24h})::int`,
+      })
+      .from(jobs),
+    db
+      .select({
+        startedAt: jobs.startedAt,
+        updatedAt: jobs.updatedAt,
+        riskFetchedAt: sql<Date | null>`(
+          select max(${risks.createdAt})
+          from ${risks}
+          where ${risks.articleId} = ${jobs.articleId}
+        )`,
+      })
+      .from(jobs)
+      .where(sql`${jobs.status} in ('done', 'completed')`),
+  ]);
+
+  const avgProcessingSeconds = averageProcessingSeconds(
+    completedSpans
+      .map((span) => completedJobProcessingMs(span))
+      .filter((ms): ms is number => ms != null),
+  );
 
   const total = counts?.total ?? 0;
   const done = counts?.done ?? 0;
@@ -498,7 +522,7 @@ export async function listJobs(query: ListJobsQuery = DEFAULT_LIST_JOBS_QUERY): 
       failed: counts?.error ?? 0,
       running: counts?.running ?? 0,
       completed24h: counts?.done24h ?? 0,
-      avgProcessingSeconds: 0,
+      avgProcessingSeconds,
       skipped: counts?.skipped ?? 0,
     },
     pagination: {

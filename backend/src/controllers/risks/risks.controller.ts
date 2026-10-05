@@ -15,100 +15,13 @@ import {
   listReviewQueueRisks,
   listRisks,
 } from "../../services/risks/risks.service.js";
-import { CATALOG_DOMAINS } from "../../config/aiqRiskTaxonomy.js";
-import { normalizeLabelToCatalogDomain } from "../../services/risks/riskDomainResolver.service.js";
 import { HttpError } from "../../utils/httpError.js";
-import { assertAdminUser } from "../../utils/isAdminUser.js";
-
-const MAX_LIST_LIMIT = 200;
-
-function queryString(value: unknown): string | undefined {
-  if (Array.isArray(value)) return queryString(value[0]);
-  if (typeof value !== "string") return undefined;
-  return value.trim() || undefined;
-}
-
-function queryNumber(value: unknown): number | undefined {
-  const raw = queryString(value);
-  if (raw === undefined) return undefined;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : undefined;
-}
-
-/** Comma-separated or repeated `domains`, narrowed to canonical taxonomy values. */
-function queryDomains(value: unknown): string[] | undefined {
-  const parts = (Array.isArray(value) ? value : [value])
-    .flatMap((entry) => (typeof entry === "string" ? entry.split(",") : []))
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-  if (parts.length === 0) return undefined;
-  const canonical = parts
-    .map((entry) => normalizeLabelToCatalogDomain(entry))
-    .filter((entry): entry is NonNullable<typeof entry> => entry != null);
-  const unique = [...new Set<string>(canonical)];
-  if (unique.length === 0) {
-    throw HttpError.unprocessable(
-      `No recognised value in "domains". Expected any of: ${CATALOG_DOMAINS.join(", ")}.`,
-    );
-  }
-  return unique;
-}
-
-function queryUpdatedSince(value: unknown): string | undefined {
-  const raw = queryString(value);
-  if (raw === undefined) return undefined;
-  if (Number.isNaN(new Date(raw).getTime())) {
-    throw HttpError.unprocessable("`updated_since` must be an ISO-8601 timestamp.");
-  }
-  return raw;
-}
-
-function queryFlag(value: unknown, defaultValue: boolean): boolean {
-  const raw = queryString(value);
-  if (raw === undefined) return defaultValue;
-  const lower = raw.toLowerCase();
-  if (lower === "0" || lower === "false" || lower === "no") return false;
-  if (lower === "1" || lower === "true" || lower === "yes") return true;
-  return defaultValue;
-}
 
 export async function listRisksHandler(
-  req: Request,
+  _req: Request,
   res: Response,
 ): Promise<void> {
-  const query = req.query ?? {};
-  const limit = queryNumber(query.limit);
-  const primaryKeyRaw = queryString(query.primaryKey ?? query.primary_risk);
-  const primaryKey =
-    primaryKeyRaw === "technical" ||
-    primaryKeyRaw === "operational" ||
-    primaryKeyRaw === "business"
-      ? primaryKeyRaw
-      : undefined;
-  const orderRaw = queryString(query.order);
-  const order =
-    orderRaw === "oldest" ||
-    orderRaw === "score" ||
-    orderRaw === "severity" ||
-    orderRaw === "newest"
-      ? orderRaw
-      : undefined;
-  const result = await listRisks({
-    sector: queryString(query.sector),
-    domains: queryDomains(query.domains),
-    minQuality: queryNumber(query.minQuality ?? query.min_quality),
-    updatedSince: queryUpdatedSince(query.updated_since ?? query.updatedSince),
-    search: queryString(query.search),
-    primaryKey,
-    tagKey: queryString(query.tag ?? query.tagKey),
-    order,
-    limit:
-      limit === undefined
-        ? 50
-        : Math.min(MAX_LIST_LIMIT, Math.max(0, limit)),
-    offset: queryNumber(query.offset) ?? 0,
-    includeMetrics: queryFlag(query.includeMetrics ?? query.metrics, true),
-  });
+  const result = await listRisks();
   res.status(200).json(result);
 }
 
@@ -127,9 +40,20 @@ export async function listReviewQueueHandler(
   } else if (assigneeParam) {
     assignedTo = assigneeParam;
   }
-  const result = await listReviewQueueRisks(
-    assignedTo ? { assignedTo } : {},
-  );
+  // Optional server-side paging. Absent => legacy behaviour (every matching row).
+  const rawLimit = Number.parseInt(String(req.query.limit ?? ""), 10);
+  const rawOffset = Number.parseInt(String(req.query.offset ?? ""), 10);
+  const limit =
+    Number.isFinite(rawLimit) && rawLimit > 0
+      ? Math.min(rawLimit, 200)
+      : undefined;
+  const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? rawOffset : undefined;
+
+  const result = await listReviewQueueRisks({
+    ...(assignedTo ? { assignedTo } : {}),
+    ...(limit ? { limit } : {}),
+    ...(offset ? { offset } : {}),
+  });
   res.status(200).json(result);
 }
 
@@ -162,15 +86,7 @@ export async function getRiskByIdHandler(
   res: Response,
 ): Promise<void> {
   const riskId = String(req.params.id ?? "").trim();
-  const skipRaw = queryString(req.query.skipCatalogMatches);
-  const ensureRaw = queryString(req.query.ensureCatalogMatches);
-  const computeCatalogMatches =
-    ensureRaw === "1" || ensureRaw === "true"
-      ? true
-      : skipRaw === "1" || skipRaw === "true"
-        ? false
-        : true;
-  const risk = await getRiskById(riskId, { computeCatalogMatches });
+  const risk = await getRiskById(riskId);
   res.status(200).json({ risk });
 }
 
@@ -219,7 +135,6 @@ export async function remapReviewDomainHandler(
   if (!userId) {
     throw HttpError.unauthorized("Authentication required.");
   }
-  assertAdminUser(req.user, "Only Admin users can edit risks in Review.");
 
   const riskId = String(req.params.id ?? "").trim();
   const body = (req.body ?? {}) as { domain?: string };

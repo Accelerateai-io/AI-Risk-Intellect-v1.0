@@ -280,8 +280,8 @@ export function SettingsAboutSection() {
         </div>
         <div className="settingsPage__metaRow">
           <dt className="settingsPage__metaLabel">Environment</dt>
-          <dd className="settingsPage__metaValue">
-            {import.meta.env.PROD ? "Production" : "Development"}
+          <dd className="settingsPage__metaValue">Development
+            {/* {import.meta.env.PROD ? "Production" : "Development"} */}
           </dd>
         </div>
         <div className="settingsPage__metaRow">
