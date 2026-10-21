@@ -6,7 +6,18 @@
     "_meta": { "type": "object" },
     "risk": {
       "type": "object",
-      "required": ["risk_title", "domains", "description"],
+      "required": [
+        "risk_title",
+        "domains",
+        "description",
+        "source_type",
+        "evidence_type",
+        "demonstrated_finding",
+        "stated_implication",
+        "paper_stance",
+        "proposed_mitigation",
+        "mitigations_in_source"
+      ],
       "properties": {
         "risk_title": { "type": "string" },
         "domains": { "type": "string" },
@@ -23,7 +34,39 @@
         "sector": { "type": "string" },
         "industry": { "type": "string" },
         "ai_product_name": { "type": ["string", "null"] },
-        "ai_product_vendor": { "type": ["string", "null"] }
+        "ai_product_vendor": { "type": ["string", "null"] },
+        "source_type": {
+          "type": "string",
+          "enum": [
+            "empirical_study",
+            "position_paper",
+            "survey",
+            "incident_report",
+            "news",
+            "vendor_doc"
+          ]
+        },
+        "evidence_type": {
+          "type": "string",
+          "enum": ["demonstrated", "hypothesized", "mitigation_target"]
+        },
+        "demonstrated_finding": { "type": ["string", "null"] },
+        "stated_implication": { "type": ["string", "null"] },
+        "paper_stance": {
+          "type": "string",
+          "enum": [
+            "documents_problem",
+            "proposes_mitigation",
+            "evaluates_system",
+            "surveys",
+            "not_applicable"
+          ]
+        },
+        "proposed_mitigation": { "type": ["string", "null"] },
+        "mitigations_in_source": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
       }
     },
     "risk_scoring": {

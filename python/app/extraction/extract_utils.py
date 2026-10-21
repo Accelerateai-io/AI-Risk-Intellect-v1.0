@@ -133,6 +133,16 @@ def _stub(text: str) -> dict:
             "industry": "Technology & Software",
             "ai_product_name": None,
             "ai_product_vendor": None,
+            # Evidence fields required by the schema (BUG-01/02/03). Conservative
+            # fallbacks: treat as hypothesized (lowest-severity direction) and
+            # the only allowed negative for mitigations.
+            "source_type": "position_paper",
+            "evidence_type": "hypothesized",
+            "demonstrated_finding": None,
+            "stated_implication": None,
+            "paper_stance": "documents_problem",
+            "proposed_mitigation": None,
+            "mitigations_in_source": ["not described in source"],
         },
         "risk_scoring": {
             "likelihood": None,
@@ -206,7 +216,14 @@ def extract_over_chunks(
     )
 
     objs = []
+    logger.info("EXTRACT: %d chunks, calling the model once per chunk", len(chunks))
     for idx, (start_char, end_char, chunk_text) in enumerate(chunks, 1):
+        logger.info(
+            "EXTRACT: chunk %d/%d (%d chars)",
+            idx,
+            len(chunks),
+            len(chunk_text),
+        )
         try:
             o = generate_json(
                 chunk_text,
@@ -248,6 +265,22 @@ def extract_with_auto_chunking(
     begin_extraction(word_count=word_count(text))
 
     def finish(obj: dict, source_flag: str) -> Tuple[dict, str, dict[str, int]]:
+        # Evidence-discipline rules (BUG-01/02/03/04): attach review reasons to
+        # the record but NEVER block storing it. Stored inside extraction_json
+        # under _meta (no DB migration in this PR).
+        try:
+            from app.verification.evidence_rules import verify_record
+
+            verification = verify_record(obj, text)
+            if verification["review_reasons"] or verification["citations"]:
+                meta = obj.setdefault("_meta", {})
+                meta["verification"] = verification
+                if verification["review_reasons"]:
+                    existing = meta.get("review_reasons") or []
+                    meta["review_reasons"] = existing + verification["review_reasons"]
+        except Exception as exc:  # defensive: rules must never break extraction
+            logger.warning("EVIDENCE_RULES: skipped (%s)", str(exc)[:150])
+
         duration_ms = max(1, int((time.perf_counter() - started) * 1000))
         metrics = get_extraction_metrics()
         tokens_generated = metrics.tokens_generated if metrics else 0

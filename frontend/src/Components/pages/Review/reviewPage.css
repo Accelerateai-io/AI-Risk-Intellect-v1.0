@@ -524,6 +524,7 @@ html:not(.app-theme-dark) .reviewPage__feedbackActionBtn--link:hover {
   margin: 0;
   font-size: 0.8125rem;
   line-height: 1.45;
+  white-space: pre-line;
   color: var(--rev-text, #f8fafc);
 }
 
@@ -1136,6 +1137,7 @@ html.app-theme-dark .reviewPage__feedbackSelect {
   min-width: 0;
   font-size: 0.8125rem;
   line-height: 1.45;
+  white-space: pre-line;
   color: var(--rev-text, #f8fafc);
 }
 

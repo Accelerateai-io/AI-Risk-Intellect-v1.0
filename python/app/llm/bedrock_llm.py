@@ -87,8 +87,10 @@ class BedrockLLM:
         "claude-3-5-haiku": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
     }
 
-    # Fallback when the primary model throttles, is rejected, or errors past retries.
-    FALLBACK_MODEL_ID = "us.anthropic.claude-3-sonnet-20240229-v1:0:200k"
+    # Fallback when the primary model throttles, is rejected, or errors past
+    # retries. Sourced from the env-driven default (BUG-13) instead of a
+    # hard-coded id; runtime override via BEDROCK_FALLBACK_MODEL still applies.
+    FALLBACK_MODEL_ID = DEFAULT_BEDROCK_MODEL
 
     def __init__(
         self,

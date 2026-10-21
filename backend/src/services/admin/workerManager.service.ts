@@ -1,12 +1,27 @@
 import type { ChildProcess } from "node:child_process";
+import { inArray } from "drizzle-orm";
+import { db } from "../../db/index.js";
 import { createLogger } from "../../logger/index.js";
+import { jobs } from "../../schema/jobs/jobs.js";
 import { workerState } from "../../workers/state.js";
-
-const workerManagerLog = createLogger("worker-manager");
 import {
   killChildProcess,
   spawnBackendScript,
 } from "./spawnBackendScript.js";
+
+const workerManagerLog = createLogger("worker-manager");
+
+const PENDING_WATCH_MS = Math.max(
+  1000,
+  Number.parseInt(process.env.WORKER_PENDING_WATCH_MS ?? "2000", 10) || 2000,
+);
+
+let pendingWatchTimer: ReturnType<typeof setInterval> | null = null;
+let pendingWatchInFlight = false;
+/** Set only by Admin → Stop. Blocks automatic restarts until Retry or Admin → Start. */
+let stoppedByAdmin = false;
+
+const ACTIVE_JOB_STATUSES = ["pending", "running"] as const;
 
 function isRunning(): boolean {
   return (
@@ -28,10 +43,19 @@ export function getWorkerStatus(): {
   };
 }
 
-export function ensureWorkerProcessRunning(): {
+export function ensureWorkerProcessRunning(options?: {
+  /** User Retry and Admin Start clear an admin stop and start the worker. */
+  overrideAdminStop?: boolean;
+}): {
   pid: number | null;
   started: boolean;
 } {
+  if (options?.overrideAdminStop) {
+    stoppedByAdmin = false;
+  } else if (stoppedByAdmin) {
+    return { pid: null, started: false };
+  }
+
   if (isRunning()) {
     return {
       pid: workerState.jobWorkerChild?.pid ?? null,
@@ -40,11 +64,63 @@ export function ensureWorkerProcessRunning(): {
   }
 
   try {
-    const { pid } = startWorkerProcess();
+    const { pid } = spawnWorkerProcess();
     return { pid, started: true };
   } catch {
     return { pid: null, started: false };
   }
+}
+
+async function hasActiveIngestJobs(): Promise<boolean> {
+  const [row] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(inArray(jobs.status, [...ACTIVE_JOB_STATUSES]))
+    .limit(1);
+
+  return row != null;
+}
+
+/**
+ * Start the worker when a job is pending or running.
+ * An admin stop blocks this until the user clicks Retry or the admin starts it.
+ */
+export async function ensureWorkerIfPendingJobs(): Promise<void> {
+  if (stoppedByAdmin || isRunning()) return;
+
+  const active = await hasActiveIngestJobs();
+  if (!active) return;
+
+  const { pid, started } = ensureWorkerProcessRunning();
+  if (started) {
+    workerManagerLog.info("Started worker because jobs are pending or running", {
+      pid,
+    });
+  }
+}
+
+/**
+ * Keep the worker running while jobs are pending or running.
+ * Does not restart a worker the admin stopped.
+ */
+export function startPendingJobWorkerWatch(): void {
+  if (pendingWatchTimer) return;
+
+  const tick = (): void => {
+    if (pendingWatchInFlight) return;
+    pendingWatchInFlight = true;
+    void ensureWorkerIfPendingJobs()
+      .catch((err) => {
+        workerManagerLog.warn("Pending-job worker check failed", { err });
+      })
+      .finally(() => {
+        pendingWatchInFlight = false;
+      });
+  };
+
+  tick();
+  pendingWatchTimer = setInterval(tick, PENDING_WATCH_MS);
+  pendingWatchTimer.unref();
 }
 
 /**
@@ -76,6 +152,11 @@ export async function requestWorkerServiceStart(): Promise<void> {
 }
 
 export function startWorkerProcess(): { pid: number } {
+  stoppedByAdmin = false;
+  return spawnWorkerProcess();
+}
+
+function spawnWorkerProcess(): { pid: number } {
   if (isRunning()) {
     return { pid: workerState.jobWorkerChild!.pid! };
   }
@@ -114,6 +195,7 @@ export function startWorkerProcess(): { pid: number } {
 }
 
 export function stopWorkerProcess(): void {
+  stoppedByAdmin = true;
   const child = workerState.jobWorkerChild;
   if (!child || child.killed) {
     workerState.jobWorkerEnabled = false;

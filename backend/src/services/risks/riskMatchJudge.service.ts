@@ -13,7 +13,14 @@ import type { CatalogRiskMatch } from "./riskCatalogMatch.service.js";
  * article on Haiku; disable with MATCH_JUDGE_ENABLED=false.
  */
 
-export const JUDGE_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
+// Catalog-match judge model (BUG-13). Overridable via BEDROCK_JUDGE_MODEL;
+// defaults to the current Haiku 4.5 id so behaviour is unchanged when unset.
+// NOTE for Asad: the plan listed this to read BEDROCK_DEFAULT_MODEL, but the
+// judge is a cost-sensitive Haiku call — coupling it to the extraction default
+// would silently switch it to a large model. Kept a judge-specific override.
+const LEGACY_JUDGE_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
+export const JUDGE_MODEL_ID =
+  process.env.BEDROCK_JUDGE_MODEL?.trim() || LEGACY_JUDGE_MODEL_ID;
 
 const MAX_CANDIDATES = 5;
 const MAX_OUTPUT_TOKENS = 1200;

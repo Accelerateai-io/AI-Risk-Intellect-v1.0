@@ -20,7 +20,15 @@ import {
   validateUrl,
   UrlFetchError,
 } from "../../utils/fetchUtils.js";
+import { parseArxivAbsId, resolveArxivSource } from "../../ingestion/arxiv.js";
 import { getJobRunSignal } from "../jobs/jobTimeout.service.js";
+import {
+  noteFeedStored,
+  noteFeedStoreStarted,
+  noteWebsiteExtractCompleted,
+  noteWebsiteExtractStarted,
+  noteWebsiteFetchStarted,
+} from "../jobs/jobPipelineTrace.js";
 
 export type ProcessUrlSuccess = {
   outcome: "done";
@@ -64,11 +72,47 @@ export async function processUrlToDb(
     return { outcome: "skipped", reason: excludedBeforeFetch };
   }
 
-  const fetched = await fetchPageContentDetailed(
-    url,
-    30_000,
-    getJobRunSignal(),
-  );
+  const signal = getJobRunSignal();
+  noteWebsiteFetchStarted();
+
+  // BUG-09: arxiv.org/abs pages are HTML, so fetching them ingests the abstract
+  // as if it were the paper. Rewrite to the version-less PDF and send it down
+  // the existing PDF path. Withdrawn sources (current PDF 404s, or the abstract
+  // page's submission history is marked withdrawn) are skipped (not ingested)
+  // with reason "Source withdrawn by authors" rather than falling back to an
+  // older version.
+  let fetched: Awaited<ReturnType<typeof fetchPageContentDetailed>>;
+  const arxivId = parseArxivAbsId(url);
+  if (arxivId) {
+    const resolution = await resolveArxivSource({
+      id: arxivId,
+      fetchAbsHtml: async (absUrl) => {
+        const r = await fetchPageContentDetailed(absUrl, 30_000, signal);
+        return r.ok && r.page.kind === "html"
+          ? { ok: true, html: r.page.html }
+          : { ok: false };
+      },
+      fetchPdf: async (pdfUrl) => {
+        const r = await fetchPageContentDetailed(pdfUrl, 30_000, signal);
+        if (r.ok && r.page.kind === "pdf") {
+          return { ok: true, bytes: r.page.bytes };
+        }
+        const statusMatch = !r.ok ? /HTTP (\d+)/.exec(r.reason) : null;
+        return { ok: false, status: statusMatch ? Number(statusMatch[1]) : 0 };
+      },
+    });
+    if (resolution.kind === "withdrawn") {
+      // Skipped (not ingested): the withdrawn paper is not stored as a valid
+      // source; the skip reason is "Source withdrawn by authors".
+      return { outcome: "skipped", reason: resolution.reason };
+    }
+    if (resolution.kind === "fetch_failed") {
+      return { outcome: "skipped", reason: resolution.reason };
+    }
+    fetched = { ok: true, page: { kind: "pdf", bytes: resolution.bytes, title: "" } };
+  } else {
+    fetched = await fetchPageContentDetailed(url, 30_000, signal);
+  }
   if (!fetched.ok) {
     return {
       outcome: "skipped",
@@ -86,6 +130,7 @@ export async function processUrlToDb(
     if (page.kind === "pdf") {
       let result;
       try {
+        noteWebsiteExtractStarted();
         result = await pythonIngestPdf(page.bytes, {
           url,
           title,
@@ -97,6 +142,8 @@ export async function processUrlToDb(
         }
         throw err;
       }
+
+      noteWebsiteExtractCompleted(result.text.trim().length);
 
       const excludedAfterExtract = getExcludedNonAiTopicSkipReason({
         url,
@@ -118,12 +165,14 @@ export async function processUrlToDb(
         };
       }
 
+      noteFeedStoreStarted();
       const article = await applyIngestToArticle(articleId, {
         text: result.text,
         html: null,
         url,
         title: result.title || title,
       });
+      noteFeedStored(result.text.trim().length);
 
       return {
         outcome: "done",
@@ -147,6 +196,7 @@ export async function processUrlToDb(
 
     let text: string;
     try {
+      noteWebsiteExtractStarted();
       const extracted = await pythonIngestHtml(html, {
         url,
         title: pageTitle,
@@ -159,6 +209,8 @@ export async function processUrlToDb(
       }
       throw err;
     }
+
+    noteWebsiteExtractCompleted(text.trim().length);
 
     const excludedAfterExtract = getExcludedNonAiTopicSkipReason({
       url,
@@ -192,12 +244,14 @@ export async function processUrlToDb(
       };
     }
 
+    noteFeedStoreStarted();
     const article = await applyIngestToArticle(articleId, {
       text,
       html,
       url,
       title: pageTitle || url,
     });
+    noteFeedStored(text.trim().length);
 
     return {
       outcome: "done",

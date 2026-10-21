@@ -68,10 +68,34 @@ describe("secondaryAlignmentScore", () => {
     );
   });
 
-  it("maps Technical/Performance Risk to Operational Risk as equivalent", () => {
+  // TC-42: Technical/Performance Risk (output-quality failures) is no longer
+  // equivalent to Operational Risk (workflow disruption); it is only related.
+  it("maps Technical/Performance Risk to Operational Risk as related, not equivalent (BUG-17, TC-42)", () => {
     assert.equal(
       secondaryAlignmentScore("Technical/Performance Risk", "Operational Risk"),
-      0.8,
+      0.4,
+    );
+  });
+
+  // TC-40: "Operational Risk" is now a first-class extraction secondary and
+  // matches the catalog's "Operational Risk" label exactly.
+  it("accepts Operational Risk as an extraction secondary matching the catalog (BUG-16, TC-40)", () => {
+    assert.ok(
+      (EXTRACTION_SECONDARY_RISKS as readonly string[]).includes(
+        "Operational Risk",
+      ),
+      "Operational Risk missing from EXTRACTION_SECONDARY_RISKS",
+    );
+    assert.equal(
+      secondaryAlignmentScore("Operational Risk", "Operational Risk"),
+      1,
+    );
+    assert.equal(
+      secondaryAlignmentScore(
+        "Operational Risk",
+        "Operational Risk; Compliance/Regulatory Risk",
+      ),
+      1,
     );
   });
 
@@ -162,11 +186,14 @@ describe("primaryAlignmentScore", () => {
 
 describe("taxonomyAlignmentScore", () => {
   it("weights secondary over primary (0.4/0.6)", () => {
+    // Privacy Risk is equivalent to the catalog's Data Risk (0.8); primary
+    // matches exactly (1.0). Uses an equivalent (not exact) secondary so the
+    // 0.4/0.6 weighting is visible.
     const score = taxonomyAlignmentScore({
       primaryRisk: "Technical Risks",
-      secondaryRisk: "Technical/Performance Risk",
+      secondaryRisk: "Privacy Risk",
       catalogPrimary: "Technical Risks",
-      catalogSecondary: "Operational Risk",
+      catalogSecondary: "Data Risk",
     });
     assert.equal(score, 0.4 * 1 + 0.6 * 0.8);
   });

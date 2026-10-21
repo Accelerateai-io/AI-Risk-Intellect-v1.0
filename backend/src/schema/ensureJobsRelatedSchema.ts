@@ -79,6 +79,21 @@ END $$`,
   `CREATE INDEX IF NOT EXISTS "jobs_batch_run_id_idx" ON "jobs" USING btree ("batch_run_id")`,
   `CREATE INDEX IF NOT EXISTS "batch_runs_status_idx" ON "batch_runs" USING btree ("status")`,
   `CREATE INDEX IF NOT EXISTS "batch_run_items_batch_run_id_idx" ON "batch_run_items" USING btree ("batch_run_id")`,
+  `CREATE TABLE IF NOT EXISTS "job_runtime_settings" (
+	"id" integer PRIMARY KEY NOT NULL,
+	"max_minutes" integer DEFAULT 5 NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+)`,
+  `INSERT INTO "job_runtime_settings" ("id", "max_minutes")
+VALUES (1, 5)
+ON CONFLICT ("id") DO NOTHING`,
+  `CREATE TABLE IF NOT EXISTS "worker_retry_targets" (
+	"job_id" integer PRIMARY KEY NOT NULL,
+	"url" varchar(2048) NOT NULL,
+	"model_name" varchar(128),
+	"model_label" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+)`,
 ];
 
 export async function ensureJobsRelatedSchema(pool: Pool): Promise<void> {

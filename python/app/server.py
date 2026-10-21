@@ -3,11 +3,32 @@
 from __future__ import annotations
 
 import base64
+import logging
 import os
 
 from app.env_bootstrap import bootstrap_env
 
 bootstrap_env()
+
+
+def _configure_terminal_logging() -> None:
+    """Show extraction progress in the Python terminal.
+
+    The airisk logger has no handler of its own, and uvicorn does not attach
+    one, so INFO lines were dropped while a job ran for minutes.
+    """
+    log = logging.getLogger("airisk")
+    log.setLevel(logging.INFO)
+    if not any(isinstance(handler, logging.StreamHandler) for handler in log.handlers):
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s [py] %(levelname)s %(message)s")
+        )
+        log.addHandler(handler)
+    log.propagate = False
+
+
+_configure_terminal_logging()
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse

@@ -13,7 +13,7 @@ export async function retryJobHandler(
   }
 
   const job = await retryJob(jobId);
-  const { pid } = ensureWorkerProcessRunning();
+  const { pid } = ensureWorkerProcessRunning({ overrideAdminStop: true });
 
   res.status(200).json({
     ok: true,

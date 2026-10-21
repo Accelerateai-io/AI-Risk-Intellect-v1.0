@@ -1,12 +1,13 @@
 import type { Request, Response } from "express";
 import { ZodError } from "zod";
 import { deleteJob, listJobs } from "../../services/jobs/jobs.service.js";
-import { executeJobById } from "../../services/jobs/retryJob.service.js";
+import { executeJobById, retrySelectedJobs } from "../../services/jobs/retryJob.service.js";
 import { markJobUrlDoNotExecute } from "../../services/jobs/urlExecutionBlocks.service.js";
 import { ensureWorkerProcessRunning } from "../../services/admin/workerManager.service.js";
 import {
   executeJobUrlSchema,
   listJobsQuerySchema,
+  retrySkippedSelectionSchema,
 } from "../../validators/jobs.validators.js";
 
 function executeErrorPayload(err: unknown): { status: number; message: string } {
@@ -75,6 +76,57 @@ export async function markJobDoNotExecuteHandler(
     ok: true,
     message: "This URL is marked do not execute. The LLM will not run for it.",
     job: result,
+  });
+}
+
+export async function retrySkippedJobsHandler(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const { jobIds } = retrySkippedSelectionSchema.parse(req.body ?? {});
+  const result = await retrySelectedJobs(jobIds);
+
+  if (result.retried > 0) {
+    try {
+      ensureWorkerProcessRunning({ overrideAdminStop: true });
+    } catch {
+      // Jobs are already pending; the worker can be started from Admin.
+    }
+  }
+
+  res.status(200).json(result);
+}
+
+export async function markSkippedJobsDoNotExecuteHandler(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const { jobIds } = retrySkippedSelectionSchema.parse(req.body ?? {});
+  let marked = 0;
+  let failed = 0;
+
+  for (const id of jobIds) {
+    try {
+      await markJobUrlDoNotExecute(id);
+      marked += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+
+  const message =
+    jobIds.length === 0
+      ? "Select at least one job."
+      : failed > 0
+        ? `Marked ${marked} selected job${marked === 1 ? "" : "s"} as do not execute. ${failed} could not be updated.`
+        : `Marked ${marked} selected job${marked === 1 ? "" : "s"} as do not execute. The LLM will not run for them.`;
+
+  res.status(200).json({
+    ok: failed === 0,
+    message,
+    marked,
+    failed,
+    total: jobIds.length,
   });
 }
 

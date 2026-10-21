@@ -25,8 +25,15 @@ import {
 } from "../risks/riskMatchJudge.service.js";
 import { recordObservabilityMetrics } from "../observability/observability.service.js";
 import {
+  notePythonResponded,
+  notePythonSendStarted,
+  noteRiskSaved,
+  noteRiskSaveStarted,
+} from "../jobs/jobPipelineTrace.js";
+import {
   DOMAIN_REVIEW_REASON,
   DUPLICATE_RISK_REVIEW_REASON,
+  evidenceReviewReasons,
   JUDGE_NO_MATCH_REVIEW_REASON,
   MISSING_JUSTIFICATION_REVIEW_REASON,
   NON_ENGLISH_REVIEW_REASON,
@@ -264,6 +271,13 @@ async function buildPersistedExtraction(input: {
     appendReviewReason(extractionJson, MISSING_JUSTIFICATION_REVIEW_REASON);
   }
 
+  // Evidence-discipline rules (BUG-01/02/03/04) ran in the Python extractor and
+  // attached review reasons under _meta.verification.review_reasons. Route the
+  // record to review and surface each reason to the reviewer.
+  for (const reason of evidenceReviewReasons(input.result.object)) {
+    appendReviewReason(extractionJson, reason);
+  }
+
   const sourceLanguage = await detectTextLanguage(input.articleText);
   if (sourceLanguage) {
     extractionJson.source_language = sourceLanguage;
@@ -415,6 +429,7 @@ export async function extractRiskForArticle(
   }
 
   try {
+    notePythonSendStarted();
     const result = await pythonExtractRisk({
       text,
       title: article.title ?? "",
@@ -423,6 +438,9 @@ export async function extractRiskForArticle(
         ? { modelId: options.modelId.trim() }
         : {}),
     });
+
+    notePythonResponded();
+    noteRiskSaveStarted();
 
     const resolvedModel = displayModelName(result.model);
     const modelKey = normalizeModelKey(resolvedModel);
@@ -474,6 +492,7 @@ export async function extractRiskForArticle(
         persisted.articleTitle,
       );
 
+      noteRiskSaved(existing.id);
       return {
         outcome: "done",
         riskId: existing.id,
@@ -524,6 +543,7 @@ export async function extractRiskForArticle(
         persisted.articleTitle,
       );
 
+      noteRiskSaved(existing.id);
       return {
         outcome: "done",
         riskId: existing.id,
@@ -564,6 +584,7 @@ export async function extractRiskForArticle(
       })
       .where(eq(articles.id, articleId));
 
+    noteRiskSaved(row!.id);
     return {
       outcome: "done",
       riskId: row!.id,

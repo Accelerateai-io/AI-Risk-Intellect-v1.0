@@ -1,6 +1,6 @@
 {
   "region": "us-east-1",
-  "updatedAt": "2026-08-27T12:14:40.209Z",
+  "updatedAt": "2026-10-21T12:44:38.450Z",
   "count": 10,
   "results": [
     {
@@ -197,36 +197,6 @@
       }
     },
     {
-      "profileName": "Global Anthropic Claude Haiku 4.5",
-      "profileType": "SYSTEM_DEFINED",
-      "inferenceProfileId": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
-      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/global.anthropic.claude-haiku-4-5-20251001-v1:0",
-      "foundationModelId": "anthropic.claude-haiku-4-5-20251001-v1:0",
-      "prompt": "Hi",
-      "testedAt": "2026-08-27T10:55:14.297Z",
-      "tests": [
-        {
-          "status": "working",
-          "identifierType": "inferenceProfileId",
-          "value": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
-          "prompt": "Hi",
-          "reply": "Hello! 👋 How can I help you today?",
-          "latencyMs": 2444,
-          "stopReason": "end_turn"
-        }
-      ],
-      "overallStatus": "working",
-      "workingTarget": {
-        "identifierType": "inferenceProfileId",
-        "value": "global.anthropic.claude-haiku-4-5-20251001-v1:0"
-      },
-      "workingReply": "Hello! 👋 How can I help you today?",
-      "summary": {
-        "working": 1,
-        "notWorking": 0
-      }
-    },
-    {
       "profileName": "Global Anthropic Claude Opus 4.7",
       "profileType": "SYSTEM_DEFINED",
       "inferenceProfileId": "global.anthropic.claude-opus-4-7",
@@ -324,6 +294,36 @@
         "value": "global.anthropic.claude-opus-4-6-v1"
       },
       "workingReply": "Hi there! How are you doing today? Is there anything I can help you with?",
+      "summary": {
+        "working": 1,
+        "notWorking": 0
+      }
+    },
+    {
+      "profileName": "Global Anthropic Claude Haiku 4.5",
+      "profileType": "SYSTEM_DEFINED",
+      "inferenceProfileId": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/global.anthropic.claude-haiku-4-5-20251001-v1:0",
+      "foundationModelId": "anthropic.claude-haiku-4-5-20251001-v1:0",
+      "prompt": "Hi",
+      "testedAt": "2026-10-21T12:44:38.449Z",
+      "tests": [
+        {
+          "status": "working",
+          "identifierType": "inferenceProfileId",
+          "value": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+          "prompt": "Hi",
+          "reply": "Hello! 👋 How can I help you today?",
+          "latencyMs": 1711,
+          "stopReason": "end_turn"
+        }
+      ],
+      "overallStatus": "working",
+      "workingTarget": {
+        "identifierType": "inferenceProfileId",
+        "value": "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+      },
+      "workingReply": "Hello! 👋 How can I help you today?",
       "summary": {
         "working": 1,
         "notWorking": 0

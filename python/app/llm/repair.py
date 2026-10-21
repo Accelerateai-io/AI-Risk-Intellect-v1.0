@@ -372,6 +372,64 @@ def _repair_against_schema(obj: dict, source_text: str) -> dict:
         else:
             risk["industry"] = "Technology & Software"
     
+    # Evidence-discipline fields required by the schema (BUG-01/02/03). Backfill
+    # conservative defaults so a model output that omits them still validates and
+    # is stored; the evidence rules may then add a review reason. The only
+    # permitted negative for mitigations is "not described in source".
+    _VALID_SOURCE_TYPES = {
+        "empirical_study", "position_paper", "survey",
+        "incident_report", "news", "vendor_doc",
+    }
+    _VALID_EVIDENCE_TYPES = {"demonstrated", "hypothesized", "mitigation_target"}
+    _VALID_PAPER_STANCES = {
+        "documents_problem", "proposes_mitigation", "evaluates_system",
+        "surveys", "not_applicable",
+    }
+    defaulted_fields: List[str] = []
+    if risk.get("source_type") not in _VALID_SOURCE_TYPES:
+        risk["source_type"] = "position_paper"
+        defaulted_fields.append("source_type")
+    if risk.get("evidence_type") not in _VALID_EVIDENCE_TYPES:
+        # Conservative default: treat unknown evidence as hypothesized.
+        risk["evidence_type"] = "hypothesized"
+        defaulted_fields.append("evidence_type")
+    if risk.get("paper_stance") not in _VALID_PAPER_STANCES:
+        risk["paper_stance"] = "documents_problem"
+        defaulted_fields.append("paper_stance")
+    if "demonstrated_finding" not in risk:
+        risk["demonstrated_finding"] = None
+        defaulted_fields.append("demonstrated_finding")
+    if "stated_implication" not in risk:
+        risk["stated_implication"] = None
+        defaulted_fields.append("stated_implication")
+    if "proposed_mitigation" not in risk:
+        risk["proposed_mitigation"] = None
+        defaulted_fields.append("proposed_mitigation")
+    mits = risk.get("mitigations_in_source")
+    if isinstance(mits, str):
+        mits = [mits]
+    cleaned_mits = [m for m in mits if isinstance(m, str) and m.strip()] if isinstance(mits, list) else []
+    if not cleaned_mits:
+        risk["mitigations_in_source"] = ["not described in source"]
+        defaulted_fields.append("mitigations_in_source")
+    else:
+        risk["mitigations_in_source"] = cleaned_mits
+
+    # Record which evidence fields were defaulted so the extraction path can
+    # route the record to review and skip the likelihood cap for a defaulted
+    # evidence_type (an artificial default must not silently lower a real score).
+    if defaulted_fields:
+        meta = obj.setdefault("_meta", {})
+        if not isinstance(meta, dict):
+            meta = {}
+            obj["_meta"] = meta
+        existing = meta.get("defaulted_fields") or []
+        if not isinstance(existing, list):
+            existing = []
+        meta["defaulted_fields"] = existing + [
+            f for f in defaulted_fields if f not in existing
+        ]
+
     # Controls with clamped scores
     fixed_controls: List[Dict] = []
     if isinstance(controls, list):

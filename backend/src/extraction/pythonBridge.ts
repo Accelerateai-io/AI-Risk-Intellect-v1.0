@@ -1,14 +1,21 @@
 import { spawn } from "node:child_process";
+import http from "node:http";
+import https from "node:https";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { signalWithJobTimeout } from "../services/jobs/jobTimeout.service.js";
+import {
+  activeAttemptSkipReason,
+  getActiveAttemptLimitMs,
+  getJobMaxRuntimeMs,
+  isAbortOrTimeoutError,
+  signalWithJobTimeout,
+} from "../services/jobs/jobTimeout.service.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../../..");
 const pythonRoot = path.join(repoRoot, "python");
 
 const DEFAULT_PYTHON_URL = "http://localhost:5006";
-const EXTRACT_TIMEOUT_MS = 5 * 60 * 1000;
 
 export type RiskExtractionObject = {
   risk?: {
@@ -125,6 +132,67 @@ export class StubExtractionError extends Error {
   }
 }
 
+function timeoutAbortError(): Error {
+  const err = new Error("The operation was aborted due to timeout");
+  err.name = "TimeoutError";
+  return err;
+}
+
+/**
+ * POST extraction with Node's HTTP client.
+ * Global fetch gives up after 5 minutes of silence, which is shorter than a
+ * 10–60 minute Controls limit and was reported as the service being down.
+ */
+function postExtraction(
+  url: string,
+  body: string,
+  signal: AbortSignal,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(timeoutAbortError());
+      return;
+    }
+
+    const target = new URL(url);
+    const transport = target.protocol === "https:" ? https : http;
+    const req = transport.request(
+      {
+        protocol: target.protocol,
+        hostname: target.hostname,
+        port: target.port,
+        path: `${target.pathname}${target.search}`,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => {
+          chunks.push(chunk);
+        });
+        res.on("end", () => {
+          signal.removeEventListener("abort", onAbort);
+          resolve(Buffer.concat(chunks).toString("utf8"));
+        });
+      },
+    );
+
+    const onAbort = () => {
+      req.destroy(timeoutAbortError());
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    req.on("error", (err) => {
+      signal.removeEventListener("abort", onAbort);
+      reject(err);
+    });
+    req.write(body);
+    req.end();
+  });
+}
+
 async function runExtractHttp(payload: {
   text: string;
   title: string;
@@ -132,12 +200,13 @@ async function runExtractHttp(payload: {
   modelId?: string;
 }): Promise<PythonExtractResult> {
   const base = pythonUrl();
-  let res: Response;
+  const limitMs = getActiveAttemptLimitMs() ?? (await getJobMaxRuntimeMs());
+  const signal = signalWithJobTimeout(limitMs);
+  let raw: string;
   try {
-    res = await fetch(`${base}/extract/risk`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    raw = await postExtraction(
+      `${base}/extract/risk`,
+      JSON.stringify({
         text: payload.text,
         title: payload.title,
         url: payload.url,
@@ -145,16 +214,16 @@ async function runExtractHttp(payload: {
           ? { modelId: payload.modelId.trim() }
           : {}),
       }),
-      signal: signalWithJobTimeout(EXTRACT_TIMEOUT_MS),
-    });
+      signal,
+    );
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    if (signal.aborted || isAbortOrTimeoutError(err)) {
+      throw new Error(activeAttemptSkipReason());
+    }
     throw new Error(
-      `Python extraction unreachable at ${base}. Start with npm run py:dev. ${msg}`,
+      `The extraction service could not be reached at ${base}.`,
     );
   }
-
-  const raw = await res.text();
   let parsed: ExtractResponse;
   try {
     parsed = JSON.parse(raw) as ExtractResponse;
@@ -165,12 +234,13 @@ async function runExtractHttp(payload: {
   return handleExtractResponse(parsed);
 }
 
-function runExtractCli(payload: {
+async function runExtractCli(payload: {
   text: string;
   title: string;
   url: string;
   modelId?: string;
 }): Promise<PythonExtractResult> {
+  const extractLimitMs = getActiveAttemptLimitMs() ?? (await getJobMaxRuntimeMs());
   return new Promise((resolve, reject) => {
     const py = pythonCommand();
     const child = spawn(py, ["-m", "app.extraction.cli"], {
@@ -204,10 +274,10 @@ function runExtractCli(payload: {
     );
     child.stdin.end();
 
-    const jobSignal = signalWithJobTimeout(EXTRACT_TIMEOUT_MS);
+    const jobSignal = signalWithJobTimeout(extractLimitMs);
     const onAbort = () => {
       child.kill("SIGTERM");
-      reject(new Error("Skipped because this URL took more than 5 minutes without finishing — it was taking too long."));
+      reject(new Error(activeAttemptSkipReason()));
     };
     if (jobSignal.aborted) {
       onAbort();

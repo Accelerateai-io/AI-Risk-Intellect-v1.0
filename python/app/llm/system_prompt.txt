@@ -53,15 +53,74 @@ DOMAINS (Choose EXACTLY ONE):
    Keywords: system failure, error, limitation, unintended consequences, transparency, robustness
    Description: System failures, lack of transparency, unintended consequences
 
-PRIMARY RISKS (Business Category):
-- "Technical Risks" - Keywords: system, performance, infrastructure, technical, reliability
-- "Operational Risks" - Keywords: compliance, regulatory, legal, governance, third-party
-- "Business Risks" - Keywords: financial, reputation, strategic, ethical, competitive
+=== PRIMARY AND SECONDARY CATEGORIES (AI-Q definitions) ===
 
-SECONDARY RISKS (must match primary):
-Technical: Security Risk, Privacy Risk, Technical/Performance Risk, Data Risk
-Operational: Compliance/Regulatory Risk, Legal/Liability Risk, Third-Party/Vendor Risk
-Business: Business/Financial Risk, Reputational Risk, Ethical Risk, Strategic Risk
+Pick ONE primary, then ONE secondary under it. Choose by the mechanism of harm, not by keywords.
+The example in brackets shows how the category looks in a research paper.
+
+Technical Risks: technical infrastructure, system performance, and technology reliability.
+- Security Risk: attacks on the model, pipeline, or system, or exposure of credentials, secrets, or architecture.
+  [A paper shows a prompt-injection attack that makes an agent leak its API keys.]
+- Privacy Risk: personal or protected data exposed, inferred, or processed without basis.
+  [A paper recovers training-set personal records from a model's outputs.]
+- Technical/Performance Risk: model output quality failures: hallucination, inaccuracy, inconsistency, regressions after an update.
+  [A benchmark shows accuracy falling 12% on inputs unlike the training data.]
+- Data Risk: confidential, stale, or poisoned data mishandled or relied on.
+  [A paper shows a few poisoned documents in a retrieval index change answers.]
+
+Operational Risks: day-to-day business operations, processes, and workflow dependencies.
+- Operational Risk: workflow disruption and process failure caused by the AI system.
+  [An incident report describes an AI scheduling tool outage halting hospital shift planning.]
+- Compliance/Regulatory Risk: AI-generated work or use that violates a regulation or required process.
+  [A study finds AI-drafted clinical notes omit fields a regulation requires.]
+- Legal/Liability Risk: legal exposure from AI output or AI-driven decisions.
+  [A case report on an AI-drafted contract clause later found unenforceable.]
+- Third-Party/Vendor Risk: dependency on an AI vendor's terms, pricing, availability, or changes.
+  [An analysis shows an API deprecation breaking downstream products with no notice.]
+
+Business Risks: strategic decisions, financial impact, and competitive positioning.
+- Business/Financial Risk: IP loss, productivity loss, or direct financial harm.
+  [A paper shows proprietary code can be extracted from a code assistant.]
+- Reputational Risk: brand and trust damage from AI output or behavior.
+  [A news report of a chatbot giving offensive answers to customers.]
+- Ethical Risk: bias, unfair treatment, or harm to groups.
+  [A study shows a hiring model ranks equally qualified women lower.]
+- Strategic Risk: long-term positioning harm, skill atrophy, or market and regulatory shifts.
+  [A survey finds teams relying on code assistants lose debugging skills over a year.]
+
+Technical/Performance Risk is not a default. Use it only when the harm is the quality of
+the model's output itself. A risk about workflow disruption is Operational Risk; a risk about
+attacks is Security Risk; a risk about groups treated unequally is Ethical Risk.
+
+=== EVIDENCE DISCIPLINE (read before extracting) ===
+
+Sources are research papers, news reports, incident reports and vendor documents.
+A record states only what the source supports. Four rules:
+
+1. Measured vs guessed. Decide evidence_type before writing anything else:
+   - "demonstrated": the source reports an observed result, experiment, or real incident.
+   - "hypothesized": the source suggests, warns, speculates, or lists a limitation it did not test.
+   - "mitigation_target": the risk is the problem the paper is trying to solve.
+   Write demonstrated results in the past tense with their setting ("In tests on 3 models, X dropped 3%").
+   Start speculation with "The authors suggest". Never turn "could" or "may" into "does".
+2. Silence is not absence. Never state that a safeguard, test, or control is missing
+   unless the source says so. If the source does not mention one, the only allowed
+   value is "not described in source".
+3. The solution is not the problem. If the paper proposes a method, defense, or tool,
+   the risk is the problem the paper documents. Record the method in proposed_mitigation.
+   Never attribute the problem to the proposed method.
+4. Severity follows evidence. If evidence_type is "hypothesized", likelihood is at most 2.
+   Every likelihood_reasoning and impact_reasoning sentence must contain a short phrase
+   copied word for word from the source.
+
+New fields (all required):
+- source_type: "empirical_study" | "position_paper" | "survey" | "incident_report" | "news" | "vendor_doc"
+- evidence_type: "demonstrated" | "hypothesized" | "mitigation_target"
+- demonstrated_finding: what the source measured or observed, or null
+- stated_implication: what the authors suggest could follow, or null
+- paper_stance: "documents_problem" | "proposes_mitigation" | "evaluates_system" | "surveys" | "not_applicable"
+- proposed_mitigation: the method the source proposes, or null
+- mitigations_in_source: list of safeguards the source describes, or ["not described in source"]
 
 === RISK EXTRACTION RULES ===
 
@@ -109,6 +168,14 @@ Magnitude: the scale of primary and secondary losses.
 3 = Moderate — meaningful harm: financial loss, privacy violation, or reputational damage
 4 = Major — serious harm at scale: large breach, discrimination affecting many, major outage
 5 = Severe — catastrophic: loss of life, critical-infrastructure failure, societal-scale harm
+
+=== LOW-END SCORING ANCHORS ===
+
+Low scores are correct when the evidence is limited. Use them.
+- Likelihood 1: a theoretical concern with no experiment and no incident.
+- Likelihood 2: shown only in a lab or simulated benchmark, or the authors call it an edge case.
+- Impact 1: a limitation in a research setting with no deployment and no affected people.
+- Impact 2: a small measured effect (for example a few percent accuracy) with no reported harm.
 
 LOSS CATEGORIES — list ALL that apply from FAIR's six forms of loss, based on
 the harms described or clearly implied in the article:
@@ -228,7 +295,14 @@ CRITICAL: Be honest in self-assessment. Lower scores help identify improvement a
     "sector": "Public|Private|Non-Profit",
     "industry": "string",
     "ai_product_name": "string or null",
-    "ai_product_vendor": "string or null"
+    "ai_product_vendor": "string or null",
+    "source_type": "empirical_study|position_paper|survey|incident_report|news|vendor_doc",
+    "evidence_type": "demonstrated|hypothesized|mitigation_target",
+    "demonstrated_finding": "string or null",
+    "stated_implication": "string or null",
+    "paper_stance": "documents_problem|proposes_mitigation|evaluates_system|surveys|not_applicable",
+    "proposed_mitigation": "string or null",
+    "mitigations_in_source": ["not described in source"]
   },
   "risk_scoring": {
     "likelihood": "integer 1-5 or null",

@@ -11,7 +11,7 @@ import {
   hasActiveIngestJobs,
   skipStaleRunningJobs,
 } from "../services/worker/jobWorker.service.js";
-import { abortActiveJobRun } from "../services/jobs/jobTimeout.service.js";
+import { activeWorkerRetryTargetIds } from "../services/jobs/workerRetryTargets.service.js";
 import { hasRunningBatchRun } from "../services/admin/batchRuns.service.js";
 import {
   assertPythonServiceReady,
@@ -27,8 +27,9 @@ const POLL_MS = Math.max(
 );
 
 const MANAGED_CHILD = process.env.BACKEND_MANAGED_CHILD === "1";
+/** Idle exit is off unless explicitly enabled. Admin Stop is what stops the worker. */
 const AUTO_STOP_WHEN_IDLE =
-  MANAGED_CHILD && process.env.WORKER_AUTO_STOP !== "0";
+  MANAGED_CHILD && process.env.WORKER_AUTO_STOP === "1";
 const IDLE_POLLS_BEFORE_STOP = Math.max(
   1,
   Number.parseInt(process.env.WORKER_IDLE_POLLS ?? "2", 10) || 2,
@@ -81,16 +82,42 @@ async function workerLoop(): Promise<void> {
   let watchdog: ReturnType<typeof setInterval> | null = null;
   try {
     let idlePolls = 0;
+    let scopedIdsKey = "";
     watchdog = setInterval(() => {
       void skipStaleRunningJobs().then((skipped) => {
-        if (skipped > 0) abortActiveJobRun();
+        if (skipped > 0) {
+          log.info(
+            "skipped %d job(s) that exceeded the execution-time limit",
+            skipped,
+          );
+        }
       });
     }, 10_000);
 
     while (!stopRequested && !stopController.signal.aborted) {
-      const ran = await runOneJob();
+      const onlyJobIds = await activeWorkerRetryTargetIds();
+      const nextScopeKey = onlyJobIds?.join(",") ?? "";
+      if (nextScopeKey !== scopedIdsKey) {
+        scopedIdsKey = nextScopeKey;
+        if (onlyJobIds) {
+          log.info(
+            "processing %d selected URL%s",
+            onlyJobIds.length,
+            onlyJobIds.length === 1 ? "" : "s",
+          );
+        }
+      }
+      const ran = onlyJobIds
+        ? await runOneJob(onlyJobIds)
+        : await runOneJob();
       if (ran) {
         idlePolls = 0;
+        continue;
+      }
+
+      if (onlyJobIds) {
+        idlePolls = 0;
+        await sleep(POLL_MS, stopController.signal);
         continue;
       }
 

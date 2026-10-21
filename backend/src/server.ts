@@ -6,6 +6,7 @@ import { env } from "./env.js";
 import { initDB } from "./database/db.js";
 import { httpLoggerMiddleware, logger } from "./logger/index.js";
 import { resumeActiveCronJobServices } from "./services/admin/cronJobs.service.js";
+import { startPendingJobWorkerWatch } from "./services/admin/workerManager.service.js";
 import { apiRouter } from "./routes/index.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.middleware.js";
 
@@ -87,6 +88,7 @@ app.use(errorHandler);
 try {
   await initDB();
   await resumeActiveCronJobServices();
+  startPendingJobWorkerWatch();
   app.listen(env.PORT, () => {
     logger.info("Server listening", { port: env.PORT });
   });

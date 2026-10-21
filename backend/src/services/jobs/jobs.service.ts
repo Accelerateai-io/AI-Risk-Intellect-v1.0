@@ -14,7 +14,6 @@ import {
   completedJobProcessingMs,
 } from "./jobProcessingTime.js";
 import { getDoNotExecuteBlocks } from "./urlExecutionBlocks.service.js";
-import { skipStaleRunningJobs } from "./jobTimeout.service.js";
 
 export type JobListItem = {
   id: number;
@@ -372,12 +371,6 @@ export async function listJobs(query: ListJobsQuery = DEFAULT_LIST_JOBS_QUERY): 
   metrics: JobListMetrics;
   pagination: JobListPagination;
 }> {
-  try {
-    await skipStaleRunningJobs();
-  } catch {
-    // Listing jobs should still succeed if the timeout skip cannot run.
-  }
-
   const { rows, filteredTotal } = await loadJobListRows(query);
 
   const articleIds = [...new Set(rows.map((row) => row.articleId).filter((id) => id > 0))];
@@ -532,6 +525,34 @@ export async function listJobs(query: ListJobsQuery = DEFAULT_LIST_JOBS_QUERY): 
       pageCount: Math.max(1, Math.ceil(filteredTotal / query.pageSize)),
     },
   };
+}
+
+/** Ids for skipped jobs matching the Jobs filters (status is always skipped). */
+export async function listSkippedJobIds(query: ListJobsQuery): Promise<number[]> {
+  const scoped: ListJobsQuery = {
+    ...query,
+    status: "skipped",
+    page: 0,
+    pageSize: 1,
+  };
+
+  async function selectIds(filters: SQL | undefined): Promise<number[]> {
+    const rows = await db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(filters)
+      .orderBy(desc(jobs.id));
+    return rows.map((row) => row.id);
+  }
+
+  try {
+    return await selectIds(buildJobFilters(scoped));
+  } catch (err) {
+    if (!isMissingJobsListSchemaError(err)) throw err;
+    return selectIds(
+      buildJobFilters(scoped, { includeExtendedSearch: false }),
+    );
+  }
 }
 
 export async function deleteJob(jobId: number): Promise<{ id: number }> {

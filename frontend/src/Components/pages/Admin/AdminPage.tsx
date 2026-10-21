@@ -45,6 +45,7 @@ import {
   type PendingAction,
   type ServiceKey,
 } from "./adminServices";
+// import { ExecutionTimeSection } from "./ExecutionTimeSection";
 import { ModelCompatibilityChecker } from "./ModelCompatibilityChecker";
 import { EXECUTE_JOB_SEARCH_PARAM } from "../../../utils/pendingUrlExecute";
 import "./adminPage.css";
@@ -76,6 +77,11 @@ export function AdminPage() {
   const [exportRisksPending, setExportRisksPending] = useState(false);
   const [exportArticlesPending, setExportArticlesPending] = useState(false);
   const [exportReviewPending, setExportReviewPending] = useState(false);
+  // useEffect(() => {
+  //   if (location.hash !== "#execution-time") return;
+  //   setTab("controls");
+  // }, [location.hash]);
+
   useEffect(() => {
     const activeTab = ADMIN_TABS.find((item) => item.key === tab);
     setDocumentPageTitle(activeTab?.label ?? "Controls");
@@ -596,6 +602,7 @@ export function AdminPage() {
           </section>
 
           <div className="settingsPage settingsPage__sections adminPage__settingsAbout">
+            {/* <ExecutionTimeSection /> */}
             <SettingsAboutSection />
           </div>
         </>

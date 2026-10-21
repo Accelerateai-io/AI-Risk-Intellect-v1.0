@@ -165,9 +165,11 @@ function jobExecutionMs(
   return 0;
 }
 
-const JOB_TIMEOUT_SKIP_MS = 5 * 60 * 1000;
-const JOB_TIMEOUT_SKIP_REASON =
-  "Skipped because this URL took more than 5 minutes without finishing — it was taking too long.";
+const TIMEOUT_SKIP_RE = /took more than \d+ minutes|execution-time interval/i;
+
+function timeoutSkipReason(_minutes: number): string {
+  return `This run is past the first 5 minutes. The next try allows 10 minutes, then 5 more minutes each time, up to 60. It is skipped only after the last try.`;
+}
 const DO_NOT_EXECUTE_DISPLAY_REASON =
   "This URL is marked do not execute. The LLM will not run for it.";
 
@@ -188,20 +190,21 @@ function buildSlowJobReasons(
     | "wordCount"
     | "doNotExecute"
   >,
+  timeoutMinutes: number,
 ): string[] {
   const status = row.status.toLowerCase();
   const error = row.errorMessage.trim();
 
-  if (status === "skipped" && /took more than 5 minutes/i.test(error)) {
+  if (status === "skipped" && TIMEOUT_SKIP_RE.test(error)) {
     return [error];
   }
 
   if (
     status === "running" &&
     row.executionMs != null &&
-    row.executionMs >= JOB_TIMEOUT_SKIP_MS
+    row.executionMs >= timeoutMinutes * 60_000
   ) {
-    return [JOB_TIMEOUT_SKIP_REASON];
+    return [timeoutSkipReason(timeoutMinutes)];
   }
 
   if (row.executionMs == null || row.executionMs <= SLOW_JOB_MS) return [];
@@ -250,7 +253,11 @@ function buildSlowJobReasons(
   }
 
   if (status === "error") {
-    if (/timeout/i.test(error)) {
+    if (/python extraction unreachable|npm run py:dev|ran longer than the execution time/i.test(error)) {
+      points.push(
+        "It was stopped because it ran longer than the execution time set in Controls.",
+      );
+    } else if (/timeout/i.test(error)) {
       points.push(
         "The source site timed out. Ingest waits up to 2 minutes for a response.",
       );
@@ -374,7 +381,7 @@ const JOB_STATUS_HELP_BY_KEY: Record<string, StatusHelpItem> = {
   skipped: {
     status: "Skipped",
     description:
-      "Finished without storing content (took more than 5 minutes, duplicate URL, fetch failed, bot protection, not AI-related, or do not execute).",
+      "Finished without storing content (did not finish after the execution-time retries, up to 60 minutes, or duplicate URL, fetch failed, bot protection, not AI-related, or do not execute).",
   },
   error: {
     status: "Error",
@@ -467,6 +474,61 @@ function StatusHelpIcon({
   );
 }
 
+function ExecutionTimeHelpIcon() {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const panelId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    const onClick = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onClick);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onClick);
+    };
+  }, [open]);
+
+  return (
+    <div ref={wrapRef} className="jobsPage__statusHelp">
+      <button
+        type="button"
+        className="jobsPage__statusHelpBtn"
+        aria-label="How execution time is limited"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Info size={14} strokeWidth={2} aria-hidden />
+      </button>
+      {open ? (
+        <div
+          id={panelId}
+          role="dialog"
+          aria-label="Execution time limit"
+          className="jobsPage__statusHelpPanel jobsPage__statusHelpPanel--below jobsPage__statusHelpPanel--execution"
+        >
+          <p className="jobsPage__statusHelpTitle">Execution time</p>
+          <p className="jobsPage__statusHelpDesc">
+            The first try is 5 minutes. If the URL does not finish, the next
+            try is 10 minutes, then 5 more minutes each time, up to 60. It does
+            not start at 1 minute. If it finishes on any try, it is marked
+            done. If it still has not finished after 60 minutes, it is skipped.
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 const JOB_ISSUE_DEFAULT_MESSAGE: Record<string, string> = {
   skipped:
     "This job finished without storing content or risks. No detailed reason was recorded.",
@@ -487,8 +549,12 @@ function formatJobIssueMessage(message: string): string {
     return DO_NOT_EXECUTE_DISPLAY_REASON;
   }
 
-  if (/took more than 5 minutes/i.test(trimmed)) {
+  if (TIMEOUT_SKIP_RE.test(trimmed)) {
     return trimmed;
+  }
+
+  if (/python extraction unreachable|npm run py:dev/i.test(trimmed)) {
+    return "Stopped because this URL ran longer than the execution time set in Controls.";
   }
 
   if (
@@ -593,7 +659,7 @@ function JobSlowReasonIcon({
   const { panelRef, pos } = useJobsTableTip(open, wrapRef, 352);
   const closeTimer = useRef(0);
   const isSkipReason = reasons.some((reason) =>
-    /took more than 5 minutes|do not execute/i.test(reason),
+    /took more than \d+ minutes|execution-time interval|do not execute/i.test(reason),
   );
 
   const cancelClose = useCallback(() => {
@@ -868,7 +934,7 @@ const EMPTY_PAGINATION: JobPagination = {
   pageCount: 1,
 };
 
-function normalizeJobsFromApi(raw: unknown): {
+function normalizeJobsFromApi(raw: unknown, timeoutMinutes = 5): {
   jobs: JobRow[];
   metrics: JobMetrics;
   pagination: JobPagination;
@@ -946,7 +1012,7 @@ function normalizeJobsFromApi(raw: unknown): {
     row.executed = formatJobExecutedDisplay(row);
     row.executionMs = jobExecutionMs(row);
     row.executionTime = formatDurationMs(row.executionMs);
-    row.slowReasons = buildSlowJobReasons(row);
+    row.slowReasons = buildSlowJobReasons(row, timeoutMinutes);
     return row;
   });
 
@@ -1005,6 +1071,10 @@ export function JobsPage() {
   const [executeTarget, setExecuteTarget] = useState<JobRow | null>(null);
   const [executing, setExecuting] = useState(false);
   const [executeMode, setExecuteMode] = useState<"assigned" | "other">("assigned");
+  const [skippedBulk, setSkippedBulk] = useState<null | "retry" | "block">(null);
+  const [skippedBulkBusy, setSkippedBulkBusy] = useState(false);
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<number>>(new Set());
+  const [executionLimitMinutes, setExecutionLimitMinutes] = useState(5);
   const [rows, setRows] = useState<JobRow[]>([]);
   const [metrics, setMetrics] = useState<JobMetrics>(EMPTY_METRICS);
   const [loadState, setLoadState] = useState<"idle" | "loading" | "error">(
@@ -1074,7 +1144,7 @@ export function JobsPage() {
         }
         return;
       }
-      const parsed = normalizeJobsFromApi(data);
+      const parsed = normalizeJobsFromApi(data, executionLimitMinutes);
       setRows(parsed.jobs);
       setMetrics(parsed.metrics);
       setJobPagination(parsed.pagination);
@@ -1088,11 +1158,48 @@ export function JobsPage() {
         toast.error("Network error while loading jobs.", { autoClose: 3000 });
       }
     }
-  }, [jobPage, jobPageSize, status, type, source, execution, debouncedSearch]);
+  }, [
+    jobPage,
+    jobPageSize,
+    status,
+    type,
+    source,
+    execution,
+    debouncedSearch,
+    executionLimitMinutes,
+  ]);
 
   useEffect(() => {
     setDocumentPageTitle("Jobs");
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await authFetch("/jobs/execution-time");
+        if (!res.ok) return;
+        const data = (await res.json()) as { minutes?: number };
+        if (
+          !cancelled &&
+          typeof data.minutes === "number" &&
+          data.minutes >= 5 &&
+          data.minutes <= 60
+        ) {
+          setExecutionLimitMinutes(data.minutes);
+        }
+      } catch {
+        // The column help falls back to the default 5-minute limit.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    setSelectedJobIds(new Set());
+  }, [status, type, source, execution, debouncedSearch]);
 
   useEffect(() => {
     void loadJobs();
@@ -1292,6 +1399,73 @@ export function JobsPage() {
     }
   }, [executeTarget, executing, executeMode, loadJobs, navigate]);
 
+  const handleSkippedBulk = useCallback(async () => {
+    if (!skippedBulk || skippedBulkBusy) return;
+    if (selectedJobIds.size === 0) return;
+    setSkippedBulkBusy(true);
+    const path =
+      skippedBulk === "retry"
+        ? "/jobs/bulk/retry-skipped"
+        : "/jobs/bulk/do-not-execute-skipped";
+    try {
+      const res = await authFetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobIds: [...selectedJobIds] }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        message?: string;
+        retried?: number;
+        blocked?: number;
+        failed?: number;
+        unassigned?: number;
+        error?: { message?: string };
+      };
+      if (!res.ok) {
+        toast.error(
+          readApiErrorMessage(
+            data,
+            skippedBulk === "retry"
+              ? "Could not retry the selected jobs."
+              : "Could not mark the selected jobs as do not execute.",
+          ),
+          { autoClose: 4000 },
+        );
+        return;
+      }
+      setSkippedBulk(null);
+      setSelectedJobIds(new Set());
+      const message = data.message ?? "Updated the selected jobs.";
+      if (
+        data.ok === false ||
+        (data.failed ?? 0) > 0 ||
+        (data.unassigned ?? 0) > 0
+      ) {
+        toast.error(message, { autoClose: 4000 });
+      } else if ((data.retried ?? 0) === 0 && (data.blocked ?? 0) > 0) {
+        toast.info(message, { autoClose: 4000 });
+      } else {
+        toast.success(message, { autoClose: 3000 });
+      }
+      await loadJobs();
+    } catch {
+      toast.error(
+        skippedBulk === "retry"
+          ? "Network error while retrying the selected jobs."
+          : "Network error while marking the selected jobs.",
+        { autoClose: 3000 },
+      );
+    } finally {
+      setSkippedBulkBusy(false);
+    }
+  }, [
+    skippedBulk,
+    skippedBulkBusy,
+    selectedJobIds,
+    loadJobs,
+  ]);
+
   const clearFilters = () => {
     setStatus("all");
     setType("all");
@@ -1313,6 +1487,12 @@ export function JobsPage() {
   // };
 
   const filterId = (name: string) => `${baseId}-${name}`;
+  const pageJobIds = rows.map((row) => row.id);
+  const allPageSelected =
+    pageJobIds.length > 0 && pageJobIds.every((id) => selectedJobIds.has(id));
+  const somePageSelected = pageJobIds.some((id) => selectedJobIds.has(id));
+  const selectedCount = selectedJobIds.size;
+  const showSelectionActions = status === "skipped" || selectedCount > 0;
 
   return (
     <main className="mainLayout__content jobsPage">
@@ -1460,6 +1640,73 @@ export function JobsPage() {
                 onClick={() => void handleMarkDoNotExecute(blockTarget)}
               >
                 {blocking ? "Saving…" : "Do not execute"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {skippedBulk ? (
+        <div
+          className="jobsPage__enqueueOverlay"
+          role="presentation"
+          onMouseDown={(ev) => {
+            if (ev.target === ev.currentTarget && !skippedBulkBusy)
+              setSkippedBulk(null);
+          }}
+        >
+          <div
+            className="jobsPage__enqueueDialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby={`${baseId}-skipped-bulk-title`}
+            aria-describedby={`${baseId}-skipped-bulk-desc`}
+          >
+            <div className="jobsPage__enqueueDialogHead">
+              <h2
+                id={`${baseId}-skipped-bulk-title`}
+                className="jobsPage__enqueueDialogTitle"
+              >
+                {skippedBulk === "retry"
+                  ? "Retry selected URLs?"
+                  : "Do not execute selected URLs?"}
+              </h2>
+            </div>
+            <div className="jobsPage__enqueueDialogBody">
+              <p
+                id={`${baseId}-skipped-bulk-desc`}
+                className="jobsPage__deleteConfirmText"
+              >
+                {skippedBulk === "retry"
+                  ? `Start the worker for ${selectedCount} selected URL${selectedCount === 1 ? "" : "s"}. Each URL is processed with the model assigned to it. URLs that are not selected are left unchanged.`
+                  : `Mark ${selectedCount} selected URL${selectedCount === 1 ? "" : "s"} as do not execute. The LLM will not run for them.`}
+              </p>
+            </div>
+            <div className="jobsPage__enqueueDialogActions">
+              <button
+                type="button"
+                className="jobsPage__enqueueBtn jobsPage__enqueueBtn--cancel"
+                disabled={skippedBulkBusy}
+                onClick={() => setSkippedBulk(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={
+                  skippedBulk === "retry"
+                    ? "jobsPage__enqueueBtn jobsPage__blockConfirmBtn"
+                    : "jobsPage__enqueueBtn jobsPage__deleteConfirmBtn"
+                }
+                disabled={skippedBulkBusy || selectedCount === 0}
+                aria-busy={skippedBulkBusy}
+                onClick={() => void handleSkippedBulk()}
+              >
+                {skippedBulkBusy
+                  ? "Saving…"
+                  : skippedBulk === "retry"
+                    ? "Retry"
+                    : "Do not execute"}
               </button>
             </div>
           </div>
@@ -1734,24 +1981,66 @@ export function JobsPage() {
         >
           <FilterX size={18} strokeWidth={2} aria-hidden />
         </button>
-        <div className="jobsPage__searchWrap">
-          <Search
-            className="jobsPage__searchIcon"
-            size={18}
-            strokeWidth={2}
-            aria-hidden
-          />
-          <input
-            id={filterId("search")}
-            type="search"
-            className="jobsPage__searchInput"
-            placeholder="Search URL, ID, status…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            autoComplete="off"
-            enterKeyHint="search"
-            aria-label="Search jobs"
-          />
+        <div className="jobsPage__searchRow">
+          {showSelectionActions ? (
+            <div
+              className="jobsPage__skippedActions"
+              role="group"
+              aria-label="Actions for selected jobs"
+            >
+              <button
+                type="button"
+                className="jobsPage__skippedAction jobsPage__skippedAction--retry"
+                disabled={
+                  skippedBulkBusy || loadState === "loading" || selectedCount === 0
+                }
+                aria-label={
+                  selectedCount > 0
+                    ? `Retry ${selectedCount} selected URLs`
+                    : "Retry selected URLs"
+                }
+                onClick={() => setSkippedBulk("retry")}
+              >
+                <RotateCw size={14} strokeWidth={2} aria-hidden />
+                Retry
+              </button>
+              <button
+                type="button"
+                className="jobsPage__skippedAction jobsPage__skippedAction--block"
+                disabled={
+                  skippedBulkBusy || loadState === "loading" || selectedCount === 0
+                }
+                aria-label={
+                  selectedCount > 0
+                    ? `Do not execute ${selectedCount} selected URLs`
+                    : "Do not execute selected URLs"
+                }
+                onClick={() => setSkippedBulk("block")}
+              >
+                <Ban size={14} strokeWidth={2} aria-hidden />
+                Do not execute
+              </button>
+            </div>
+          ) : null}
+          <div className="jobsPage__searchWrap">
+            <Search
+              className="jobsPage__searchIcon"
+              size={18}
+              strokeWidth={2}
+              aria-hidden
+            />
+            <input
+              id={filterId("search")}
+              type="search"
+              className="jobsPage__searchInput"
+              placeholder="Search URL, ID, status…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoComplete="off"
+              enterKeyHint="search"
+              aria-label="Search jobs"
+            />
+          </div>
         </div>
       </section>
 
@@ -1764,10 +2053,33 @@ export function JobsPage() {
             <table className="jobsPage__table">
             <thead>
               <tr>
-                <th scope="col" className="jobsPage__th jobsPage__th--left">
+                <th scope="col" className="jobsPage__th jobsPage__th--center jobsPage__th--select jobsPage__pin jobsPage__pin--check">
+                  <input
+                    type="checkbox"
+                    className="jobsPage__rowCheck"
+                    aria-label="Select all jobs on this page"
+                    checked={allPageSelected}
+                    disabled={pageJobIds.length === 0}
+                    ref={(el) => {
+                      if (el) el.indeterminate = somePageSelected && !allPageSelected;
+                    }}
+                    onChange={() => {
+                      setSelectedJobIds((prev) => {
+                        const next = new Set(prev);
+                        if (allPageSelected) {
+                          for (const id of pageJobIds) next.delete(id);
+                        } else {
+                          for (const id of pageJobIds) next.add(id);
+                        }
+                        return next;
+                      });
+                    }}
+                  />
+                </th>
+                <th scope="col" className="jobsPage__th jobsPage__th--left jobsPage__pin jobsPage__pin--id">
                   ID
                 </th>
-                <th scope="col" className="jobsPage__th jobsPage__th--left">
+                <th scope="col" className="jobsPage__th jobsPage__th--left jobsPage__pin jobsPage__pin--url">
                   URL
                 </th>
                 <th scope="col" className="jobsPage__th jobsPage__th--center">
@@ -1793,7 +2105,10 @@ export function JobsPage() {
                   INFO
                 </th>
                         <th scope="col" className="jobsPage__th jobsPage__th--left">
-                          EXECUTION TIME
+                          <span className="jobsPage__thWithHelp">
+                            EXECUTION TIME
+                            <ExecutionTimeHelpIcon />
+                          </span>
                         </th>
                 <th
                   scope="col"
@@ -1810,13 +2125,13 @@ export function JobsPage() {
             <tbody>
               {loadState === "loading" && rows.length === 0 ? (
                   <tr>
-                    <td className="jobsPage__td jobsPage__emptyCell" colSpan={11}>
+                    <td className="jobsPage__td jobsPage__emptyCell" colSpan={12}>
                       Loading jobs…
                     </td>
                   </tr>
                 ) : rows.length === 0 ? (
                   <tr>
-                    <td className="jobsPage__td jobsPage__emptyCell" colSpan={11}>
+                    <td className="jobsPage__td jobsPage__emptyCell" colSpan={12}>
                       {searchQuery.trim() ||
                       status !== "all" ||
                       type !== "all" ||
@@ -1835,14 +2150,31 @@ export function JobsPage() {
                       className={[
                         jobIsDoNotExecute(row) ? "jobsPage__row--blocked" : "",
                         highlightedJobId === row.id ? "jobsPage__row--focus" : "",
+                        selectedJobIds.has(row.id) ? "jobsPage__row--selected" : "",
                       ]
                         .filter(Boolean)
                         .join(" ") || undefined}
                     >
-                      <td className="jobsPage__td">
+                      <td className="jobsPage__td jobsPage__td--center jobsPage__td--select jobsPage__pin jobsPage__pin--check">
+                        <input
+                          type="checkbox"
+                          className="jobsPage__rowCheck"
+                          aria-label={`Select job #${row.id}`}
+                          checked={selectedJobIds.has(row.id)}
+                          onChange={() => {
+                            setSelectedJobIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(row.id)) next.delete(row.id);
+                              else next.add(row.id);
+                              return next;
+                            });
+                          }}
+                        />
+                      </td>
+                      <td className="jobsPage__td jobsPage__pin jobsPage__pin--id">
                         <span className="jobsPage__id">#{row.id}</span>
                       </td>
-                      <td className="jobsPage__td jobsPage__td--url">
+                      <td className="jobsPage__td jobsPage__td--url jobsPage__pin jobsPage__pin--url">
                         <div className="jobsPage__urlCell">
                           <a
                             href={row.url}

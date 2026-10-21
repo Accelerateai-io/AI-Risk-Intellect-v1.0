@@ -8,13 +8,28 @@ from pathlib import Path
 
 logger = logging.getLogger("airisk")
 
-DEFAULT_BEDROCK_MODEL = "us.anthropic.claude-3-sonnet-20240229-v1:0:200k"
+# Legacy default kept so behaviour is unchanged when BEDROCK_DEFAULT_MODEL is
+# unset. This id is outdated (Claude 3 Sonnet, 2024) — see PR question for Asad.
+_LEGACY_DEFAULT_BEDROCK_MODEL = "us.anthropic.claude-3-sonnet-20240229-v1:0:200k"
+
+
+def default_bedrock_model() -> str:
+    """Default Bedrock model id, overridable via BEDROCK_DEFAULT_MODEL (BUG-13).
+
+    Falls back to the legacy default when the env var is unset so existing
+    deployments behave exactly as before.
+    """
+    return os.getenv("BEDROCK_DEFAULT_MODEL", "").strip() or _LEGACY_DEFAULT_BEDROCK_MODEL
+
+
+# Import-time snapshot kept for modules that import the constant directly.
+DEFAULT_BEDROCK_MODEL = default_bedrock_model()
 
 
 def normalize_bedrock_model(model_id: str) -> str:
     trimmed = model_id.strip()
     if not trimmed:
-        return DEFAULT_BEDROCK_MODEL
+        return default_bedrock_model()
     return trimmed
 
 

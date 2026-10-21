@@ -1,8 +1,14 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import { batchRuns } from "../../schema/batchRuns/batchRuns.js";
 import { jobs } from "../../schema/jobs/jobs.js";
 import { HttpError } from "../../utils/httpError.js";
+import { resolveRunningBatchForJob } from "../admin/batchRuns.service.js";
 import { getLlmModelConfig } from "../admin/llmModelConfig.service.js";
+import {
+  insertWorkerRetryTargets,
+  removeWorkerRetryTargets,
+} from "./workerRetryTargets.service.js";
 import {
   clearUrlDoNotExecute,
   getUrlExecutionBlock,
@@ -386,4 +392,195 @@ export async function executeJobById(
   }
 
   return updated;
+}
+
+type SelectedJobRow = {
+  id: number;
+  url: string;
+  modelName: string | null;
+  modelLabel: string | null;
+  batchRunId: number | null;
+  ingestLinkItemId: number | null;
+};
+
+async function loadJobsForSelectedRetry(
+  jobIds: number[],
+): Promise<SelectedJobRow[]> {
+  if (jobIds.length === 0) return [];
+  return db
+    .select({
+      id: jobs.id,
+      url: jobs.url,
+      modelName: jobs.modelName,
+      modelLabel: jobs.modelLabel,
+      batchRunId: jobs.batchRunId,
+      ingestLinkItemId: jobs.ingestLinkItemId,
+    })
+    .from(jobs)
+    .where(inArray(jobs.id, jobIds));
+}
+
+/** Model already stored for this URL. Does not fall back to the live Controls model. */
+async function modelAssignedToJob(
+  job: SelectedJobRow,
+): Promise<{ modelName: string; modelLabel: string } | null> {
+  const own = job.modelName?.trim();
+  if (own) {
+    return { modelName: own, modelLabel: job.modelLabel?.trim() || own };
+  }
+
+  if (job.batchRunId != null) {
+    const [batch] = await db
+      .select({
+        modelName: batchRuns.modelName,
+        modelLabel: batchRuns.modelLabel,
+      })
+      .from(batchRuns)
+      .where(eq(batchRuns.id, job.batchRunId))
+      .limit(1);
+    const batchName = batch?.modelName?.trim();
+    if (batchName) {
+      return {
+        modelName: batchName,
+        modelLabel: batch?.modelLabel?.trim() || batchName,
+      };
+    }
+  }
+
+  try {
+    const block = await getUrlExecutionBlock(job.url);
+    const blockName = block?.modelName?.trim();
+    if (blockName) {
+      return {
+        modelName: blockName,
+        modelLabel: block?.modelLabel?.trim() || blockName,
+      };
+    }
+  } catch {
+    // A missing block table should not switch this URL to another model.
+  }
+
+  try {
+    const running = await resolveRunningBatchForJob({
+      ingestLinkItemId: job.ingestLinkItemId,
+      url: job.url,
+    });
+    const runningName = running?.modelName?.trim();
+    if (running && runningName) {
+      return {
+        modelName: runningName,
+        modelLabel: running.modelLabel?.trim() || runningName,
+      };
+    }
+  } catch {
+    // Batch lookup is optional; the job simply has no assigned model.
+  }
+
+  return null;
+}
+
+export type SelectedRetryResult = {
+  ok: boolean;
+  message: string;
+  retried: number;
+  blocked: number;
+  failed: number;
+  unassigned: number;
+  missing: number;
+  total: number;
+};
+
+/**
+ * Requeue only the selected jobs, each with the model assigned to that URL.
+ * Uses retryJob so the per-job retry checks stay the same.
+ */
+export async function retrySelectedJobs(
+  jobIds: number[],
+): Promise<SelectedRetryResult> {
+  const uniqueIds = [...new Set(jobIds)];
+  const loaded = await loadJobsForSelectedRetry(uniqueIds);
+  const byId = new Map(loaded.map((job) => [job.id, job]));
+
+  let blocked = 0;
+  let failed = 0;
+  let unassigned = 0;
+  let missing = 0;
+  let retried = 0;
+
+  const planned: Array<{
+    id: number;
+    url: string;
+    modelName: string;
+    modelLabel: string;
+  }> = [];
+
+  for (const id of uniqueIds) {
+    const job = byId.get(id);
+    if (!job) {
+      missing += 1;
+      continue;
+    }
+    const model = await modelAssignedToJob(job);
+    if (!model) {
+      unassigned += 1;
+      continue;
+    }
+    planned.push({
+      id: job.id,
+      url: job.url,
+      modelName: model.modelName,
+      modelLabel: model.modelLabel,
+    });
+  }
+
+  if (planned.length > 0) {
+    await insertWorkerRetryTargets(
+      planned.map((item) => ({
+        jobId: item.id,
+        url: item.url,
+        modelName: item.modelName,
+        modelLabel: item.modelLabel,
+      })),
+    );
+  }
+
+  for (const item of planned) {
+    try {
+      await retryJob(item.id, {
+        modelName: item.modelName,
+        modelLabel: item.modelLabel,
+      });
+      retried += 1;
+    } catch (err) {
+      await removeWorkerRetryTargets([item.id]);
+      const message = err instanceof Error ? err.message : String(err);
+      if (/do not execute/i.test(message)) blocked += 1;
+      else failed += 1;
+    }
+  }
+
+  const messageParts = [
+    retried > 0
+      ? `Requeued ${retried} selected URL${retried === 1 ? "" : "s"} with the model assigned to each URL.`
+      : "",
+    blocked > 0
+      ? `${blocked} stayed blocked because they are marked do not execute.`
+      : "",
+    unassigned > 0
+      ? `${unassigned} ${unassigned === 1 ? "was" : "were"} not retried because no model is assigned to that URL.`
+      : "",
+    failed > 0 ? `${failed} could not be retried.` : "",
+    missing > 0 ? `${missing} ${missing === 1 ? "was" : "were"} not found.` : "",
+  ].filter(Boolean);
+
+  return {
+    ok: failed === 0 && unassigned === 0 && missing === 0,
+    message: messageParts.join(" ") || "No selected URLs were retried.",
+    retried,
+    blocked,
+    failed,
+    unassigned,
+    missing,
+    total: uniqueIds.length,
+  };
 }

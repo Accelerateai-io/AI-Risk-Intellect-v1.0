@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { resolveSelectedReportRefs } from "../../services/admin/etlReportUploads.service.js";
 import { enqueueReportRefs } from "../../services/admin/reportsEnqueue.service.js";
 import { getServicesStatus } from "../../services/admin/discoveryManager.service.js";
-import { startWorkerProcess } from "../../services/admin/workerManager.service.js";
+import { ensureWorkerProcessRunning } from "../../services/admin/workerManager.service.js";
 import type { StartReportsRunInput } from "../../validators/admin.validators.js";
 
 export async function startReportsRunHandler(
@@ -34,7 +34,7 @@ export async function startReportsRunHandler(
   }
 
   const enqueued = await enqueueReportRefs(refs);
-  const { pid } = startWorkerProcess();
+  const { pid } = ensureWorkerProcessRunning();
 
   res.status(200).json({
     ok: true,

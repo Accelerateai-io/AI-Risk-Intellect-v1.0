@@ -1,8 +1,25 @@
 import { isDomainInTaxonomy } from "./riskCatalogMatch.service.js";
 
-/** Risks strictly below this unit score (0–1) require human review. */
+/** Default: risks strictly below this unit score (0–1) require human review. */
+const DEFAULT_REVIEW_QUALITY_THRESHOLD = 0.9;
 
-export const REVIEW_QUALITY_THRESHOLD = 0.9;
+/**
+ * Review quality threshold (0–1), read from REVIEW_QUALITY_THRESHOLD (BUG-06).
+ * Falls back to the default when unset or invalid (non-numeric / outside 0–1),
+ * so behaviour is unchanged unless the env var is explicitly set.
+ */
+export function reviewQualityThreshold(): number {
+  const raw = process.env.REVIEW_QUALITY_THRESHOLD?.trim();
+  if (!raw) return DEFAULT_REVIEW_QUALITY_THRESHOLD;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+    return DEFAULT_REVIEW_QUALITY_THRESHOLD;
+  }
+  return parsed;
+}
+
+/** Import-time snapshot of the default; prefer reviewQualityThreshold() at call time. */
+export const REVIEW_QUALITY_THRESHOLD = reviewQualityThreshold();
 
 
 
@@ -179,7 +196,7 @@ export function needsQualityReview(input: {
 
   if (unit == null) return true;
 
-  return unit < REVIEW_QUALITY_THRESHOLD;
+  return unit < reviewQualityThreshold();
 
 }
 
@@ -204,6 +221,87 @@ export const DOMAIN_REVIEW_REASON =
   "Extracted domain does not match any of the 7 risk taxonomy domains.";
 
 export const FALLBACK_REVIEW_REASON = "Requires human review.";
+
+export const EVIDENCE_REVIEW_REASON =
+  "Evidence-discipline checks flagged this record.";
+
+/**
+ * Review reasons attached by the Python evidence-discipline rules
+ * (BUG-01/02/03/04) under `extraction_json._meta.verification.review_reasons`.
+ * Returns a de-duplicated, trimmed list; empty when none are present.
+ */
+export function evidenceReviewReasons(extractionJson: unknown): string[] {
+  const ext = (extractionJson ?? {}) as {
+    _meta?: { verification?: { review_reasons?: unknown } };
+  };
+  const reasons = ext._meta?.verification?.review_reasons;
+  if (!Array.isArray(reasons)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of reasons) {
+    const r = String(raw ?? "").trim();
+    if (r && !seen.has(r)) {
+      seen.add(r);
+      out.push(r);
+    }
+  }
+  return out;
+}
+
+/** True when the Python evidence rules attached at least one review reason. */
+export function hasEvidenceReviewReasons(extractionJson: unknown): boolean {
+  return evidenceReviewReasons(extractionJson).length > 0;
+}
+
+const PLAIN_GROUNDING_REASONS: Array<{ test: RegExp; text: string }> = [
+  {
+    test: /uncited likelihood_reasoning/i,
+    text: "The likelihood explanation does not quote the article. It needs at least five words in a row copied from the source.",
+  },
+  {
+    test: /uncited impact_reasoning/i,
+    text: "The impact explanation does not quote the article. It needs at least five words in a row copied from the source.",
+  },
+  {
+    test: /likelihood capped/i,
+    text: "The article only speculates about this risk, so the likelihood was kept at 2 or lower.",
+  },
+  {
+    test: /evidence fields missing/i,
+    text: "Some evidence details were missing and were filled in automatically. Check the evidence type, the paper's stance, and the mitigations.",
+  },
+];
+
+/** Reviewer-facing sentence for one evidence-discipline reason. */
+export function plainGroundingReason(raw: string): string {
+  const trimmed = raw.trim();
+  for (const rule of PLAIN_GROUNDING_REASONS) {
+    if (rule.test.test(trimmed)) return rule.text;
+  }
+
+  const absence = trimmed.match(
+    /mitigation asserts absence from silence[\s\S]*\(got:\s*"([^"]*)"\)/i,
+  );
+  if (absence || /mitigation asserts absence/i.test(trimmed)) {
+    const quoted = absence?.[1]?.trim();
+    const what = quoted ? ` ("${quoted}")` : "";
+    return `A mitigation says a safeguard is missing${what}, but the article does not say that. Use "not described in source" unless the source states the safeguard is absent.`;
+  }
+
+  return trimmed.replace(/\s*\(BUG-\d+\s*\/\s*TC-\d+\)\s*/gi, " ").replace(/\s+/g, " ").trim();
+}
+
+function plainGroundingReasons(reasons: string[]): string {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const raw of reasons) {
+    const line = plainGroundingReason(raw);
+    if (!line || seen.has(line)) continue;
+    seen.add(line);
+    lines.push(line);
+  }
+  return lines.join("\n");
+}
 
 /** True when semantic dedup flagged this risk as a near-duplicate. */
 export function isDuplicateFlaggedRisk(extractionJson: unknown): boolean {
@@ -260,6 +358,8 @@ export function needsHumanReview(input: {
 
   if (isJudgeNoMatchRisk(input.extractionJson)) return true;
 
+  if (hasEvidenceReviewReasons(input.extractionJson)) return true;
+
   return needsQualityReview(input);
 
 }
@@ -301,6 +401,10 @@ export function resolveReviewWhy(input: {
   }
   if (isJudgeNoMatchRisk(input.extractionJson)) {
     return { label: "Catalog", reason: stored || JUDGE_NO_MATCH_REVIEW_REASON };
+  }
+  const evidenceReasons = evidenceReviewReasons(input.extractionJson);
+  if (evidenceReasons.length > 0) {
+    return { label: "Grounding", reason: plainGroundingReasons(evidenceReasons) };
   }
   if (needsQualityReview(input)) {
     return { label: "Quality", reason: stored || QUALITY_REVIEW_REASON };

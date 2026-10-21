@@ -9,6 +9,7 @@ const WHY_BRIEFS: Record<string, string> = {
   Quality: "Quality score is below 0.90, so it needs a human check.",
   Domain: "The extracted domain is not one of the 7 taxonomy domains.",
   Evidence: "The extraction had no taxonomy evidence (keywords or excerpts).",
+  Grounding: "A claim in this extraction is not supported by the source article.",
   Review: "This item needs a human check before it can go to Risks.",
 };
 

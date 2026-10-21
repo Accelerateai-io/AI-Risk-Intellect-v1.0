@@ -1,7 +1,7 @@
 {
   "region": "us-east-1",
-  "fetchedAt": "2026-09-29T10:23:10.921Z",
-  "count": 90,
+  "fetchedAt": "2026-10-21T15:59:22.227Z",
+  "count": 97,
   "profiles": [
     {
       "inferenceProfileName": "GLOBAL Amazon Nova 2 Lite",
@@ -88,6 +88,27 @@
       "foundationModelId": "anthropic.claude-haiku-4-5-20251001-v1:0"
     },
     {
+      "inferenceProfileName": "Global Anthropic Claude Haiku 5.5",
+      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/global.anthropic.claude-haiku-5-5",
+      "models": [
+        {
+          "modelArn": "arn:aws:bedrock:::foundation-model/anthropic.claude-haiku-5-5"
+        },
+        {
+          "modelArn": "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-haiku-5-5"
+        }
+      ],
+      "inferenceProfileId": "global.anthropic.claude-haiku-5-5",
+      "status": "ACTIVE",
+      "type": "SYSTEM_DEFINED",
+      "description": "Routes requests to Anthropic Claude Haiku 5.5 globally across all supported AWS Regions.",
+      "createdAt": "2026-10-06T23:50:14.449Z",
+      "updatedAt": "2026-10-07T17:31:44.583Z",
+      "profileType": "SYSTEM_DEFINED",
+      "modelId": "global.anthropic.claude-haiku-5-5",
+      "foundationModelId": "anthropic.claude-haiku-5-5"
+    },
+    {
       "inferenceProfileName": "GLOBAL Anthropic Claude Opus 4.5",
       "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/global.anthropic.claude-opus-4-5-20251101-v1:0",
       "models": [
@@ -124,7 +145,7 @@
       "type": "SYSTEM_DEFINED",
       "description": "Routes requests to Anthropic Claude Opus 4.6 globally across all supported AWS Regions.",
       "createdAt": "2026-02-03T19:06:46.193Z",
-      "updatedAt": "2026-08-30T00:15:59.599Z",
+      "updatedAt": "2026-10-13T18:39:44.942Z",
       "profileType": "SYSTEM_DEFINED",
       "modelId": "global.anthropic.claude-opus-4-6-v1",
       "foundationModelId": "anthropic.claude-opus-4-6-v1"
@@ -229,7 +250,7 @@
       "type": "SYSTEM_DEFINED",
       "description": "Routes requests to Anthropic Claude Sonnet 4.6 globally across all supported AWS Regions.",
       "createdAt": "2026-02-13T21:58:21.641Z",
-      "updatedAt": "2026-09-02T09:15:12.415Z",
+      "updatedAt": "2026-10-10T08:49:50.187Z",
       "profileType": "SYSTEM_DEFINED",
       "modelId": "global.anthropic.claude-sonnet-4-6",
       "foundationModelId": "anthropic.claude-sonnet-4-6"
@@ -271,31 +292,10 @@
       "type": "SYSTEM_DEFINED",
       "description": "Routes requests to Anthropic Claude Sonnet 5.5 globally across all supported AWS Regions.",
       "createdAt": "2026-09-28T05:08:47.965Z",
-      "updatedAt": "2026-09-29T02:36:34.575Z",
+      "updatedAt": "2026-10-09T02:42:21.636Z",
       "profileType": "SYSTEM_DEFINED",
       "modelId": "global.anthropic.claude-sonnet-5-5",
       "foundationModelId": "anthropic.claude-sonnet-5-5"
-    },
-    {
-      "inferenceProfileName": "Global Claude Sonnet 4",
-      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/global.anthropic.claude-sonnet-4-20250514-v1:0",
-      "models": [
-        {
-          "modelArn": "arn:aws:bedrock:::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0"
-        },
-        {
-          "modelArn": "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0"
-        }
-      ],
-      "inferenceProfileId": "global.anthropic.claude-sonnet-4-20250514-v1:0",
-      "status": "ACTIVE",
-      "type": "SYSTEM_DEFINED",
-      "description": "Routes requests to Claude Sonnet 4 globally across all supported AWS Regions.",
-      "createdAt": "2025-08-25T00:00:00.000Z",
-      "updatedAt": "2026-04-23T22:38:04.142Z",
-      "profileType": "SYSTEM_DEFINED",
-      "modelId": "global.anthropic.claude-sonnet-4-20250514-v1:0",
-      "foundationModelId": "anthropic.claude-sonnet-4-20250514-v1:0"
     },
     {
       "inferenceProfileName": "Global Claude Sonnet 4.5",
@@ -353,9 +353,9 @@
       "inferenceProfileId": "global.moonshotai.kimi-k3",
       "status": "ACTIVE",
       "type": "SYSTEM_DEFINED",
-      "description": "Routes requests to Kimi K3 globally across all supported AWS Regions.",
+      "description": "Routes requests to Moonshot AI Kimi K3 globally across all supported AWS Regions.",
       "createdAt": "2026-09-10T18:06:35.489Z",
-      "updatedAt": "2026-09-10T18:06:35.489Z",
+      "updatedAt": "2026-10-07T00:27:30.750Z",
       "profileType": "SYSTEM_DEFINED",
       "modelId": "global.moonshotai.kimi-k3",
       "foundationModelId": "moonshotai.kimi-k3"
@@ -416,9 +416,9 @@
       "inferenceProfileId": "global.openai.gpt-5.6-luna",
       "status": "ACTIVE",
       "type": "SYSTEM_DEFINED",
-      "description": "Routes requests to GPT-5.6 Luna globally across all supported AWS Regions.",
+      "description": "Routes requests to OpenAI GPT-5.6 Luna globally across all supported AWS Regions.",
       "createdAt": "2026-08-13T21:57:28.427Z",
-      "updatedAt": "2026-08-13T21:57:28.427Z",
+      "updatedAt": "2026-10-16T19:57:37.686Z",
       "profileType": "SYSTEM_DEFINED",
       "modelId": "global.openai.gpt-5.6-luna",
       "foundationModelId": "openai.gpt-5.6-luna"
@@ -500,9 +500,9 @@
       "inferenceProfileId": "global.openai.gpt-6-luna",
       "status": "ACTIVE",
       "type": "SYSTEM_DEFINED",
-      "description": "Routes requests to GPT-6 Luna globally across all supported AWS Regions.",
+      "description": "Routes requests to OpenAI GPT-6 Luna globally across all supported AWS Regions.",
       "createdAt": "2026-09-21T21:36:43.687Z",
-      "updatedAt": "2026-09-21T21:36:43.687Z",
+      "updatedAt": "2026-10-16T20:00:05.448Z",
       "profileType": "SYSTEM_DEFINED",
       "modelId": "global.openai.gpt-6-luna",
       "foundationModelId": "openai.gpt-6-luna"
@@ -529,6 +529,27 @@
       "foundationModelId": "openai.gpt-6-sol"
     },
     {
+      "inferenceProfileName": "Global OpenAI GPT-6.1 Sol",
+      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/global.openai.gpt-6.1-sol",
+      "models": [
+        {
+          "modelArn": "arn:aws:bedrock:::foundation-model/openai.gpt-6.1-sol"
+        },
+        {
+          "modelArn": "arn:aws:bedrock:us-east-1::foundation-model/openai.gpt-6.1-sol"
+        }
+      ],
+      "inferenceProfileId": "global.openai.gpt-6.1-sol",
+      "status": "ACTIVE",
+      "type": "SYSTEM_DEFINED",
+      "description": "Routes requests to GPT-6.1 Sol globally across all supported AWS Regions.",
+      "createdAt": "2026-09-29T01:51:12.066Z",
+      "updatedAt": "2026-09-29T01:51:12.066Z",
+      "profileType": "SYSTEM_DEFINED",
+      "modelId": "global.openai.gpt-6.1-sol",
+      "foundationModelId": "openai.gpt-6.1-sol"
+    },
+    {
       "inferenceProfileName": "GLOBAL TwelveLabs Pegasus v1.2",
       "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/global.twelvelabs.pegasus-1-2-v1:0",
       "models": [
@@ -548,6 +569,27 @@
       "profileType": "SYSTEM_DEFINED",
       "modelId": "global.twelvelabs.pegasus-1-2-v1:0",
       "foundationModelId": "twelvelabs.pegasus-1-2-v1:0"
+    },
+    {
+      "inferenceProfileName": "Global TwelveLabs Pegasus v1.5",
+      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/global.twelvelabs.pegasus-1-5-v1:0",
+      "models": [
+        {
+          "modelArn": "arn:aws:bedrock:::foundation-model/twelvelabs.pegasus-1-5-v1:0"
+        },
+        {
+          "modelArn": "arn:aws:bedrock:us-east-1::foundation-model/twelvelabs.pegasus-1-5-v1:0"
+        }
+      ],
+      "inferenceProfileId": "global.twelvelabs.pegasus-1-5-v1:0",
+      "status": "ACTIVE",
+      "type": "SYSTEM_DEFINED",
+      "description": "Routes requests to Pegasus v1.5 globally across all supported AWS Regions.",
+      "createdAt": "2026-09-17T20:05:34.172Z",
+      "updatedAt": "2026-09-17T20:05:34.172Z",
+      "profileType": "SYSTEM_DEFINED",
+      "modelId": "global.twelvelabs.pegasus-1-5-v1:0",
+      "foundationModelId": "twelvelabs.pegasus-1-5-v1:0"
     },
     {
       "inferenceProfileName": "Global xAI Grok 4.6",
@@ -590,6 +632,27 @@
       "profileType": "SYSTEM_DEFINED",
       "modelId": "global.xai.grok-4.7",
       "foundationModelId": "xai.grok-4.7"
+    },
+    {
+      "inferenceProfileName": "Global Z.AI GLM 5.3",
+      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/global.zai.glm-5.3",
+      "models": [
+        {
+          "modelArn": "arn:aws:bedrock:::foundation-model/zai.glm-5.3"
+        },
+        {
+          "modelArn": "arn:aws:bedrock:us-east-1::foundation-model/zai.glm-5.3"
+        }
+      ],
+      "inferenceProfileId": "global.zai.glm-5.3",
+      "status": "ACTIVE",
+      "type": "SYSTEM_DEFINED",
+      "description": "Routes requests to GLM 5.3 globally across all supported AWS Regions.",
+      "createdAt": "2026-09-29T02:10:15.781Z",
+      "updatedAt": "2026-09-29T02:10:15.781Z",
+      "profileType": "SYSTEM_DEFINED",
+      "modelId": "global.zai.glm-5.3",
+      "foundationModelId": "zai.glm-5.3"
     },
     {
       "inferenceProfileName": "US Amazon Nova 2 Lite",
@@ -730,6 +793,30 @@
       "foundationModelId": "anthropic.claude-haiku-4-5-20251001-v1:0"
     },
     {
+      "inferenceProfileName": "US Anthropic Claude Haiku 5.5",
+      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/us.anthropic.claude-haiku-5-5",
+      "models": [
+        {
+          "modelArn": "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-haiku-5-5"
+        },
+        {
+          "modelArn": "arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-haiku-5-5"
+        },
+        {
+          "modelArn": "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-haiku-5-5"
+        }
+      ],
+      "inferenceProfileId": "us.anthropic.claude-haiku-5-5",
+      "status": "ACTIVE",
+      "type": "SYSTEM_DEFINED",
+      "description": "Routes requests to Anthropic Claude Haiku 5.5 in us-east-1, us-east-2 and us-west-2.",
+      "createdAt": "2026-10-07T05:04:19.621Z",
+      "updatedAt": "2026-10-07T17:31:40.522Z",
+      "profileType": "SYSTEM_DEFINED",
+      "modelId": "us.anthropic.claude-haiku-5-5",
+      "foundationModelId": "anthropic.claude-haiku-5-5"
+    },
+    {
       "inferenceProfileName": "US Anthropic Claude Opus 4.5",
       "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/us.anthropic.claude-opus-4-5-20251101-v1:0",
       "models": [
@@ -772,7 +859,7 @@
       "type": "SYSTEM_DEFINED",
       "description": "Routes requests to Anthropic Claude Opus 4.6 in us-east-1, us-east-2 and us-west-2.",
       "createdAt": "2026-02-03T19:06:45.925Z",
-      "updatedAt": "2026-08-30T00:15:35.467Z",
+      "updatedAt": "2026-10-13T18:38:59.724Z",
       "profileType": "SYSTEM_DEFINED",
       "modelId": "us.anthropic.claude-opus-4-6-v1",
       "foundationModelId": "anthropic.claude-opus-4-6-v1"
@@ -916,7 +1003,7 @@
       "type": "SYSTEM_DEFINED",
       "description": "Routes requests to Anthropic Claude Sonnet 4.6 in us-east-1, us-east-2 and us-west-2.",
       "createdAt": "2026-02-13T21:58:21.393Z",
-      "updatedAt": "2026-09-28T23:40:28.714Z",
+      "updatedAt": "2026-10-10T16:14:27.343Z",
       "profileType": "SYSTEM_DEFINED",
       "modelId": "us.anthropic.claude-sonnet-4-6",
       "foundationModelId": "anthropic.claude-sonnet-4-6"
@@ -946,6 +1033,30 @@
       "foundationModelId": "anthropic.claude-sonnet-5"
     },
     {
+      "inferenceProfileName": "US Anthropic Claude Sonnet 5.5",
+      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/us.anthropic.claude-sonnet-5-5",
+      "models": [
+        {
+          "modelArn": "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-5-5"
+        },
+        {
+          "modelArn": "arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-sonnet-5-5"
+        },
+        {
+          "modelArn": "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-sonnet-5-5"
+        }
+      ],
+      "inferenceProfileId": "us.anthropic.claude-sonnet-5-5",
+      "status": "ACTIVE",
+      "type": "SYSTEM_DEFINED",
+      "description": "Routes requests to Claude Sonnet 5.5 in us-east-1, us-east-2, us-west-2.",
+      "createdAt": "2026-10-01T01:59:42.512Z",
+      "updatedAt": "2026-10-01T01:59:42.512Z",
+      "profileType": "SYSTEM_DEFINED",
+      "modelId": "us.anthropic.claude-sonnet-5-5",
+      "foundationModelId": "anthropic.claude-sonnet-5-5"
+    },
+    {
       "inferenceProfileName": "US Claude Opus 4.1",
       "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/us.anthropic.claude-opus-4-1-20250805-v1:0",
       "models": [
@@ -968,30 +1079,6 @@
       "profileType": "SYSTEM_DEFINED",
       "modelId": "us.anthropic.claude-opus-4-1-20250805-v1:0",
       "foundationModelId": "anthropic.claude-opus-4-1-20250805-v1:0"
-    },
-    {
-      "inferenceProfileName": "US Claude Sonnet 4",
-      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/us.anthropic.claude-sonnet-4-20250514-v1:0",
-      "models": [
-        {
-          "modelArn": "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0"
-        },
-        {
-          "modelArn": "arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0"
-        },
-        {
-          "modelArn": "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0"
-        }
-      ],
-      "inferenceProfileId": "us.anthropic.claude-sonnet-4-20250514-v1:0",
-      "status": "ACTIVE",
-      "type": "SYSTEM_DEFINED",
-      "description": "Routes requests to Claude Sonnet 4 in us-east-1, us-east-2 and us-west-2.",
-      "createdAt": "2025-05-20T00:00:00.000Z",
-      "updatedAt": "2026-04-23T22:35:33.667Z",
-      "profileType": "SYSTEM_DEFINED",
-      "modelId": "us.anthropic.claude-sonnet-4-20250514-v1:0",
-      "foundationModelId": "anthropic.claude-sonnet-4-20250514-v1:0"
     },
     {
       "inferenceProfileName": "US Cohere Embed v4",
@@ -1286,9 +1373,9 @@
       "inferenceProfileId": "us.moonshotai.kimi-k3",
       "status": "ACTIVE",
       "type": "SYSTEM_DEFINED",
-      "description": "Routes requests to Kimi K3 in us-east-1, us-east-2, us-west-2.",
+      "description": "Routes requests to Moonshot AI Kimi K3 in us-east-1, us-east-2 and us-west-2.",
       "createdAt": "2026-09-17T23:05:43.666Z",
-      "updatedAt": "2026-09-17T23:05:43.666Z",
+      "updatedAt": "2026-10-07T00:27:33.771Z",
       "profileType": "SYSTEM_DEFINED",
       "modelId": "us.moonshotai.kimi-k3",
       "foundationModelId": "moonshotai.kimi-k3"
@@ -1312,7 +1399,7 @@
       "type": "SYSTEM_DEFINED",
       "description": "Routes requests to Nova Lite in us-east-1, us-west-2 and us-east-2.",
       "createdAt": "2024-11-29T13:23:00.000Z",
-      "updatedAt": "2026-05-19T14:56:51.315Z",
+      "updatedAt": "2026-09-29T22:45:25.435Z",
       "profileType": "SYSTEM_DEFINED",
       "modelId": "us.amazon.nova-lite-v1:0",
       "foundationModelId": "amazon.nova-lite-v1:0"
@@ -1382,9 +1469,9 @@
       "inferenceProfileId": "us.amazon.nova-pro-v1:0",
       "status": "ACTIVE",
       "type": "SYSTEM_DEFINED",
-      "description": "Routes requests to Nova Pro in us-east-1, us-west-2 and us-east-2.",
+      "description": "Routes requests to Nova Pro in us-west-2, us-east-2 and us-east-1.",
       "createdAt": "2024-11-29T13:23:00.000Z",
-      "updatedAt": "2026-07-13T18:38:04.578Z",
+      "updatedAt": "2026-09-30T18:46:03.789Z",
       "profileType": "SYSTEM_DEFINED",
       "modelId": "us.amazon.nova-pro-v1:0",
       "foundationModelId": "amazon.nova-pro-v1:0"
@@ -1454,9 +1541,9 @@
       "inferenceProfileId": "us.openai.gpt-5.6-luna",
       "status": "ACTIVE",
       "type": "SYSTEM_DEFINED",
-      "description": "Routes requests to GPT-5.6 Luna in us-east-1, us-east-2, us-west-2.",
+      "description": "Routes requests to OpenAI GPT-5.6 Luna in us-east-1, us-east-2 and us-west-2.",
       "createdAt": "2026-08-13T21:57:28.295Z",
-      "updatedAt": "2026-08-13T21:57:28.295Z",
+      "updatedAt": "2026-10-16T19:57:40.805Z",
       "profileType": "SYSTEM_DEFINED",
       "modelId": "us.openai.gpt-5.6-luna",
       "foundationModelId": "openai.gpt-5.6-luna"
@@ -1550,9 +1637,9 @@
       "inferenceProfileId": "us.openai.gpt-6-luna",
       "status": "ACTIVE",
       "type": "SYSTEM_DEFINED",
-      "description": "Routes requests to GPT-6 Luna in us-east-1, us-east-2, us-west-2.",
+      "description": "Routes requests to OpenAI GPT-6 Luna in us-east-1, us-east-2 and us-west-2.",
       "createdAt": "2026-09-22T18:15:28.312Z",
-      "updatedAt": "2026-09-22T18:15:28.312Z",
+      "updatedAt": "2026-10-16T20:00:07.975Z",
       "profileType": "SYSTEM_DEFINED",
       "modelId": "us.openai.gpt-6-luna",
       "foundationModelId": "openai.gpt-6-luna"
@@ -1580,6 +1667,30 @@
       "profileType": "SYSTEM_DEFINED",
       "modelId": "us.openai.gpt-6-sol",
       "foundationModelId": "openai.gpt-6-sol"
+    },
+    {
+      "inferenceProfileName": "US OpenAI GPT-6.1 Sol",
+      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/us.openai.gpt-6.1-sol",
+      "models": [
+        {
+          "modelArn": "arn:aws:bedrock:us-east-1::foundation-model/openai.gpt-6.1-sol"
+        },
+        {
+          "modelArn": "arn:aws:bedrock:us-east-2::foundation-model/openai.gpt-6.1-sol"
+        },
+        {
+          "modelArn": "arn:aws:bedrock:us-west-2::foundation-model/openai.gpt-6.1-sol"
+        }
+      ],
+      "inferenceProfileId": "us.openai.gpt-6.1-sol",
+      "status": "ACTIVE",
+      "type": "SYSTEM_DEFINED",
+      "description": "Routes requests to GPT-6.1 Sol in us-east-1, us-east-2, us-west-2.",
+      "createdAt": "2026-09-29T19:44:47.161Z",
+      "updatedAt": "2026-09-29T19:44:47.161Z",
+      "profileType": "SYSTEM_DEFINED",
+      "modelId": "us.openai.gpt-6.1-sol",
+      "foundationModelId": "openai.gpt-6.1-sol"
     },
     {
       "inferenceProfileName": "US Pegasus v1.2",
@@ -1972,6 +2083,30 @@
       "foundationModelId": "twelvelabs.marengo-embed-2-7-v1:0"
     },
     {
+      "inferenceProfileName": "US TwelveLabs Pegasus v1.5",
+      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/us.twelvelabs.pegasus-1-5-v1:0",
+      "models": [
+        {
+          "modelArn": "arn:aws:bedrock:us-east-1::foundation-model/twelvelabs.pegasus-1-5-v1:0"
+        },
+        {
+          "modelArn": "arn:aws:bedrock:us-east-2::foundation-model/twelvelabs.pegasus-1-5-v1:0"
+        },
+        {
+          "modelArn": "arn:aws:bedrock:us-west-2::foundation-model/twelvelabs.pegasus-1-5-v1:0"
+        }
+      ],
+      "inferenceProfileId": "us.twelvelabs.pegasus-1-5-v1:0",
+      "status": "ACTIVE",
+      "type": "SYSTEM_DEFINED",
+      "description": "Routes requests to Pegasus v1.5 in us-east-1, us-east-2, us-west-2.",
+      "createdAt": "2026-09-17T20:05:34.345Z",
+      "updatedAt": "2026-09-17T20:05:34.345Z",
+      "profileType": "SYSTEM_DEFINED",
+      "modelId": "us.twelvelabs.pegasus-1-5-v1:0",
+      "foundationModelId": "twelvelabs.pegasus-1-5-v1:0"
+    },
+    {
       "inferenceProfileName": "US Writer Palmyra X4",
       "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/us.writer.palmyra-x4-v1:0",
       "models": [
@@ -2066,6 +2201,30 @@
       "profileType": "SYSTEM_DEFINED",
       "modelId": "us.xai.grok-4.7",
       "foundationModelId": "xai.grok-4.7"
+    },
+    {
+      "inferenceProfileName": "US Z.AI GLM 5.3",
+      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/us.zai.glm-5.3",
+      "models": [
+        {
+          "modelArn": "arn:aws:bedrock:us-east-1::foundation-model/zai.glm-5.3"
+        },
+        {
+          "modelArn": "arn:aws:bedrock:us-east-2::foundation-model/zai.glm-5.3"
+        },
+        {
+          "modelArn": "arn:aws:bedrock:us-west-2::foundation-model/zai.glm-5.3"
+        }
+      ],
+      "inferenceProfileId": "us.zai.glm-5.3",
+      "status": "ACTIVE",
+      "type": "SYSTEM_DEFINED",
+      "description": "Routes requests to GLM 5.3 in us-east-1, us-east-2, us-west-2.",
+      "createdAt": "2026-09-29T02:10:15.694Z",
+      "updatedAt": "2026-09-29T02:10:15.694Z",
+      "profileType": "SYSTEM_DEFINED",
+      "modelId": "us.zai.glm-5.3",
+      "foundationModelId": "zai.glm-5.3"
     }
   ]
 }

@@ -74,6 +74,8 @@ import {
   exportReviewHandler,
   exportRisksHandler,
 } from "../controllers/admin/dataManagement.controller.js";
+import { setJobExecutionTimeHandler } from "../controllers/jobs/jobRuntimeSettings.controller.js";
+import { setJobExecutionTimeSchema } from "../validators/jobs.validators.js";
 
 
 export const adminRouter: Router = Router();
@@ -82,6 +84,13 @@ adminRouter.get(
   "/services/status",
   requireAuth,
   asyncHandler(getServicesStatusHandler),
+);
+
+adminRouter.put(
+  "/execution-time",
+  requireAuth,
+  validate(setJobExecutionTimeSchema),
+  asyncHandler(setJobExecutionTimeHandler),
 );
 
 adminRouter.get(

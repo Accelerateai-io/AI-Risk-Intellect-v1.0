@@ -17,6 +17,7 @@ export const EXTRACTION_SECONDARY_RISKS = [
   "Compliance/Regulatory Risk",
   "Legal/Liability Risk",
   "Third-Party/Vendor Risk",
+  "Operational Risk",
   "Business/Financial Risk",
   "Reputational Risk",
   "Ethical Risk",
@@ -41,11 +42,15 @@ export const SECONDARY_RISK_MAP: Record<ExtractionSecondaryRisk, SecondaryEquiva
     equivalent: ["Privacy Risk", "Data Risk"],
     related: ["Security Risk", "Compliance/Regulatory Risk"],
   },
-  // The catalog has no "Technical/Performance Risk" label; its closest class
-  // is "Operational Risk", with security/data failures as adjacent classes.
+  // The catalog has no "Technical/Performance Risk" label, so it is equivalent
+  // only to itself (an exact catalog match still scores 1.0 via the label
+  // comparison in secondaryAlignmentScore). The AI-Q doc defines it as output
+  // quality failures, distinct from "Operational Risk" (workflow disruption):
+  // Operational Risk is therefore only a related class (0.4), not equivalent
+  // (BUG-17). Security/data failures remain adjacent.
   "Technical/Performance Risk": {
-    equivalent: ["Operational Risk"],
-    related: ["Security Risk", "Data Risk"],
+    equivalent: [],
+    related: ["Operational Risk", "Security Risk", "Data Risk"],
   },
   "Data Risk": {
     equivalent: ["Data Risk"],
@@ -62,6 +67,13 @@ export const SECONDARY_RISK_MAP: Record<ExtractionSecondaryRisk, SecondaryEquiva
   "Third-Party/Vendor Risk": {
     equivalent: ["Third-Party/Vendor Risk"],
     related: ["Operational Risk", "Security Risk"],
+  },
+  // Workflow-disruption risks (BUG-16). The catalog has an "Operational Risk"
+  // label, so this is an exact/equivalent match; compliance and vendor failures
+  // are adjacent operational classes.
+  "Operational Risk": {
+    equivalent: ["Operational Risk"],
+    related: ["Compliance/Regulatory Risk", "Third-Party/Vendor Risk"],
   },
   "Business/Financial Risk": {
     equivalent: ["Business/Financial Risk"],

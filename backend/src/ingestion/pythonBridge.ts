@@ -2,7 +2,12 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SkipIngest } from "./filters.js";
-import { signalWithJobTimeout } from "../services/jobs/jobTimeout.service.js";
+import {
+  cachedJobTimeoutSkipReason,
+  getJobRunSignal,
+  isAbortOrTimeoutError,
+  signalWithJobTimeout,
+} from "../services/jobs/jobTimeout.service.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../../..");
@@ -104,11 +109,14 @@ async function runPythonIngestHttp(
       signal: signalWithJobTimeout(INGEST_TIMEOUT_MS),
     });
   } catch (err) {
-    const hint =
-      `Is the Python service running? Start with: npm run py:dev (from backend/) or npm run dev. ` +
-      `URL: ${base}`;
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`${hint} ${msg}`);
+    if (isAbortOrTimeoutError(err)) {
+      throw new Error(
+        getJobRunSignal()?.aborted
+          ? cachedJobTimeoutSkipReason()
+          : "The site did not respond in time (connection timed out).",
+      );
+    }
+    throw new Error(`The ingestion service could not be reached at ${base}.`);
   }
 
   const raw = await res.text();
@@ -161,9 +169,12 @@ function runPythonIngestCli(
     const jobSignal = signalWithJobTimeout(INGEST_TIMEOUT_MS);
     const onAbort = () => {
       child.kill("SIGTERM");
+      const jobAborted = getJobRunSignal()?.aborted === true;
       reject(
         new Error(
-          "Skipped because this URL took more than 5 minutes without finishing — it was taking too long.",
+          jobAborted
+            ? cachedJobTimeoutSkipReason()
+            : "The site did not respond in time (connection timed out).",
         ),
       );
     };

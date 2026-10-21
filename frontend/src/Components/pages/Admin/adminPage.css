@@ -445,6 +445,56 @@
   flex: none;
   background: transparent;
   padding: 0;
+  max-width: 72rem;
+  align-items: stretch;
+}
+
+.adminPage__executionTimeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid var(--set-border, rgba(148, 163, 184, 0.12));
+}
+
+.adminPage__executionTimeLabel {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--set-muted, #94a3b8);
+}
+
+.adminPage__executionTimeSelect {
+  min-width: 9.5rem;
+  height: 40px;
+  padding: 0 2rem 0 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--set-input-border, rgba(148, 163, 184, 0.22));
+  background: var(--set-input-bg, #1e293b);
+  color: var(--set-text, #f8fafc);
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.adminPage__executionTimeSave {
+  height: 40px;
+  padding: 0 1rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--main-auth-button-color, #1cb0d4);
+  color: #fff;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.adminPage__executionTimeSave:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .adminPage__card {

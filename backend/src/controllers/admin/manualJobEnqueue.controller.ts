@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { enqueueManualJobUrl } from "../../services/admin/manualJobEnqueue.service.js";
-import { startWorkerProcess } from "../../services/admin/workerManager.service.js";
+import { ensureWorkerProcessRunning } from "../../services/admin/workerManager.service.js";
 import type { EnqueueJobUrlInput } from "../../validators/admin.validators.js";
 
 export async function enqueueJobUrlHandler(
@@ -9,7 +9,7 @@ export async function enqueueJobUrlHandler(
 ): Promise<void> {
   const { url } = req.body as EnqueueJobUrlInput;
   const result = await enqueueManualJobUrl(url);
-  const { pid } = startWorkerProcess();
+  const { pid } = ensureWorkerProcessRunning();
 
   res.status(201).json({
     ok: true,
