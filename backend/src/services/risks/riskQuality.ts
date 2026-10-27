@@ -253,6 +253,47 @@ export function hasEvidenceReviewReasons(extractionJson: unknown): boolean {
   return evidenceReviewReasons(extractionJson).length > 0;
 }
 
+/** Reviewer-facing sentence per verifier check (BUG-06). */
+const VERIFIER_CHECK_TEXT: Record<string, string> = {
+  claim_is_demonstrated:
+    "The record states the risk as demonstrated, but the source only speculates about it.",
+  mitigations_reflected:
+    "The source describes safeguards or limitations that the record does not reflect.",
+  not_attributed_to_proposed_method:
+    "The record blames the method the source proposes for the problem it was built to solve.",
+  severity_within_evidence:
+    "The likelihood or impact rationale goes beyond what the source supports.",
+};
+
+const VERIFIER_PREFIX_RE = /^verifier:\s*/i;
+
+/** True when the reason came from the independent verifier pass. */
+export function isVerifierReason(raw: string): boolean {
+  return VERIFIER_PREFIX_RE.test(raw.trim());
+}
+
+function plainVerifierReason(raw: string): string {
+  const body = raw.trim().replace(VERIFIER_PREFIX_RE, "");
+  const failed = body.match(/^(\w+) failed\s*-\s*[^:]*(?::\s*(.*))?$/i);
+  if (failed) {
+    const check = failed[1] ?? "";
+    const detail = (failed[2] ?? "").trim();
+    const base = VERIFIER_CHECK_TEXT[check] ?? `Verifier check ${check} failed.`;
+    return detail ? `${base} ${detail}` : base;
+  }
+  const score = body.match(/^grounding_score\s+([\d.]+)\s+below\s+([\d.]+)/i);
+  if (score) {
+    return `Only part of the record is directly supported by the source (grounding ${score[1]}, minimum ${score[2]}).`;
+  }
+  if (/did not run/i.test(body)) {
+    return `The verifier could not run, so this record was not independently checked. ${body.replace(/^did not run\s*-\s*/i, "")}`.trim();
+  }
+  if (/no verdict/i.test(body)) {
+    return "The verifier gave no readable verdict, so this record was not independently checked.";
+  }
+  return `Verifier: ${body}`;
+}
+
 const PLAIN_GROUNDING_REASONS: Array<{ test: RegExp; text: string }> = [
   {
     test: /uncited likelihood_reasoning/i,
@@ -275,6 +316,7 @@ const PLAIN_GROUNDING_REASONS: Array<{ test: RegExp; text: string }> = [
 /** Reviewer-facing sentence for one evidence-discipline reason. */
 export function plainGroundingReason(raw: string): string {
   const trimmed = raw.trim();
+  if (isVerifierReason(trimmed)) return plainVerifierReason(trimmed);
   for (const rule of PLAIN_GROUNDING_REASONS) {
     if (rule.test.test(trimmed)) return rule.text;
   }
@@ -404,7 +446,10 @@ export function resolveReviewWhy(input: {
   }
   const evidenceReasons = evidenceReviewReasons(input.extractionJson);
   if (evidenceReasons.length > 0) {
-    return { label: "Grounding", reason: plainGroundingReasons(evidenceReasons) };
+    // The verifier verdict (BUG-06) names the specific failure; it outranks
+    // the mechanical quote check so the queue shows what actually went wrong.
+    const label = evidenceReasons.some(isVerifierReason) ? "Verifier" : "Grounding";
+    return { label, reason: plainGroundingReasons(evidenceReasons) };
   }
   if (needsQualityReview(input)) {
     return { label: "Quality", reason: stored || QUALITY_REVIEW_REASON };

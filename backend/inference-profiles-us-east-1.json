@@ -1,7 +1,7 @@
 {
   "region": "us-east-1",
-  "fetchedAt": "2026-10-21T15:59:22.227Z",
-  "count": 97,
+  "fetchedAt": "2026-10-27T06:31:20.292Z",
+  "count": 99,
   "profiles": [
     {
       "inferenceProfileName": "GLOBAL Amazon Nova 2 Lite",
@@ -229,7 +229,7 @@
       "type": "SYSTEM_DEFINED",
       "description": "Routes requests to Anthropic Claude Opus 5.5 globally across all supported AWS Regions.",
       "createdAt": "2026-09-22T01:36:00.246Z",
-      "updatedAt": "2026-09-22T15:51:48.036Z",
+      "updatedAt": "2026-10-23T05:17:30.356Z",
       "profileType": "SYSTEM_DEFINED",
       "modelId": "global.anthropic.claude-opus-5-5",
       "foundationModelId": "anthropic.claude-opus-5-5"
@@ -458,9 +458,9 @@
       "inferenceProfileId": "global.openai.gpt-5.6-terra",
       "status": "ACTIVE",
       "type": "SYSTEM_DEFINED",
-      "description": "Routes requests to GPT-5.6 Terra globally across all supported AWS Regions.",
+      "description": "Routes requests to OpenAI GPT-5.6 Terra globally across all supported AWS Regions.",
       "createdAt": "2026-08-13T21:46:41.171Z",
-      "updatedAt": "2026-08-13T21:46:41.171Z",
+      "updatedAt": "2026-10-24T23:30:44.345Z",
       "profileType": "SYSTEM_DEFINED",
       "modelId": "global.openai.gpt-5.6-terra",
       "foundationModelId": "openai.gpt-5.6-terra"
@@ -548,6 +548,27 @@
       "profileType": "SYSTEM_DEFINED",
       "modelId": "global.openai.gpt-6.1-sol",
       "foundationModelId": "openai.gpt-6.1-sol"
+    },
+    {
+      "inferenceProfileName": "Global OpenAI GPT-6.1 Terra",
+      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/global.openai.gpt-6.1-terra",
+      "models": [
+        {
+          "modelArn": "arn:aws:bedrock:::foundation-model/openai.gpt-6.1-terra"
+        },
+        {
+          "modelArn": "arn:aws:bedrock:us-east-1::foundation-model/openai.gpt-6.1-terra"
+        }
+      ],
+      "inferenceProfileId": "global.openai.gpt-6.1-terra",
+      "status": "ACTIVE",
+      "type": "SYSTEM_DEFINED",
+      "description": "Routes requests to GPT-6.1 Terra globally across all supported AWS Regions.",
+      "createdAt": "2026-10-21T23:43:53.457Z",
+      "updatedAt": "2026-10-21T23:43:53.457Z",
+      "profileType": "SYSTEM_DEFINED",
+      "modelId": "global.openai.gpt-6.1-terra",
+      "foundationModelId": "openai.gpt-6.1-terra"
     },
     {
       "inferenceProfileName": "GLOBAL TwelveLabs Pegasus v1.2",
@@ -1589,9 +1610,9 @@
       "inferenceProfileId": "us.openai.gpt-5.6-terra",
       "status": "ACTIVE",
       "type": "SYSTEM_DEFINED",
-      "description": "Routes requests to GPT-5.6 Terra in us-east-1, us-east-2, us-west-2.",
+      "description": "Routes requests to OpenAI GPT-5.6 Terra in us-east-1, us-east-2 and us-west-2.",
       "createdAt": "2026-08-13T21:46:40.995Z",
-      "updatedAt": "2026-08-13T21:46:40.995Z",
+      "updatedAt": "2026-10-24T23:30:41.206Z",
       "profileType": "SYSTEM_DEFINED",
       "modelId": "us.openai.gpt-5.6-terra",
       "foundationModelId": "openai.gpt-5.6-terra"
@@ -1691,6 +1712,30 @@
       "profileType": "SYSTEM_DEFINED",
       "modelId": "us.openai.gpt-6.1-sol",
       "foundationModelId": "openai.gpt-6.1-sol"
+    },
+    {
+      "inferenceProfileName": "US OpenAI GPT-6.1 Terra",
+      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/us.openai.gpt-6.1-terra",
+      "models": [
+        {
+          "modelArn": "arn:aws:bedrock:us-east-1::foundation-model/openai.gpt-6.1-terra"
+        },
+        {
+          "modelArn": "arn:aws:bedrock:us-east-2::foundation-model/openai.gpt-6.1-terra"
+        },
+        {
+          "modelArn": "arn:aws:bedrock:us-west-2::foundation-model/openai.gpt-6.1-terra"
+        }
+      ],
+      "inferenceProfileId": "us.openai.gpt-6.1-terra",
+      "status": "ACTIVE",
+      "type": "SYSTEM_DEFINED",
+      "description": "Routes requests to GPT-6.1 Terra in us-east-1, us-east-2, us-west-2.",
+      "createdAt": "2026-10-21T23:43:53.202Z",
+      "updatedAt": "2026-10-21T23:43:53.202Z",
+      "profileType": "SYSTEM_DEFINED",
+      "modelId": "us.openai.gpt-6.1-terra",
+      "foundationModelId": "openai.gpt-6.1-terra"
     },
     {
       "inferenceProfileName": "US Pegasus v1.2",

@@ -71,6 +71,41 @@ export function formatProductCell(product: ProductInfo | undefined): string {
   return product.vendor ? `${name} — ${formatDisplayValue(product.vendor)}` : name;
 }
 
+export type VerifierCheckInfo = {
+  name: string;
+  pass: boolean | null;
+  reason: string;
+};
+
+/** Evidence-discipline fields and verifier verdict from the API. */
+export type EvidenceDisciplineInfo = {
+  sourceType: string | null;
+  evidenceType: string | null;
+  demonstratedFinding: string | null;
+  statedImplication: string | null;
+  paperStance: string | null;
+  proposedMitigation: string | null;
+  mitigationsInSource: string[];
+  reviewReasons: string[];
+  verifier: {
+    ran: boolean;
+    passed: boolean | null;
+    groundingScore: number | null;
+    checks: VerifierCheckInfo[];
+    unsupportedClaims: string[];
+    modelUsed: string | null;
+  } | null;
+  extraction: {
+    mode: string | null;
+    chunks: number | null;
+    llmCalls: number | null;
+    mergeStrategy: string | null;
+    modelUsed: string | null;
+    modelFallback: boolean;
+    referencesRemoved: boolean | null;
+  };
+};
+
 export type RiskDetail = {
   id: string;
   /** Sequential display id from API (R-1, R-01, R-10, …). */
@@ -128,6 +163,8 @@ export type RiskDetail = {
   humanReview?: HumanReviewInfo;
   riskScoring?: RiskScoringInfo;
   product?: ProductInfo;
+  /** Present on API rows; absent on mock rows. */
+  evidenceDiscipline?: EvidenceDisciplineInfo;
   /** Present on Review Queue rows: who the review is assigned to (may be null). */
   assignment?: ReviewAssignmentInfo;
 };
@@ -582,6 +619,7 @@ export function normalizeRisksFromApi(raw: unknown): {
       breakdown: r.evidence?.breakdown ?? [],
     },
     modelName: r.modelName ?? null,
+    evidenceDiscipline: r.evidenceDiscipline,
     riskScoring: {
       likelihood: r.riskScoring?.likelihood ?? null,
       likelihoodLabel: r.riskScoring?.likelihoodLabel ?? "—",

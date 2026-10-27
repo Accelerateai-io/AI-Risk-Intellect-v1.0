@@ -45,6 +45,7 @@ import {
   type RiskDetail,
 } from "./riskData";
 import type { RiskEditDraft } from "./riskEditDraft";
+import type { EvidenceDisciplineInfo } from "./riskData";
 import { FieldEditDialog, type FieldEditSpec } from "./FieldEditDialog";
 import "./riskDetailDialog.css";
 
@@ -431,6 +432,117 @@ const ScoreBar = memo(function ScoreBar({ value, max }: { value: number; max: nu
     >
       <div className="riskDetail__scoreBarFill" style={{ width: `${pct}%` }} />
     </div>
+  );
+});
+
+const VERIFIER_CHECK_LABELS: Record<string, string> = {
+  claim_is_demonstrated: "Claim is demonstrated",
+  mitigations_reflected: "Mitigations reflected",
+  not_attributed_to_proposed_method: "Not attributed to the proposed method",
+  severity_within_evidence: "Severity within evidence",
+};
+
+function labelValue(value: string | null | undefined): string {
+  return value ? value.replace(/_/g, " ") : "—";
+}
+
+/** Evidence fields (BUG-01/02/03) and the verifier verdict (BUG-06). */
+const EvidenceDisciplineSection = memo(function EvidenceDisciplineSection({
+  baseId,
+  info,
+}: {
+  baseId: string;
+  info: EvidenceDisciplineInfo;
+}) {
+  const verifier = info.verifier;
+  const extraction = info.extraction;
+  const extractionText = extraction.mode
+    ? [
+        extraction.mode === "whole" ? "whole document, one call" : `chunked (${extraction.chunks ?? "?"} chunks)`,
+        extraction.mergeStrategy ? extraction.mergeStrategy.replace(/_/g, " ") : null,
+        extraction.referencesRemoved ? "references trimmed" : null,
+        extraction.modelUsed
+          ? `answered by ${extraction.modelUsed}${extraction.modelFallback ? " (fallback)" : ""}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
+
+  return (
+    <section
+      className="riskDetail__section riskDetail__cardSection"
+      aria-labelledby={`${baseId}-evidenceDiscipline`}
+    >
+      <h3 id={`${baseId}-evidenceDiscipline`} className="riskDetail__sectionTitle">
+        <SearchCheck size={16} strokeWidth={2} aria-hidden />
+        Evidence Discipline
+      </h3>
+      <dl className="riskDetail__classification">
+        <DetailInfoCard title="Evidence type" icon={FileText}>
+          <span>{labelValue(info.evidenceType)}</span>
+          {info.sourceType ? (
+            <p className="riskDetail__ratingReasoning">Source: {labelValue(info.sourceType)}</p>
+          ) : null}
+        </DetailInfoCard>
+        <DetailInfoCard title="Paper stance" icon={BookOpen}>
+          <span>{labelValue(info.paperStance)}</span>
+          {info.proposedMitigation ? (
+            <p className="riskDetail__ratingReasoning">Proposes: {info.proposedMitigation}</p>
+          ) : null}
+        </DetailInfoCard>
+        <DetailInfoCard title="Demonstrated finding" icon={BarChart3}>
+          <span>{info.demonstratedFinding ?? "—"}</span>
+        </DetailInfoCard>
+        <DetailInfoCard title="Stated implication" icon={Quote}>
+          <span>{info.statedImplication ?? "—"}</span>
+        </DetailInfoCard>
+        <DetailInfoCard title="Mitigations in source" icon={ShieldCheck}>
+          {info.mitigationsInSource.length ? (
+            <ul className="riskDetail__plainList">
+              {info.mitigationsInSource.map((m, i) => (
+                <li key={`${i}-${m}`}>{m}</li>
+              ))}
+            </ul>
+          ) : (
+            <span>—</span>
+          )}
+        </DetailInfoCard>
+        <DetailInfoCard title="Verifier" icon={Eye}>
+          {!verifier ? (
+            <span>Not run</span>
+          ) : !verifier.ran ? (
+            <span>Did not run</span>
+          ) : (
+            <>
+              <span>
+                {verifier.passed ? "Passed" : "Flagged"}
+                {verifier.groundingScore != null
+                  ? ` · grounding ${verifier.groundingScore.toFixed(2)}`
+                  : ""}
+              </span>
+              <ul className="riskDetail__plainList">
+                {verifier.checks.map((c) => (
+                  <li key={c.name}>
+                    {c.pass === false ? "✗" : c.pass === true ? "✓" : "?"}{" "}
+                    {VERIFIER_CHECK_LABELS[c.name] ?? c.name}
+                    {c.pass === false && c.reason ? `: ${c.reason}` : ""}
+                  </li>
+                ))}
+              </ul>
+              {verifier.unsupportedClaims.length ? (
+                <p className="riskDetail__ratingReasoning">
+                  Unsupported: {verifier.unsupportedClaims.join("; ")}
+                </p>
+              ) : null}
+            </>
+          )}
+        </DetailInfoCard>
+      </dl>
+      {extractionText ? (
+        <p className="riskDetail__ratingReasoning">Extraction: {extractionText}</p>
+      ) : null}
+    </section>
   );
 });
 
@@ -875,6 +987,13 @@ export const RiskDetailView = memo(function RiskDetailView({
                   </DetailInfoCard>
                 </dl>
               </section>
+
+              {risk.evidenceDiscipline ? (
+                <EvidenceDisciplineSection
+                  baseId={baseId}
+                  info={risk.evidenceDiscipline}
+                />
+              ) : null}
 
               <section
                 className="riskDetail__section"

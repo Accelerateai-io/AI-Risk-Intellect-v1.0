@@ -1605,3 +1605,15 @@ html.app-theme-dark .riskDetail__classCardAction--edit {
   color: #7dd3fc;
   background: rgba(28, 176, 212, 0.16);
 }
+
+/* Evidence Discipline section (BUG-01/02/03/06) */
+.riskDetail__plainList {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.riskDetail__plainList li + li {
+  margin-top: 0.2rem;
+}

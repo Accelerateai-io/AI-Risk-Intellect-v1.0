@@ -12,6 +12,29 @@ import {
   writeWorkbookToBuffer,
 } from "../../utils/excelExport.util.js";
 
+function verifierSummary(
+  verifier: ReturnType<typeof mapRiskRowToDto>["evidenceDiscipline"]["verifier"],
+): string {
+  if (!verifier) return "";
+  if (!verifier.ran) return "did not run";
+  const failed = verifier.checks.filter((c) => c.pass === false);
+  if (failed.length === 0) return "passed";
+  return failed.map((c) => `${c.name}: ${c.reason}`.trim()).join(" | ");
+}
+
+function extractionSummary(
+  extraction: ReturnType<typeof mapRiskRowToDto>["evidenceDiscipline"]["extraction"],
+): string {
+  if (!extraction.mode) return "";
+  const parts = [extraction.mode];
+  if (extraction.chunks != null && extraction.chunks > 1) {
+    parts.push(`${extraction.chunks} chunks`);
+  }
+  if (extraction.mergeStrategy) parts.push(extraction.mergeStrategy);
+  if (extraction.referencesRemoved) parts.push("references trimmed");
+  return parts.join(", ");
+}
+
 export async function buildReviewExportExcel(): Promise<{
   buffer: Buffer;
   fileName: string;
@@ -89,6 +112,16 @@ export async function buildReviewExportExcel(): Promise<{
       "Article URL",
       "Model Name",
       "Ingested At",
+      "Evidence Type",
+      "Paper Stance",
+      "Demonstrated Finding",
+      "Stated Implication",
+      "Mitigations In Source",
+      "Proposed Mitigation",
+      "Verifier Result",
+      "Verifier Grounding",
+      "Extraction Mode",
+      "Model Used",
     ],
     ...mapped.map(({ risk }) => [
       risk.displayId,
@@ -116,6 +149,16 @@ export async function buildReviewExportExcel(): Promise<{
       risk.articleUrl,
       risk.modelName ?? "",
       formatExportDateTime(risk.ingestedAt),
+      risk.evidenceDiscipline.evidenceType ?? "",
+      risk.evidenceDiscipline.paperStance ?? "",
+      risk.evidenceDiscipline.demonstratedFinding ?? "",
+      risk.evidenceDiscipline.statedImplication ?? "",
+      risk.evidenceDiscipline.mitigationsInSource.join("; "),
+      risk.evidenceDiscipline.proposedMitigation ?? "",
+      verifierSummary(risk.evidenceDiscipline.verifier),
+      risk.evidenceDiscipline.verifier?.groundingScore ?? "",
+      extractionSummary(risk.evidenceDiscipline.extraction),
+      risk.evidenceDiscipline.extraction.modelUsed ?? "",
     ]),
   ]);
   reviewSheet["!cols"] = [
@@ -138,6 +181,16 @@ export async function buildReviewExportExcel(): Promise<{
     { wch: 56 },
     { wch: 28 },
     { wch: 24 },
+    { wch: 16 },
+    { wch: 20 },
+    { wch: 48 },
+    { wch: 48 },
+    { wch: 48 },
+    { wch: 40 },
+    { wch: 56 },
+    { wch: 12 },
+    { wch: 28 },
+    { wch: 40 },
   ];
 
   const workbook = XLSX.utils.book_new();

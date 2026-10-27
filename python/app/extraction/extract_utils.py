@@ -22,7 +22,7 @@ from app.extraction.metrics import (
 )
 from app.llm.repair import repair_extraction_obj
 from app.risk_processing.description_utils import word_count
-from app.risk_processing.merge import merge_extractions
+from app.risk_processing.merge import merge_extractions, synthesize_extractions
 
 logger = logging.getLogger("airisk")
 
@@ -97,6 +97,20 @@ def get_current_model_name() -> str:
     if backend == "cisco":
         return os.getenv("CISCO_MODEL_NAME", "foundation-sec-8b")
     return os.getenv("LOCAL_MODEL_ID", DEFAULT_LOCAL_MODEL_ID)
+
+
+def reported_model(obj: dict, fallback: str = "") -> str:
+    """Model that actually answered (BUG-11), else the configured model.
+
+    The Bedrock client records ``_meta.model_used`` on every object it returns;
+    when a fallback model answered, the risk row must carry that id rather
+    than the configured one.
+    """
+    meta = obj.get("_meta") if isinstance(obj, dict) else None
+    used = meta.get("model_used") if isinstance(meta, dict) else None
+    if isinstance(used, str) and used.strip():
+        return used.strip()
+    return fallback or get_current_model_name()
 
 
 def _is_stub_object(obj: dict) -> bool:
@@ -197,26 +211,154 @@ def _stub(text: str) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# Extraction planning (BUG-05)
+# ---------------------------------------------------------------------------
+
+# Tokens reserved for the system prompt, schema, metadata and the model's
+# JSON answer when deciding whether a document fits in one call.
+PROMPT_OVERHEAD_TOKENS = 9_000
+ANSWER_TOKENS = 4_096
+# Never fill the context window completely.
+CONTEXT_SAFETY_RATIO = 0.85
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def plan_extraction(text: str, model_id: str) -> dict[str, Any]:
+    """Decide between one whole-document call and chunking (pure function).
+
+    EXTRACTION_MODE:
+      auto    (default) whole document when it fits the model's context,
+              otherwise large chunks + one synthesis call.
+      whole   force a single call (text is truncated to the budget).
+      chunked force chunking at CHUNK_MAX_TOKENS (legacy behaviour, but
+              merged by synthesis instead of max-severity selection).
+
+    Returns {"mode": "whole"|"chunked", "chunk_tokens": int, "budget_tokens":
+    int, "estimated_tokens": int, "context_tokens": int, "reason": str}.
+    """
+    from app.llm.model_registry import context_window_tokens, estimate_tokens
+
+    mode_env = os.getenv("EXTRACTION_MODE", "auto").strip().lower()
+    context = context_window_tokens(model_id)
+    budget = int(context * CONTEXT_SAFETY_RATIO) - PROMPT_OVERHEAD_TOKENS - ANSWER_TOKENS
+    budget = max(budget, 4_000)
+    estimated = estimate_tokens(text)
+
+    # Chunk size when chunking is unavoidable: as large as the budget allows,
+    # so a 1M-token document becomes a handful of chunks, not hundreds.
+    default_chunk = max(4_000, min(budget, 60_000))
+    chunk_tokens = _env_int("CHUNK_MAX_TOKENS", default_chunk)
+
+    if mode_env == "whole":
+        mode, reason = "whole", "EXTRACTION_MODE=whole"
+    elif mode_env == "chunked":
+        mode, reason = "chunked", "EXTRACTION_MODE=chunked"
+    elif estimated <= budget:
+        mode, reason = "whole", "document fits model context"
+    else:
+        mode, reason = "chunked", "document exceeds model context"
+    return {
+        "mode": mode,
+        "chunk_tokens": chunk_tokens,
+        "budget_tokens": budget,
+        "estimated_tokens": estimated,
+        "context_tokens": context,
+        "reason": reason,
+    }
+
+
+def _truncate_to_budget(text: str, budget_tokens: int) -> str:
+    from app.llm.model_registry import CHARS_PER_TOKEN
+
+    limit = int(budget_tokens * CHARS_PER_TOKEN)
+    return text if len(text) <= limit else text[:limit]
+
+
+def _run_verifier_pass(obj: dict, source_text: str, meta: dict) -> None:
+    from app.verification.llm_verifier import (
+        run_verifier,
+        verifier_enabled,
+        verifier_grounding_min,
+        verifier_model,
+    )
+
+    if not verifier_enabled():
+        meta["verifier"] = {"ran": False, "reason": "ENABLE_VERIFIER=false"}
+        return
+    if _active_backend() != "bedrock":
+        meta["verifier"] = {"ran": False, "reason": f"backend {_active_backend()} has no verifier"}
+        return
+
+    from app.llm.bedrock_llm import get_bedrock_client
+
+    client = get_bedrock_client()
+    result = run_verifier(
+        obj,
+        source_text,
+        generate_text=client.generate_text,
+        model_id=verifier_model(),
+        cache_source=client._cache_enabled(),
+        grounding_min=verifier_grounding_min(),
+    )
+    meta["verifier"] = result
+    reasons = result.get("review_reasons") or []
+    if reasons:
+        verification = meta.get("verification")
+        if not isinstance(verification, dict):
+            verification = {"review_reasons": [], "citations": {}}
+            meta["verification"] = verification
+        existing = verification.get("review_reasons") or []
+        verification["review_reasons"] = existing + reasons
+        meta["review_reasons"] = (meta.get("review_reasons") or []) + reasons
+    logger.info(
+        "VERIFIER: %s (%d reasons, grounding=%s)",
+        "passed" if result.get("passed") else "flagged",
+        len(reasons),
+        result.get("grounding_score"),
+    )
+
+
+def _base_system_prompt() -> str:
+    from app.utils.prompt_loader import get_active_prompt
+
+    return get_active_prompt()
+
+
 def extract_over_chunks(
     text: str,
     schema: dict,
     model_id: str | None = None,
     system_prompt_override: Optional[str] = None,
+    *,
+    chunk_tokens: Optional[int] = None,
+    title: str = "",
+    source_url: str = "",
 ) -> list:
     generate_json, _backend = _resolve_generate_json()
     mid = model_id or get_current_model_name()
-    chunk_max = int(os.getenv("CHUNK_MAX_TOKENS", "1024"))
-    chunk_overlap = int(os.getenv("CHUNK_OVERLAP", "100"))
+    if chunk_tokens is None:
+        chunk_tokens = plan_extraction(text, mid)["chunk_tokens"]
+    chunk_overlap = _env_int("CHUNK_OVERLAP", max(100, chunk_tokens // 20))
 
     chunks = tokenize_and_chunk(
         text,
         model_id=mid,
-        max_tokens=chunk_max,
+        max_tokens=chunk_tokens,
         overlap_tokens=chunk_overlap,
     )
 
     objs = []
-    logger.info("EXTRACT: %d chunks, calling the model once per chunk", len(chunks))
+    logger.info("EXTRACT: %d chunks of ~%d tokens", len(chunks), chunk_tokens)
     for idx, (start_char, end_char, chunk_text) in enumerate(chunks, 1):
         logger.info(
             "EXTRACT: chunk %d/%d (%d chars)",
@@ -224,10 +366,13 @@ def extract_over_chunks(
             len(chunks),
             len(chunk_text),
         )
+        o: dict = {}
         try:
             o = generate_json(
                 chunk_text,
                 schema,
+                title=title,
+                url=source_url,
                 chunk_index=idx,
                 chunk_count=len(chunks),
                 global_offset=start_char,
@@ -256,30 +401,58 @@ def extract_with_auto_chunking(
     system_prompt_override: Optional[str] = None,
 ) -> Tuple[dict, str, dict[str, int]]:
     """
-    Returns (obj, source_flag, metrics). Uses chunking for long texts and merges results.
+    Returns (obj, source_flag, metrics).
 
-    Short documents (< CHUNK_THRESHOLD_CHARS): single-pass extraction.
-    Long documents (>= threshold): overlapping token chunks + merge.
+    Whole-document single pass whenever the document fits the model's context
+    window (BUG-05); otherwise large chunks merged by one synthesis call. The
+    reference list is trimmed first so bibliographic entries never become
+    "evidence".
     """
     started = time.perf_counter()
     begin_extraction(word_count=word_count(text))
 
-    def finish(obj: dict, source_flag: str) -> Tuple[dict, str, dict[str, int]]:
+    from app.extraction.preprocess import trim_for_extraction
+
+    trimmed = trim_for_extraction(text)
+    body = trimmed.text
+
+    def finish(obj: dict, source_flag: str, extraction_meta: dict) -> Tuple[dict, str, dict[str, int]]:
+        meta = obj.setdefault("_meta", {})
+        if not isinstance(meta, dict):
+            meta = {}
+            obj["_meta"] = meta
+        meta["extraction"] = {**extraction_meta, "preprocess": trimmed.to_meta()}
+        # Backwards-compatible flag read by older tooling.
+        meta["chunked"] = {
+            "used": extraction_meta.get("mode") == "chunked",
+            "count": extraction_meta.get("chunks", 1),
+            "strategy": extraction_meta.get("merge_strategy"),
+            "stub": source_flag == "stub",
+        }
+
         # Evidence-discipline rules (BUG-01/02/03/04): attach review reasons to
-        # the record but NEVER block storing it. Stored inside extraction_json
-        # under _meta (no DB migration in this PR).
+        # the record but NEVER block storing it. Citations are checked against
+        # the full original text, not the trimmed body.
         try:
             from app.verification.evidence_rules import verify_record
 
             verification = verify_record(obj, text)
             if verification["review_reasons"] or verification["citations"]:
-                meta = obj.setdefault("_meta", {})
                 meta["verification"] = verification
                 if verification["review_reasons"]:
                     existing = meta.get("review_reasons") or []
                     meta["review_reasons"] = existing + verification["review_reasons"]
         except Exception as exc:  # defensive: rules must never break extraction
             logger.warning("EVIDENCE_RULES: skipped (%s)", str(exc)[:150])
+
+        # Independent verifier pass (BUG-06): a second call grades the record
+        # against the source. Failed checks route to Review; storage is never
+        # blocked. Skipped for stubs and for non-Bedrock backends.
+        if source_flag != "stub":
+            try:
+                _run_verifier_pass(obj, body, meta)
+            except Exception as exc:  # defensive
+                logger.warning("VERIFIER: skipped (%s)", str(exc)[:150])
 
         duration_ms = max(1, int((time.perf_counter() - started) * 1000))
         metrics = get_extraction_metrics()
@@ -297,146 +470,123 @@ def extract_with_auto_chunking(
         return obj, source_flag, payload
 
     generate_json, backend = _resolve_generate_json()
-    use_chunking = os.getenv("USE_CHUNKING", "true").lower() in ("1", "true", "yes")
-    threshold = int(os.getenv("CHUNK_THRESHOLD_CHARS", "6000"))
     mid = model_id or get_current_model_name()
+    plan = plan_extraction(body, mid)
 
     logger.info(
-        "EXTRACT: backend=%s model=%s text_length=%d chunking=%s threshold=%d",
+        "EXTRACT: backend=%s model=%s chars=%d (trimmed from %d) est_tokens=%d "
+        "budget=%d mode=%s (%s)",
         backend,
         mid,
+        len(body),
         len(text),
-        use_chunking,
-        threshold,
+        plan["estimated_tokens"],
+        plan["budget_tokens"],
+        plan["mode"],
+        plan["reason"],
     )
     if title:
         logger.info("   Title: %s...", title[:80])
     if source_url:
         logger.info("   URL: %s...", source_url[:80])
 
-    if not (use_chunking and len(text) > threshold):
-        logger.info("EXTRACT: single-pass (< %d chars)", threshold)
+    base_meta = {
+        "model": mid,
+        "mode": plan["mode"],
+        "reason": plan["reason"],
+        "estimated_tokens": plan["estimated_tokens"],
+        "budget_tokens": plan["budget_tokens"],
+        "context_tokens": plan["context_tokens"],
+        "chunks": 1,
+        "llm_calls": 1,
+        "merge_strategy": None,
+    }
+
+    if plan["mode"] == "whole":
+        single_text = _truncate_to_budget(body, plan["budget_tokens"])
         obj: dict = {}
         try:
             obj = generate_json(
-                text,
+                single_text,
                 schema,
                 title=title,
                 url=source_url,
                 system_prompt_override=system_prompt_override,
             )
             if _is_stub_object(obj):
-                logger.warning("EXTRACT: LLM returned stub (single-pass)")
-                return finish(obj, "stub")
-            obj = repair_extraction_obj(obj, text, schema)
+                logger.warning("EXTRACT: LLM returned stub (whole-document)")
+                return finish(obj, "stub", base_meta)
+            obj = repair_extraction_obj(obj, single_text, schema)
             validate(obj, schema)
-            obj.setdefault("_meta", {})["chunked"] = {"used": False}
-            logger.info("EXTRACT: single-pass SUCCESS")
-            return finish(obj, backend)
+            logger.info("EXTRACT: whole-document SUCCESS")
+            return finish(obj, backend, base_meta)
         except ValidationError as ve:
             logger.warning("EXTRACT: validation failed, repairing: %s", str(ve)[:200])
-            repaired = repair_extraction_obj(obj, text, schema)
+            repaired = repair_extraction_obj(obj, single_text, schema)
             validate(repaired, schema)
-            repaired.setdefault("_meta", {})["chunked"] = {"used": False, "repaired": True}
-            return finish(repaired, f"{backend}-repaired")
+            return finish(repaired, f"{backend}-repaired", {**base_meta, "repaired": True})
         except Exception as exc:
-            logger.error("EXTRACT: single-pass FAILED: %s", str(exc)[:200])
-            stub = _stub(text)
+            logger.error("EXTRACT: whole-document FAILED: %s", str(exc)[:200])
+            stub = _stub(single_text)
             validate(stub, schema)
-            stub.setdefault("_meta", {})["chunked"] = {"used": False, "stub": True}
-            return finish(stub, "stub")
+            return finish(stub, "stub", base_meta)
 
-    logger.info("EXTRACT: chunked path (> %d chars)", threshold)
+    logger.info("EXTRACT: chunked path (%s)", plan["reason"])
     try:
-        try:
-            objs = extract_over_chunks(
-                text,
-                schema,
-                mid,
-                system_prompt_override=system_prompt_override,
-            )
-            merge_fn = merge_extractions
-            strategy = "pipeline"
-            logger.info("EXTRACT: chunked extraction completed, %d chunks", len(objs))
-        except Exception as chunk_err:
-            logger.warning(
-                "EXTRACT: pipeline chunking failed, using inline: %s",
-                str(chunk_err)[:100],
-            )
-            objs = []
-            strategy = "inline"
-            chunk_max = int(os.getenv("CHUNK_MAX_TOKENS", "1024"))
-            chunk_overlap = int(os.getenv("CHUNK_OVERLAP", "100"))
-            chunks = tokenize_and_chunk(
-                text,
-                model_id=mid,
-                max_tokens=chunk_max,
-                overlap_tokens=chunk_overlap,
-            )
-            logger.info("EXTRACT: processing %d chunks inline", len(chunks))
-            for idx, (start_char, end_char, chunk_text) in enumerate(chunks, 1):
-                logger.info(
-                    "   Chunk %d/%d: chars %d-%d (%d chars)",
-                    idx,
-                    len(chunks),
-                    start_char,
-                    end_char,
-                    len(chunk_text),
-                )
-                try:
-                    o = generate_json(
-                        chunk_text,
-                        schema,
-                        title=title,
-                        url=source_url,
-                        chunk_index=idx,
-                        chunk_count=len(chunks),
-                        global_offset=start_char,
-                        system_prompt_override=system_prompt_override,
-                    )
-                    o = repair_extraction_obj(o, chunk_text, schema)
-                    validate(o, schema)
-                except ValidationError:
-                    o = repair_extraction_obj(o, chunk_text, schema)
-                    validate(o, schema)
-                except Exception as exc:
-                    logger.error("   Chunk %d FAILED: %s", idx, str(exc)[:100])
-                    o = _stub(chunk_text)
-                    validate(o, schema)
-                objs.append(o)
-            merge_fn = merge_extractions
-
+        objs = extract_over_chunks(
+            body,
+            schema,
+            mid,
+            system_prompt_override=system_prompt_override,
+            chunk_tokens=plan["chunk_tokens"],
+            title=title,
+            source_url=source_url,
+        )
         stub_chunks = sum(1 for o in objs if _is_stub_object(o))
         if objs and stub_chunks == len(objs):
             logger.warning("EXTRACT: all %d chunks returned stub", len(objs))
-            return finish(objs[0], "stub")
+            return finish(objs[0], "stub", {**base_meta, "chunks": len(objs), "llm_calls": len(objs)})
         if stub_chunks:
             logger.warning(
-                "EXTRACT: %d/%d chunks were stubs (merging survivors)",
+                "EXTRACT: %d/%d chunks were stubs (synthesising survivors)",
                 stub_chunks,
                 len(objs),
             )
 
-        logger.info("EXTRACT: merging %d chunk results", len(objs))
-        merged = merge_fn(objs)
-        final = merged[0] if isinstance(merged, list) else merged
-        final = repair_extraction_obj(final, text, schema)
+        final = synthesize_extractions(
+            objs,
+            body,
+            generate_json=generate_json,
+            schema=schema,
+            base_system_prompt=system_prompt_override or _base_system_prompt(),
+            title=title,
+            source_url=source_url,
+        )
+        llm_calls = len(objs) + 1
+        if final is None:
+            final = merge_extractions(objs)
+        final = repair_extraction_obj(final, body, schema)
+        validate(final, schema)
+        strategy = (final.get("_meta") or {}).get("merge_strategy")
 
-        final.setdefault("_meta", {})["chunked"] = {
-            "used": True,
-            "count": len(objs),
-            "strategy": strategy,
-            "stub_chunks": stub_chunks,
-        }
         if _is_stub_object(final):
             logger.warning("EXTRACT: merged output is stub")
-            return finish(final, "stub")
-        logger.info("EXTRACT: chunked SUCCESS")
-        return finish(final, "chunked")
+            return finish(final, "stub", {**base_meta, "chunks": len(objs), "llm_calls": llm_calls})
+        logger.info("EXTRACT: chunked SUCCESS (%s)", strategy)
+        return finish(
+            final,
+            "chunked",
+            {
+                **base_meta,
+                "chunks": len(objs),
+                "llm_calls": llm_calls,
+                "merge_strategy": strategy,
+                "stub_chunks": stub_chunks,
+            },
+        )
 
     except Exception as exc:
         logger.error("EXTRACT: chunked FAILED: %s", str(exc)[:200])
-        stub = _stub(text)
+        stub = _stub(body)
         validate(stub, schema)
-        stub.setdefault("_meta", {})["chunked"] = {"used": True, "failed": True}
-        return finish(stub, "stub")
+        return finish(stub, "stub", {**base_meta, "failed": True})

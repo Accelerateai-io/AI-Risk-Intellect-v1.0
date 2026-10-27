@@ -39,6 +39,7 @@ from app.extraction.extract_utils import (
     extract_with_auto_chunking,
     get_current_model_name,
     load_risk_schema,
+    reported_model,
 )
 from app.llm.model_config import get_model_config, set_model
 from app.llm.model_invoke import invoke_bedrock_model, test_bedrock_model
@@ -271,7 +272,7 @@ def extract_risk(body: ExtractRiskBody) -> dict[str, object]:
                 "ok": True,
                 "object": obj,
                 "source_flag": source_flag,
-                "model": get_current_model_name(),
+                "model": reported_model(obj),
                 "metrics": metrics,
             }
         )

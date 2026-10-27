@@ -10,6 +10,7 @@ const WHY_BRIEFS: Record<string, string> = {
   Domain: "The extracted domain is not one of the 7 taxonomy domains.",
   Evidence: "The extraction had no taxonomy evidence (keywords or excerpts).",
   Grounding: "A claim in this extraction is not supported by the source article.",
+  Verifier: "An independent check against the source found a claim, safeguard or severity that the article does not support.",
   Review: "This item needs a human check before it can go to Risks.",
 };
 

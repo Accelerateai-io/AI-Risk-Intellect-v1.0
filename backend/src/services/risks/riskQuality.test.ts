@@ -6,6 +6,7 @@ import {
   isNonEnglishRisk,
   needsHumanReview,
   needsQualityReview,
+  plainGroundingReason,
   resolveReviewWhy,
   reviewQualityThreshold,
 } from "./riskQuality.js";
@@ -231,4 +232,45 @@ test("needsHumanReview flags judge-rejected top matches", () => {
     },
   };
   assert.equal(needsHumanReview(matched), false);
+});
+
+test("resolveReviewWhy labels verifier failures and explains each check", () => {
+  const why = resolveReviewWhy({
+    qualityScore: 95,
+    extractionJson: {
+      source_language: "en",
+      risk: { domains: "discrimination" },
+      _meta: {
+        verification: {
+          review_reasons: [
+            "Uncited likelihood_reasoning: no 5-word span found in the source (BUG-04 / TC-09)",
+            "Verifier: severity_within_evidence failed - likelihood or impact goes beyond the evidence: rationale is about patient privacy, title is about hallucination",
+            "Verifier: grounding_score 0.35 below 0.60",
+          ],
+        },
+      },
+    },
+  });
+  assert.equal(why.label, "Verifier");
+  assert.ok(why.reason.includes("rationale goes beyond what the source supports"));
+  assert.ok(why.reason.includes("rationale is about patient privacy"));
+  assert.ok(why.reason.includes("grounding 0.35, minimum 0.60"));
+  assert.ok(why.reason.includes("The likelihood explanation does not quote the article."));
+  assert.equal(
+    needsHumanReview({ qualityScore: 95, extractionJson: { _meta: { verification: { review_reasons: ["Verifier: claim_is_demonstrated failed - x"] } } } }),
+    true,
+  );
+});
+
+test("plainGroundingReason covers verifier transport failures", () => {
+  assert.ok(
+    plainGroundingReason("Verifier: did not run - ThrottlingException").startsWith(
+      "The verifier could not run",
+    ),
+  );
+  assert.ok(
+    plainGroundingReason("Verifier: no verdict - verifier response could not be parsed").includes(
+      "no readable verdict",
+    ),
+  );
 });

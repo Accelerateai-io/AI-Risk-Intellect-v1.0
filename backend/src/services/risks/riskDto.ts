@@ -53,6 +53,41 @@ export type CatalogRiskMatchDto = {
   matchSummary: string;
 };
 
+export type VerifierCheckDto = {
+  name: string;
+  pass: boolean | null;
+  reason: string;
+};
+
+/** Evidence-discipline fields (BUG-01/02/03) and verifier verdict (BUG-06). */
+export type EvidenceDisciplineDto = {
+  sourceType: string | null;
+  evidenceType: string | null;
+  demonstratedFinding: string | null;
+  statedImplication: string | null;
+  paperStance: string | null;
+  proposedMitigation: string | null;
+  mitigationsInSource: string[];
+  reviewReasons: string[];
+  verifier: {
+    ran: boolean;
+    passed: boolean | null;
+    groundingScore: number | null;
+    checks: VerifierCheckDto[];
+    unsupportedClaims: string[];
+    modelUsed: string | null;
+  } | null;
+  extraction: {
+    mode: string | null;
+    chunks: number | null;
+    llmCalls: number | null;
+    mergeStrategy: string | null;
+    modelUsed: string | null;
+    modelFallback: boolean;
+    referencesRemoved: boolean | null;
+  };
+};
+
 export type RiskDto = {
   id: string;
   /** Sequential display id (R-1, R-01, R-10, …). */
@@ -130,9 +165,19 @@ export type RiskDto = {
     dataToIdentifyRisk: string;
     breakdown: EvidenceBreakdownItem[];
   };
+  evidenceDiscipline: EvidenceDisciplineDto;
+};
+
+type ExtractionMeta = {
+  model_used?: unknown;
+  model_fallback?: unknown;
+  verification?: { review_reasons?: unknown };
+  verifier?: Record<string, unknown>;
+  extraction?: Record<string, unknown>;
 };
 
 type ExtractionJson = {
+  _meta?: ExtractionMeta;
   risk?: Record<string, unknown>;
   risk_scoring?: Record<string, unknown>;
   analysis?: Record<string, unknown>;
@@ -322,6 +367,88 @@ function parseHumanReview(ext: ExtractionJson): HumanReviewInfo {
   };
 }
 
+function strOrNull(v: unknown): string | null {
+  const text = str(v);
+  return text ? text : null;
+}
+
+function numOrNull(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() && Number.isFinite(Number(v))) return Number(v);
+  return null;
+}
+
+function boolOrNull(v: unknown): boolean | null {
+  return typeof v === "boolean" ? v : null;
+}
+
+function stringList(v: unknown): string[] {
+  if (Array.isArray(v)) return v.map((x) => str(x)).filter(Boolean);
+  const single = str(v);
+  return single ? [single] : [];
+}
+
+const VERIFIER_CHECK_ORDER = [
+  "claim_is_demonstrated",
+  "mitigations_reflected",
+  "not_attributed_to_proposed_method",
+  "severity_within_evidence",
+];
+
+/** Evidence fields the reviewer must see to judge Patterns 1, 3 and 6. */
+export function mapEvidenceDiscipline(ext: ExtractionJson): EvidenceDisciplineDto {
+  const risk = ext.risk ?? {};
+  const meta = ext._meta ?? {};
+  const verifierRaw = meta.verifier;
+  const extractionRaw = meta.extraction ?? {};
+  const preprocess = (extractionRaw.preprocess ?? {}) as Record<string, unknown>;
+
+  let verifier: EvidenceDisciplineDto["verifier"] = null;
+  if (verifierRaw && typeof verifierRaw === "object") {
+    const ran = verifierRaw.ran === true;
+    const checksRaw = (verifierRaw.checks ?? {}) as Record<string, unknown>;
+    const checks: VerifierCheckDto[] = VERIFIER_CHECK_ORDER.filter(
+      (name) => name in checksRaw,
+    ).map((name) => {
+      const entry = (checksRaw[name] ?? {}) as Record<string, unknown>;
+      return {
+        name,
+        pass: boolOrNull(entry.pass),
+        reason: str(entry.reason),
+      };
+    });
+    verifier = {
+      ran,
+      passed: ran ? boolOrNull(verifierRaw.passed) : null,
+      groundingScore: numOrNull(verifierRaw.grounding_score),
+      checks,
+      unsupportedClaims: stringList(verifierRaw.unsupported_claims),
+      modelUsed: strOrNull(verifierRaw.model_used),
+    };
+  }
+
+  return {
+    sourceType: strOrNull(risk.source_type),
+    evidenceType: strOrNull(risk.evidence_type),
+    demonstratedFinding: strOrNull(risk.demonstrated_finding),
+    statedImplication: strOrNull(risk.stated_implication),
+    paperStance: strOrNull(risk.paper_stance),
+    proposedMitigation: strOrNull(risk.proposed_mitigation),
+    mitigationsInSource: stringList(risk.mitigations_in_source),
+    reviewReasons: stringList(meta.verification?.review_reasons),
+    verifier,
+    extraction: {
+      mode: strOrNull(extractionRaw.mode),
+      chunks: numOrNull(extractionRaw.chunks),
+      llmCalls: numOrNull(extractionRaw.llm_calls),
+      mergeStrategy: strOrNull(extractionRaw.merge_strategy),
+      modelUsed: strOrNull(meta.model_used ?? extractionRaw.model_used),
+      modelFallback: meta.model_fallback === true,
+      referencesRemoved: boolOrNull(preprocess.references_removed),
+    },
+  };
+}
+
 export function mapRiskRowToDto(
   row: RiskRowInput,
   displayId: string,
@@ -479,5 +606,6 @@ export function mapRiskRowToDto(
       dataToIdentifyRisk: narrative(risk.data_to_identify_risk),
       breakdown: evidenceBreakdown,
     },
+    evidenceDiscipline: mapEvidenceDiscipline(ext),
   };
 }
