@@ -78,6 +78,23 @@ describe("preserveReviewState", () => {
     assert.equal(merged.reextract_review_reasons, "fresh reason");
   });
 
+  it("replaces an automatic publication when a retry fails the gate", () => {
+    const old = {
+      review_status: "approved",
+      publication_status: "published",
+      published_automatically: true,
+      approved_at: "2026-07-01T10:00:00Z",
+    };
+    const merged = preserveReviewState(old, {
+      review_status: "pending",
+      publication_status: "held",
+      review_reason: "Unsupported healthcare claim.",
+    });
+    assert.equal(merged.review_status, "pending");
+    assert.equal(merged.publication_status, "held");
+    assert.equal(merged.review_reason, "Unsupported healthcare claim.");
+  });
+
   it("does not mutate its inputs", () => {
     const old = { review_status: "approved" };
     const fresh = { review_status: "pending", review_reason: "r" };

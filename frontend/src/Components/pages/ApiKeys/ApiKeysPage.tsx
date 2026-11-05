@@ -46,6 +46,8 @@ export function ApiKeysPage() {
   const [keyName, setKeyName] = useState("");
   const [revealedKey, setRevealedKey] = useState<CreatedApiKey | null>(null);
   const [copied, setCopied] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<ApiKeyRow | null>(null);
+  const revokeTitleId = useId();
 
   useEffect(() => {
     setDocumentPageTitle("API Keys");
@@ -96,9 +98,9 @@ export function ApiKeysPage() {
     });
   }
 
-  async function handleRevoke(id: string) {
-    if (!window.confirm("Revoke this API key? It will stop working immediately."))
-      return;
+  async function confirmRevoke() {
+    if (!revokeTarget) return;
+    const id = revokeTarget.id;
     setRevokingId(id);
     const result = await revokeApiKey(id);
     setRevokingId(null);
@@ -107,6 +109,7 @@ export function ApiKeysPage() {
       return;
     }
     setKeys((prev) => prev.map((k) => (k.id === id ? result.key : k)));
+    setRevokeTarget(null);
     toast.success("API key revoked.", { autoClose: 3000 });
   }
 
@@ -205,7 +208,7 @@ export function ApiKeysPage() {
                             type="button"
                             className="apiKeysPage__btn apiKeysPage__btn--danger"
                             disabled={revokingId === key.id}
-                            onClick={() => void handleRevoke(key.id)}
+                            onClick={() => setRevokeTarget(key)}
                           >
                             {revokingId === key.id ? (
                               <Loader2
@@ -244,10 +247,12 @@ export function ApiKeysPage() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="apiKeysPage__dialogHead">
-                  <h2 id={generateTitleId}>Generate API key</h2>
+                  <h2 id={generateTitleId} className="apiKeysPage__dialogTitle">
+                    Generate API key
+                  </h2>
                   <button
                     type="button"
-                    className="apiKeysPage__iconBtn"
+                    className="apiKeysPage__dialogClose"
                     aria-label="Close"
                     disabled={generating}
                     onClick={() => setGenerateOpen(false)}
@@ -255,6 +260,7 @@ export function ApiKeysPage() {
                     <X size={18} />
                   </button>
                 </div>
+                <div className="apiKeysPage__dialogBody">
                 <p className="apiKeysPage__dialogHint">
                   The full key is shown only once after creation. Store it
                   securely.
@@ -305,6 +311,7 @@ export function ApiKeysPage() {
                     Generate API key
                   </button>
                 </div>
+                </div>
               </div>
             </div>,
             document.body,
@@ -326,16 +333,19 @@ export function ApiKeysPage() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="apiKeysPage__dialogHead">
-                  <h2 id={revealTitleId}>Your new API key</h2>
+                  <h2 id={revealTitleId} className="apiKeysPage__dialogTitle">
+                    Your new API key
+                  </h2>
                   <button
                     type="button"
-                    className="apiKeysPage__iconBtn"
+                    className="apiKeysPage__dialogClose"
                     aria-label="Close"
                     onClick={() => setRevealedKey(null)}
                   >
                     <X size={18} />
                   </button>
                 </div>
+                <div className="apiKeysPage__dialogBody">
                 <p className="apiKeysPage__dialogHint apiKeysPage__dialogHint--warn">
                   Copy this key now. You will not be able to see it again.
                 </p>
@@ -370,6 +380,70 @@ export function ApiKeysPage() {
                   >
                     Done
                   </button>
+                </div>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {revokeTarget
+        ? createPortal(
+            <div
+              className="apiKeysPage__overlay"
+              role="presentation"
+              onClick={() => revokingId !== revokeTarget.id && setRevokeTarget(null)}
+            >
+              <div
+                className="apiKeysPage__dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={revokeTitleId}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="apiKeysPage__dialogHead">
+                  <h2 id={revokeTitleId} className="apiKeysPage__dialogTitle">
+                    Revoke API key
+                  </h2>
+                  <button
+                    type="button"
+                    className="apiKeysPage__dialogClose"
+                    aria-label="Close"
+                    disabled={revokingId === revokeTarget.id}
+                    onClick={() => setRevokeTarget(null)}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="apiKeysPage__dialogBody">
+                  <p className="apiKeysPage__dialogHint">
+                    Revoke <strong>{revokeTarget.name}</strong>? This key will
+                    stop working immediately.
+                  </p>
+                  <div className="apiKeysPage__dialogActions">
+                    <button
+                      type="button"
+                      className="apiKeysPage__btn apiKeysPage__btn--ghost"
+                      disabled={revokingId === revokeTarget.id}
+                      onClick={() => setRevokeTarget(null)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="apiKeysPage__btn apiKeysPage__btn--danger"
+                      disabled={revokingId === revokeTarget.id}
+                      onClick={() => void confirmRevoke()}
+                    >
+                      {revokingId === revokeTarget.id ? (
+                        <Loader2 className="apiKeysPage__spin" size={16} aria-hidden />
+                      ) : (
+                        <ShieldOff size={16} aria-hidden />
+                      )}
+                      Revoke
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>,

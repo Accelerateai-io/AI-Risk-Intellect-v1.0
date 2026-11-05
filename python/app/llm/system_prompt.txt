@@ -95,7 +95,7 @@ attacks is Security Risk; a risk about groups treated unequally is Ethical Risk.
 === EVIDENCE DISCIPLINE (read before extracting) ===
 
 Sources are research papers, news reports, incident reports and vendor documents.
-A record states only what the source supports. Four rules:
+A record states only what the source supports. Rules:
 
 1. Measured vs guessed. Decide evidence_type before writing anything else:
    - "demonstrated": the source reports an observed result, experiment, or real incident.
@@ -112,6 +112,19 @@ A record states only what the source supports. Four rules:
 4. Severity follows evidence. If evidence_type is "hypothesized", likelihood is at most 2.
    Every likelihood_reasoning and impact_reasoning sentence must contain a short phrase
    copied word for word from the source.
+5. Inferences stay inferences. Put a measured or observed result in demonstrated_finding.
+   Put a possible consequence in stated_implication and hedge it ("could", "if deployed").
+   Do not write clinical, patient, or physical-safety harm as fact unless the source
+   reports that harm.
+6. A simulation stays a simulation. A simulated, counterfactual, or uncertified result
+   is not a real-world incident and not a certified probability. Real-world impact is
+   conditional on how the result is used.
+7. Classifications must agree. The domain, primary_risk, and secondary_risks must
+   describe the same harm as the explanation. Do not label a task-specific result as
+   a fairness or protected-group finding unless the source tested that. If the source
+   cites a finding from prior work, attribute it to that prior work.
+8. Stay inside the tested task. Do not generalize a result to a broader capability
+   the source did not test. Do not carry over a claim from another topic.
 
 New fields (all required):
 - source_type: "empirical_study" | "position_paper" | "survey" | "incident_report" | "news" | "vendor_doc"

@@ -440,10 +440,61 @@ const VERIFIER_CHECK_LABELS: Record<string, string> = {
   mitigations_reflected: "Mitigations reflected",
   not_attributed_to_proposed_method: "Not attributed to the proposed method",
   severity_within_evidence: "Severity within evidence",
+  evidence_labels_match: "Evidence labels match the source",
+  classification_consistent: "Classification matches the explanation",
+  simulation_scope_respected: "Simulation stays simulation",
+  sensitive_claims_supported: "Healthcare and physical safety are supported",
+  scope_within_source: "Claim stays within the tested task",
 };
 
 function labelValue(value: string | null | undefined): string {
   return value ? value.replace(/_/g, " ") : "—";
+}
+
+type BentoSpan = 1 | 2 | 3 | 4;
+
+/** A label is one cell, a sentence is half a row, and a passage is the whole row. */
+function contentSpan(text: string, items = 0): BentoSpan {
+  const length = text.trim().length;
+  if (items > 3 || length > 180) return 4;
+  if (items > 1 || length > 48) return 2;
+  return 1;
+}
+
+/**
+ * Pack cards into rows of four. A card that would sit narrower than the row,
+ * with nothing beside it to fill the gap, grows to the complete row width.
+ */
+function fillBentoRow(spans: BentoSpan[]): BentoSpan[] {
+  const placed: BentoSpan[] = [];
+  let index = 0;
+  while (index < spans.length) {
+    if (spans[index] === 4) {
+      placed.push(4);
+      index += 1;
+      continue;
+    }
+    const row: BentoSpan[] = [];
+    let used = 0;
+    while (index < spans.length && spans[index] !== 4 && used + spans[index] <= 4) {
+      row.push(spans[index]);
+      used += spans[index];
+      index += 1;
+    }
+    if (used < 4 && row.length > 0) {
+      const last = row[row.length - 1];
+      row[row.length - 1] = (last + (4 - used)) as BentoSpan;
+    }
+    placed.push(...row);
+  }
+  return placed;
+}
+
+function spanLayout(span: BentoSpan): "compact" | "wide" | "span3" | "full" {
+  if (span >= 4) return "full";
+  if (span === 3) return "span3";
+  if (span === 2) return "wide";
+  return "compact";
 }
 
 /** Evidence fields (BUG-01/02/03) and the verifier verdict (BUG-06). */
@@ -468,6 +519,30 @@ const EvidenceDisciplineSection = memo(function EvidenceDisciplineSection({
         .filter(Boolean)
         .join(" · ")
     : "";
+  const publicationLabel =
+    info.publication?.status === "published"
+      ? "Published automatically"
+      : info.publication?.status === "held"
+        ? "Held for review"
+        : "Not decided";
+  const mitigations = info.mitigationsInSource ?? [];
+  const verifierSummary = !verifier
+    ? "Not run"
+    : !verifier.ran
+      ? "Did not run"
+      : verifier.checks.map((check) => `${check.name} ${check.reason}`).join(" ");
+  const spans = fillBentoRow([
+    contentSpan(labelValue(info.evidenceType)),
+    contentSpan(labelValue(info.sourceType)),
+    contentSpan(labelValue(info.paperStance)),
+    contentSpan(publicationLabel),
+    contentSpan(info.demonstratedFinding ?? ""),
+    contentSpan(info.statedImplication ?? ""),
+    contentSpan(info.proposedMitigation ?? ""),
+    contentSpan(mitigations.join(" "), mitigations.length),
+    contentSpan(verifierSummary, verifier?.checks.length ?? 0),
+  ]);
+  const layoutAt = (index: number) => spanLayout(spans[index] ?? 4);
 
   return (
     <section
@@ -478,29 +553,32 @@ const EvidenceDisciplineSection = memo(function EvidenceDisciplineSection({
         <SearchCheck size={16} strokeWidth={2} aria-hidden />
         Evidence Discipline
       </h3>
-      <dl className="riskDetail__classification">
-        <DetailInfoCard title="Evidence type" icon={FileText}>
+      <dl className="riskDetail__classification riskDetail__classification--evidence">
+        <DetailInfoCard title="Evidence type" icon={FileText} layout={layoutAt(0)}>
           <span>{labelValue(info.evidenceType)}</span>
-          {info.sourceType ? (
-            <p className="riskDetail__ratingReasoning">Source: {labelValue(info.sourceType)}</p>
-          ) : null}
         </DetailInfoCard>
-        <DetailInfoCard title="Paper stance" icon={BookOpen}>
+        <DetailInfoCard title="Source type" icon={FileText} layout={layoutAt(1)}>
+          <span>{labelValue(info.sourceType)}</span>
+        </DetailInfoCard>
+        <DetailInfoCard title="Paper stance" icon={BookOpen} layout={layoutAt(2)}>
           <span>{labelValue(info.paperStance)}</span>
-          {info.proposedMitigation ? (
-            <p className="riskDetail__ratingReasoning">Proposes: {info.proposedMitigation}</p>
-          ) : null}
         </DetailInfoCard>
-        <DetailInfoCard title="Demonstrated finding" icon={BarChart3}>
+        <DetailInfoCard title="Publication" icon={SearchCheck} layout={layoutAt(3)}>
+          <span>{publicationLabel}</span>
+        </DetailInfoCard>
+        <DetailInfoCard title="Demonstrated finding" icon={BarChart3} layout={layoutAt(4)}>
           <span>{info.demonstratedFinding ?? "—"}</span>
         </DetailInfoCard>
-        <DetailInfoCard title="Stated implication" icon={Quote}>
+        <DetailInfoCard title="Stated implication" icon={Quote} layout={layoutAt(5)}>
           <span>{info.statedImplication ?? "—"}</span>
         </DetailInfoCard>
-        <DetailInfoCard title="Mitigations in source" icon={ShieldCheck}>
-          {info.mitigationsInSource.length ? (
+        <DetailInfoCard title="Proposed mitigation" icon={ShieldCheck} layout={layoutAt(6)}>
+          <span>{info.proposedMitigation ?? "—"}</span>
+        </DetailInfoCard>
+        <DetailInfoCard title="Mitigations in source" icon={ShieldCheck} layout={layoutAt(7)}>
+          {mitigations.length ? (
             <ul className="riskDetail__plainList">
-              {info.mitigationsInSource.map((m, i) => (
+              {mitigations.map((m, i) => (
                 <li key={`${i}-${m}`}>{m}</li>
               ))}
             </ul>
@@ -508,7 +586,11 @@ const EvidenceDisciplineSection = memo(function EvidenceDisciplineSection({
             <span>—</span>
           )}
         </DetailInfoCard>
-        <DetailInfoCard title="Verifier" icon={Eye}>
+        <DetailInfoCard
+          title="Verifier"
+          icon={Eye}
+          layout={layoutAt(8)}
+        >
           {!verifier ? (
             <span>Not run</span>
           ) : !verifier.ran ? (
@@ -592,6 +674,7 @@ const DetailInfoCard = memo(function DetailInfoCard({
   headerHref,
   headerActionLabel,
   onEdit,
+  layout,
 }: {
   title: string;
   value?: string;
@@ -601,6 +684,7 @@ const DetailInfoCard = memo(function DetailInfoCard({
   headerHref?: string;
   headerActionLabel?: string;
   onEdit?: () => void;
+  layout?: "compact" | "wide" | "span3" | "full";
 }) {
   const body = children ?? value ?? "—";
   const openHref = headerHref?.trim();
@@ -619,7 +703,7 @@ const DetailInfoCard = memo(function DetailInfoCard({
 
   return (
     <div
-      className={`riskDetail__classCard${Icon ? "" : " riskDetail__classCard--noIcon"}${showHeaderAction ? " riskDetail__classCard--withAction" : ""}${onEdit ? " riskDetail__classCard--editable" : ""}`}
+      className={`riskDetail__classCard${Icon ? "" : " riskDetail__classCard--noIcon"}${showHeaderAction ? " riskDetail__classCard--withAction" : ""}${onEdit ? " riskDetail__classCard--editable" : ""}${layout && layout !== "compact" ? ` riskDetail__classCard--${layout}` : ""}`}
     >
       {showHeaderAction ? (
         <div className="riskDetail__classCardHeadRow">
@@ -677,6 +761,10 @@ const CatalogMatchCard = memo(function CatalogMatchCard({ match }: { match: Cata
     <li className="riskDetail__catalogMatch">
       <div className="riskDetail__catalogMatchHead">
         <span className="riskDetail__riskIdPill">{match.riskId}</span>
+        {match.matchStrength === "suggestion" ||
+        match.matchSummary.trim().toLowerCase().startsWith("suggestion:") ? (
+          <span className="riskDetail__riskIdPill">Suggestion</span>
+        ) : null}
         <CatalogMatchScores
           accuracyPercent={match.accuracyPercent}
           domainMatchPercent={match.domainMatchPercent}

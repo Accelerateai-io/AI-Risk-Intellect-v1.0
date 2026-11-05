@@ -18,9 +18,11 @@ export type PreservedReviewKey = (typeof PRESERVED_REVIEW_KEYS)[number];
 
 /**
  * Merge review state from the old extraction JSON into a freshly generated
- * one. The old review decision always wins: an approved/rejected/classified
- * risk stays that way even when the fresh extraction would flag it as
- * pending. Review reasons produced by the fresh extraction are kept under
+ * one. The old human review decision wins: an approved, rejected, or
+ * classified risk stays that way even when the fresh extraction would flag
+ * it as pending. An automatic publication has no reviewer, so a later
+ * extraction — including a retry — replaces it with the new gate result.
+ * Review reasons produced by the fresh extraction are kept under
  * `reextract_review_reasons` so reviewers can still see them.
  */
 export function preserveReviewState(
@@ -32,10 +34,12 @@ export function preserveReviewState(
 
   const oldStatus = String(old.review_status ?? "").trim();
   const hasReviewDecision = oldStatus !== "" && oldStatus !== "pending";
+  const automaticPublication =
+    old.published_automatically === true && old.reviewed_by == null;
 
-  // Undecided rows carry nothing worth protecting: the fresh extraction's
-  // review flags describe the current state.
-  if (!hasReviewDecision) return merged;
+  // Undecided rows, and rows that were only auto-published, take the fresh
+  // gate result. A human decision stays in place.
+  if (!hasReviewDecision || automaticPublication) return merged;
 
   for (const key of PRESERVED_REVIEW_KEYS) {
     if (old[key] !== undefined) {

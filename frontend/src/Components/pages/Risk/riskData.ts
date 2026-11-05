@@ -9,6 +9,7 @@ export type CatalogRiskMatch = {
   domainMatchPercent: number;
   descriptionMatchPercent: number;
   matchSummary: string;
+  matchStrength?: "established" | "suggestion";
 };
 
 export type HumanReviewInfo = {
@@ -87,6 +88,10 @@ export type EvidenceDisciplineInfo = {
   proposedMitigation: string | null;
   mitigationsInSource: string[];
   reviewReasons: string[];
+  publication?: {
+    decision: "publish" | "hold" | null;
+    status: string | null;
+  };
   verifier: {
     ran: boolean;
     passed: boolean | null;

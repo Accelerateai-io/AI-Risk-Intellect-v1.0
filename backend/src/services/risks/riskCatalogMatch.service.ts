@@ -42,6 +42,11 @@ export type CatalogRiskMatch = {
   taxonomyMatchPercent?: number;
   judgeVerdict?: "match" | "no_match";
   judgeReasoning?: string;
+  /**
+   * Established matches are strong enough to show as catalog mappings.
+   * Weaker scores stay visible but are labeled suggestions.
+   */
+  matchStrength?: "established" | "suggestion";
 };
 
 /** Persisted on `risks.extraction_json.catalog_matches` at extraction time. */
@@ -102,6 +107,11 @@ function mapRawToCatalogMatch(item: Record<string, unknown>): CatalogRiskMatch |
   }
   const reasoning = str(item.judgeReasoning ?? item.judge_reasoning);
   if (reasoning) match.judgeReasoning = reasoning;
+
+  const strength = str(item.matchStrength ?? item.match_strength);
+  if (strength === "established" || strength === "suggestion") {
+    match.matchStrength = strength;
+  }
 
   return match;
 }
@@ -522,6 +532,32 @@ const LEXICAL_WEIGHTS = {
   domain: 0.15,
 } as const;
 
+/**
+ * Below this blended score a match is only a suggestion, unless the judge
+ * confirmed it. Weak suggestions are not shown as established catalog matches.
+ */
+export const STRONG_CATALOG_MATCH_PERCENT = 60;
+
+export function assignCatalogMatchStrength(
+  match: CatalogRiskMatch,
+): CatalogRiskMatch {
+  const established =
+    match.judgeVerdict === "match" ||
+    (match.judgeVerdict !== "no_match" &&
+      match.accuracyPercent >= STRONG_CATALOG_MATCH_PERCENT);
+  const matchStrength = established ? "established" : "suggestion";
+  let matchSummary = match.matchSummary ?? "";
+  if (matchStrength === "suggestion" && !/^suggestion:/i.test(matchSummary)) {
+    matchSummary = matchSummary
+      ? `Suggestion: ${matchSummary}`
+      : "Suggestion: weak catalog match, not an established mapping.";
+  }
+  if (matchStrength === "established") {
+    matchSummary = matchSummary.replace(/^Suggestion:\s*/i, "");
+  }
+  return { ...match, matchStrength, matchSummary };
+}
+
 export type ScoreCatalogRowInput = {
   row: {
     riskTitle: string | null;
@@ -694,7 +730,8 @@ export async function findCatalogRiskMatches(
       return match;
     })
     .filter((m) => m.accuracyPercent >= minAccuracy)
-    .sort((a, b) => b.accuracyPercent - a.accuracyPercent);
+    .sort((a, b) => b.accuracyPercent - a.accuracyPercent)
+    .map(assignCatalogMatchStrength);
 
   return scored.slice(0, limit);
 }

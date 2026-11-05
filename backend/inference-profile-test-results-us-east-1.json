@@ -1,38 +1,8 @@
 {
   "region": "us-east-1",
-  "updatedAt": "2026-10-21T12:44:38.450Z",
+  "updatedAt": "2026-11-05T11:00:58.111Z",
   "count": 10,
   "results": [
-    {
-      "profileName": "US DeepSeek-R1",
-      "profileType": "SYSTEM_DEFINED",
-      "inferenceProfileId": "us.deepseek.r1-v1:0",
-      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/us.deepseek.r1-v1:0",
-      "foundationModelId": "deepseek.r1-v1:0",
-      "prompt": "Hi",
-      "testedAt": "2026-07-10T05:53:14.150Z",
-      "tests": [
-        {
-          "status": "working",
-          "identifierType": "inferenceProfileId",
-          "value": "us.deepseek.r1-v1:0",
-          "prompt": "Hi",
-          "reply": "Hello! How can I assist you today?",
-          "latencyMs": 1771,
-          "stopReason": "end_turn"
-        }
-      ],
-      "overallStatus": "working",
-      "workingTarget": {
-        "identifierType": "inferenceProfileId",
-        "value": "us.deepseek.r1-v1:0"
-      },
-      "workingReply": "Hello! How can I assist you today?",
-      "summary": {
-        "working": 1,
-        "notWorking": 0
-      }
-    },
     {
       "profileName": "US Amazon Nova 2 Lite",
       "profileType": "SYSTEM_DEFINED",
@@ -324,6 +294,36 @@
         "value": "global.anthropic.claude-haiku-4-5-20251001-v1:0"
       },
       "workingReply": "Hello! 👋 How can I help you today?",
+      "summary": {
+        "working": 1,
+        "notWorking": 0
+      }
+    },
+    {
+      "profileName": "US DeepSeek-R1",
+      "profileType": "SYSTEM_DEFINED",
+      "inferenceProfileId": "us.deepseek.r1-v1:0",
+      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/us.deepseek.r1-v1:0",
+      "foundationModelId": "deepseek.r1-v1:0",
+      "prompt": "Hi",
+      "testedAt": "2026-11-05T11:00:58.110Z",
+      "tests": [
+        {
+          "status": "working",
+          "identifierType": "inferenceProfileId",
+          "value": "us.deepseek.r1-v1:0",
+          "prompt": "Hi",
+          "reply": "Hello! How can I assist you today?",
+          "latencyMs": 2120,
+          "stopReason": "end_turn"
+        }
+      ],
+      "overallStatus": "working",
+      "workingTarget": {
+        "identifierType": "inferenceProfileId",
+        "value": "us.deepseek.r1-v1:0"
+      },
+      "workingReply": "Hello! How can I assist you today?",
       "summary": {
         "working": 1,
         "notWorking": 0

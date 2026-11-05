@@ -42,6 +42,7 @@ import {
 import { findDuplicateRisk } from "../risks/riskDedup.service.js";
 import { preserveReviewState } from "../risks/riskReviewState.js";
 import { resolveRiskScoring } from "../risks/riskScoring.js";
+import { applyPublicationDecision } from "../risks/publicationGate.js";
 import {
   detectTextLanguage,
   isEnglishLanguageCode,
@@ -329,6 +330,14 @@ async function buildPersistedExtraction(input: {
       ? risk.ai_product_vendor.trim()
       : null;
 
+  const qualityScore = qualityScoreFromObject(input.result.object);
+  // Same gate for a first extraction and for a retry that stores a new output.
+  applyPublicationDecision({
+    qualityScore,
+    extractionJson,
+    domains,
+  });
+
   return {
     riskTitle,
     articleTitle,
@@ -338,7 +347,7 @@ async function buildPersistedExtraction(input: {
     sector: (risk.sector as string) ?? null,
     industry: (risk.industry as string) ?? null,
     intent: (risk.intent as string) ?? null,
-    qualityScore: qualityScoreFromObject(input.result.object),
+    qualityScore,
     likelihood,
     impact,
     severityScore,

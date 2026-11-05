@@ -1,8 +1,8 @@
 """Independent verifier pass (BUG-06).
 
 A second model call receives the source text and the extracted record and
-answers four yes/no checks that mirror the reviewer findings on the 186-record
-export:
+answers the publication checks. The same checks are used for a first
+extraction and for a retry output:
 
 * claim_is_demonstrated            - the risk is an observed result or real
                                      incident, not a speculation written as fact
@@ -35,6 +35,11 @@ VERIFIER_CHECKS: tuple[str, ...] = (
     "mitigations_reflected",
     "not_attributed_to_proposed_method",
     "severity_within_evidence",
+    "evidence_labels_match",
+    "classification_consistent",
+    "simulation_scope_respected",
+    "sensitive_claims_supported",
+    "scope_within_source",
 )
 
 CHECK_LABELS: dict[str, str] = {
@@ -42,6 +47,11 @@ CHECK_LABELS: dict[str, str] = {
     "mitigations_reflected": "safeguards or limitations in the source are not reflected",
     "not_attributed_to_proposed_method": "the risk is attributed to the method the source proposes",
     "severity_within_evidence": "likelihood or impact goes beyond the evidence",
+    "evidence_labels_match": "a demonstrated label is used for an inference or for prior work",
+    "classification_consistent": "the domain or risk labels disagree with the explanation",
+    "simulation_scope_respected": "a simulation or uncertified estimate is written as a real-world incident",
+    "sensitive_claims_supported": "a healthcare or physical-safety claim is not supported by the source",
+    "scope_within_source": "the record generalizes beyond the tasks the source tested",
 }
 
 REASON_PREFIX = "Verifier:"
@@ -75,6 +85,28 @@ Checks:
    record's own evidence_type. False when the rationale cites consequences,
    deployments, populations or harms the source does not describe, or when
    the rationale is about a different topic than the record's title.
+5. evidence_labels_match: true when a demonstrated finding is an observed or
+   measured result in the SOURCE, and inferences are marked as implications.
+   False when "demonstrated" is used for a speculation, or when the record
+   presents a finding the SOURCE attributes to prior work as its own result.
+6. classification_consistent: true when the domain, primary risk, and
+   secondary risk describe the same harm as the explanation. False when they
+   disagree, including a fairness or protected-group label the explanation
+   does not support.
+7. simulation_scope_respected: true when a simulation, counterfactual, or
+   uncertified estimate stays labeled as such. False when it is written as a
+   deployed incident, a certified probability, or real-world harm.
+8. sensitive_claims_supported: true when every healthcare or physical-safety
+   claim (patients, clinicians, mortality, injury, safety-critical equipment)
+   is quoted from the SOURCE or explicitly hedged as a possible consequence.
+   False when patient impact or physical harm is stated as fact without that
+   support. Silence in the source is not evidence of harm.
+9. scope_within_source: true when capability and fairness claims stay inside
+   the tasks the SOURCE tested. False when a task-specific result is
+   generalized to a broader ability or to a protected-group finding the
+   SOURCE did not test.
+
+These checks apply equally to a first extraction and to a retry output.
 
 Also give grounding_score: a 0 to 1 estimate of how much of the record's
 description and rationale is directly supported by the source, and list any
@@ -86,6 +118,11 @@ Return ONLY a JSON object:
   "mitigations_reflected": {"pass": true|false, "reason": "one sentence"},
   "not_attributed_to_proposed_method": {"pass": true|false, "reason": "one sentence"},
   "severity_within_evidence": {"pass": true|false, "reason": "one sentence"},
+  "evidence_labels_match": {"pass": true|false, "reason": "one sentence"},
+  "classification_consistent": {"pass": true|false, "reason": "one sentence"},
+  "simulation_scope_respected": {"pass": true|false, "reason": "one sentence"},
+  "sensitive_claims_supported": {"pass": true|false, "reason": "one sentence"},
+  "scope_within_source": {"pass": true|false, "reason": "one sentence"},
   "grounding_score": 0.0,
   "unsupported_claims": ["..."]
 }
@@ -150,7 +187,7 @@ def build_verifier_blocks(
         {
             "text": "=== RECORD ===\n"
             + json.dumps(record_summary(record), ensure_ascii=False, indent=1)
-            + "\n\nRun the four checks and return the JSON object."
+            + "\n\nRun every check and return the JSON object."
         }
     )
     return blocks

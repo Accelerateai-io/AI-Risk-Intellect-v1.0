@@ -187,38 +187,22 @@ html:not(.app-theme-dark) .observabilityPage__tablePanel {
 
 .observabilityPage__summary {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15.5rem), 1fr));
   gap: 1rem;
   margin-bottom: 1.75rem;
-}
-
-@media (max-width: 1200px) {
-  .observabilityPage__summary {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 768px) {
-  .observabilityPage__summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 480px) {
-  .observabilityPage__summary {
-    grid-template-columns: 1fr;
-  }
 }
 
 .obsMetricCard {
   display: flex;
   align-items: flex-start;
   gap: 1rem;
+  min-width: 0;
   padding: 1.15rem 1.2rem;
   border-radius: 10px;
   background: var(--obs-card);
   border: 1px solid var(--obs-border);
   box-sizing: border-box;
+  container-type: inline-size;
 }
 
 .obsMetricCard__icon {
@@ -257,31 +241,40 @@ html:not(.app-theme-dark) .observabilityPage__tablePanel {
 }
 
 .obsMetricCard__body {
+  flex: 1 1 auto;
   min-width: 0;
+  max-width: 100%;
 }
 
 .obsMetricCard__label {
   margin: 0;
+  max-width: 100%;
   font-size: 0.65rem;
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
   color: var(--obs-muted);
 }
 
 .obsMetricCard__value {
   margin: 0.35rem 0 0;
-  font-size: 1.75rem;
+  max-width: 100%;
+  font-size: 1.35rem;
+  font-size: clamp(1.05rem, 9cqi, 1.75rem);
   font-weight: 700;
   letter-spacing: -0.02em;
-  line-height: 1.1;
+  line-height: 1.15;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
   color: var(--obs-text);
 }
 
 .obsMetricCard__hint {
   margin: 0.35rem 0 0;
+  max-width: 100%;
   font-size: 0.78rem;
+  overflow-wrap: anywhere;
   color: var(--obs-muted);
 }
 
@@ -318,25 +311,21 @@ html:not(.app-theme-dark) .observabilityPage__tablePanel {
 
 .observabilityPage__charts {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
   gap: 1rem;
   margin-bottom: 1.75rem;
 }
 
-@media (max-width: 1100px) {
-  .observabilityPage__charts {
-    grid-template-columns: 1fr;
-  }
-}
-
 .obsChart {
   --obs-chart-color: #3b82f6;
+  min-width: 0;
   padding: 1.15rem 1.2rem 1rem;
   border-radius: 10px;
   background: var(--obs-card);
   border: 1px solid var(--obs-border);
   min-height: 11rem;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .obsChart__head {
@@ -346,6 +335,12 @@ html:not(.app-theme-dark) .observabilityPage__tablePanel {
   justify-content: space-between;
   gap: 0.65rem 1rem;
   margin-bottom: 0.75rem;
+  min-width: 0;
+}
+
+.obsChart__headText {
+  flex: 1 1 8rem;
+  min-width: 0;
 }
 
 .obsChart__title {
@@ -365,7 +360,10 @@ html:not(.app-theme-dark) .observabilityPage__tablePanel {
 .obsChart__stats {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 0.65rem 1rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .obsChart__stat {
@@ -373,6 +371,8 @@ html:not(.app-theme-dark) .observabilityPage__tablePanel {
   flex-direction: column;
   align-items: flex-end;
   gap: 0.1rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .obsChart__statLabel {
@@ -384,9 +384,12 @@ html:not(.app-theme-dark) .observabilityPage__tablePanel {
 }
 
 .obsChart__statValue {
+  max-width: 100%;
   font-size: 0.9rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  text-align: right;
   color: var(--obs-chart-color);
 }
 

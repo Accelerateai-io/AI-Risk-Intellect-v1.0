@@ -1,12 +1,15 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  assignCatalogMatchStrength,
   buildEvidenceTokenWeights,
   evidenceGateMultiplier,
   parseCatalogMatchesFromExtraction,
   scaledEmbeddingScore,
   scoreCatalogRow,
+  STRONG_CATALOG_MATCH_PERCENT,
   weightedOverlapCoefficient,
+  type CatalogRiskMatch,
   type ScoreCatalogRowInput,
 } from "./riskCatalogMatch.service.js";
 
@@ -268,5 +271,59 @@ describe("parseCatalogMatchesFromExtraction round-trip", () => {
     });
     assert.ok(parsed);
     assert.equal(parsed[0].judgeVerdict, undefined);
+  });
+});
+
+function sampleMatch(overrides: Partial<CatalogRiskMatch>): CatalogRiskMatch {
+  return {
+    riskId: "MAP-1",
+    title: "Catalog risk",
+    description: "Catalog description",
+    domain: "Safety",
+    accuracyPercent: 40,
+    domainMatchPercent: 80,
+    descriptionMatchPercent: 30,
+    matchSummary: "Partial domain alignment",
+    ...overrides,
+  };
+}
+
+describe("assignCatalogMatchStrength", () => {
+  it("labels a weak score as a suggestion", () => {
+    const labeled = assignCatalogMatchStrength(
+      sampleMatch({ accuracyPercent: STRONG_CATALOG_MATCH_PERCENT - 1 }),
+    );
+    assert.equal(labeled.matchStrength, "suggestion");
+    assert.match(labeled.matchSummary, /^Suggestion:/);
+  });
+
+  it("keeps a strong score as an established match", () => {
+    const labeled = assignCatalogMatchStrength(
+      sampleMatch({ accuracyPercent: STRONG_CATALOG_MATCH_PERCENT }),
+    );
+    assert.equal(labeled.matchStrength, "established");
+    assert.equal(labeled.matchSummary.startsWith("Suggestion:"), false);
+  });
+
+  it("does not treat a judge rejection as an established match", () => {
+    const labeled = assignCatalogMatchStrength(
+      sampleMatch({
+        accuracyPercent: 90,
+        judgeVerdict: "no_match",
+      }),
+    );
+    assert.equal(labeled.matchStrength, "suggestion");
+  });
+
+  it("keeps a judge-confirmed match even when the blended score is low", () => {
+    const labeled = assignCatalogMatchStrength(
+      sampleMatch({
+        accuracyPercent: 30,
+        judgeVerdict: "match",
+        matchSummary: "Suggestion: Partial domain alignment",
+      }),
+    );
+    assert.equal(labeled.matchStrength, "established");
+    assert.equal(labeled.matchSummary.startsWith("Suggestion:"), false);
   });
 });

@@ -253,6 +253,12 @@ export function hasEvidenceReviewReasons(extractionJson: unknown): boolean {
   return evidenceReviewReasons(extractionJson).length > 0;
 }
 
+/** True when automatic publication held the record for review. */
+export function isPublicationHeld(extractionJson: unknown): boolean {
+  const ext = (extractionJson ?? {}) as { publication_status?: unknown };
+  return String(ext.publication_status ?? "").trim().toLowerCase() === "held";
+}
+
 /** Reviewer-facing sentence per verifier check (BUG-06). */
 const VERIFIER_CHECK_TEXT: Record<string, string> = {
   claim_is_demonstrated:
@@ -263,6 +269,16 @@ const VERIFIER_CHECK_TEXT: Record<string, string> = {
     "The record blames the method the source proposes for the problem it was built to solve.",
   severity_within_evidence:
     "The likelihood or impact rationale goes beyond what the source supports.",
+  evidence_labels_match:
+    "The record labels an inference, or a prior-work finding, as demonstrated.",
+  classification_consistent:
+    "The domain or risk labels do not match the explanation.",
+  simulation_scope_respected:
+    "A simulation or uncertified estimate is written as a real-world incident.",
+  sensitive_claims_supported:
+    "A healthcare or physical-safety claim is not supported by the source.",
+  scope_within_source:
+    "The record generalizes beyond the tasks the source tested.",
 };
 
 const VERIFIER_PREFIX_RE = /^verifier:\s*/i;
@@ -393,6 +409,8 @@ export function needsHumanReview(input: {
   extractionJson: unknown;
 
 }): boolean {
+
+  if (isPublicationHeld(input.extractionJson)) return true;
 
   if (isNonEnglishRisk(input.extractionJson)) return true;
 

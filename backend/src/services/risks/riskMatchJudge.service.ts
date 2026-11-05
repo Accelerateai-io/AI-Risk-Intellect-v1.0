@@ -4,7 +4,10 @@ import {
 } from "@aws-sdk/client-bedrock-runtime";
 import { z } from "zod";
 import { logger } from "../../logger/logger.js";
-import type { CatalogRiskMatch } from "./riskCatalogMatch.service.js";
+import {
+  assignCatalogMatchStrength,
+  type CatalogRiskMatch,
+} from "./riskCatalogMatch.service.js";
 
 /**
  * LLM judge for catalog matches: reads the extracted risk plus the top
@@ -263,7 +266,7 @@ export function applyJudgeVerdicts(
         judgeVerdict: verdict.isMatch ? "match" : "no_match",
       };
       if (verdict.reasoning) updated.judgeReasoning = verdict.reasoning;
-      return updated;
+      return assignCatalogMatchStrength(updated);
     })
     .sort((a, b) => b.accuracyPercent - a.accuracyPercent);
 }

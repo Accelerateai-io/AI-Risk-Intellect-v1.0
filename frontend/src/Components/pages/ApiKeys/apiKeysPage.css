@@ -147,7 +147,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1rem;
+  padding: 1.5rem;
   background: rgba(15, 23, 42, 0.45);
 }
 
@@ -155,12 +155,10 @@
   width: min(520px, 100%);
   background: #fff;
   border-radius: 10px;
-  border: 1px solid var(--ak-border);
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
-  padding: 1.25rem 1.35rem 1.35rem;
+  border: 1px solid rgba(28, 176, 212, 0.15);
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.18);
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
 }
 
 .apiKeysPage__dialogHead {
@@ -168,21 +166,45 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid #e5e7eb;
 }
 
-.apiKeysPage__dialogHead h2 {
+.apiKeysPage__dialogTitle {
   margin: 0;
   font-size: 1.1rem;
-  font-weight: 700;
+  font-weight: 600;
+  color: var(--main-text-color, #1f2937);
 }
 
-.apiKeysPage__iconBtn {
+.apiKeysPage__dialogClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
   border: none;
-  background: transparent;
-  color: var(--ak-muted);
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #64748b;
   cursor: pointer;
-  padding: 0.25rem;
-  display: inline-flex;
+}
+
+.apiKeysPage__dialogClose:hover:not(:disabled) {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.apiKeysPage__dialogClose:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.apiKeysPage__dialogBody {
+  padding: 1.1rem 1.1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .apiKeysPage__dialogHint {
@@ -201,23 +223,26 @@
 }
 
 .apiKeysPage__label {
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 600;
-  color: #334155;
+  color: var(--main-text-label, #475569);
 }
 
 .apiKeysPage__input {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+  border: 1px solid rgba(28, 176, 212, 0.25);
+  border-radius: var(--ui-border-radius, 5px);
   padding: 0.55rem 0.7rem;
   font-size: 0.9rem;
+  background: #fff;
+  color: var(--main-text-color, #1f2937);
 }
 
 .apiKeysPage__input:focus {
-  outline: 2px solid rgba(28, 176, 212, 0.35);
+  outline: none;
   border-color: var(--ak-accent);
+  box-shadow: var(--main-auth-focus-ring-shadow, 0 0 0 2px rgba(28, 176, 212, 0.35));
 }
 
 .apiKeysPage__dialogActions {
@@ -225,7 +250,12 @@
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.apiKeysPage__dialogActions .apiKeysPage__btn--danger {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.875rem;
 }
 
 .apiKeysPage__secretRow {
@@ -278,6 +308,124 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Dark theme only. System theme applies this class when the OS is dark. */
+html.app-theme-dark .apiKeysPage {
+  --ak-border: rgba(148, 163, 184, 0.28);
+  --ak-muted: #94a3b8;
+  --ak-danger: #fca5a5;
+  color: #e2e8f0;
+}
+
+html.app-theme-dark .apiKeysPage__panel {
+  background: #1e293b;
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+html.app-theme-dark .apiKeysPage__table th,
+html.app-theme-dark .apiKeysPage__table td {
+  border-bottom-color: rgba(148, 163, 184, 0.18);
+  color: #e2e8f0;
+}
+
+html.app-theme-dark .apiKeysPage__table th {
+  background: #0f172a;
+  color: #94a3b8;
+}
+
+html.app-theme-dark .apiKeysPage__table tbody tr:hover td {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+html.app-theme-dark .apiKeysPage__prefix {
+  color: #e2e8f0;
+}
+
+html.app-theme-dark .apiKeysPage__badge--active {
+  background: rgba(28, 176, 212, 0.18);
+  color: #67e8f9;
+}
+
+html.app-theme-dark .apiKeysPage__badge--revoked {
+  background: rgba(185, 28, 28, 0.22);
+  color: #fca5a5;
+}
+
+html.app-theme-dark .apiKeysPage__btn--ghost {
+  background: #334155;
+  border-color: #475569;
+  color: #f1f5f9;
+}
+
+html.app-theme-dark .apiKeysPage__btn--ghost:hover:not(:disabled) {
+  background: #475569;
+}
+
+html.app-theme-dark .apiKeysPage__btn--danger {
+  background: rgba(185, 28, 28, 0.12);
+  border-color: rgba(248, 113, 113, 0.45);
+  color: #fca5a5;
+}
+
+html.app-theme-dark .apiKeysPage__btn--danger:hover:not(:disabled) {
+  background: rgba(185, 28, 28, 0.22);
+  border-color: rgba(252, 165, 165, 0.65);
+}
+
+html.app-theme-dark .apiKeysPage__overlay {
+  background: rgba(15, 23, 42, 0.72);
+}
+
+html.app-theme-dark .apiKeysPage__dialog {
+  background: #1e293b;
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+html.app-theme-dark .apiKeysPage__dialogHead {
+  border-bottom-color: rgba(148, 163, 184, 0.2);
+}
+
+html.app-theme-dark .apiKeysPage__dialogTitle {
+  color: #f1f5f9;
+}
+
+html.app-theme-dark .apiKeysPage__dialogClose {
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.18);
+}
+
+html.app-theme-dark .apiKeysPage__dialogClose:hover:not(:disabled) {
+  color: #f1f5f9;
+  background: rgba(148, 163, 184, 0.28);
+}
+
+html.app-theme-dark .apiKeysPage__dialogHint {
+  color: #cbd5e1;
+}
+
+html.app-theme-dark .apiKeysPage__dialogHint strong {
+  color: #f8fafc;
+}
+
+html.app-theme-dark .apiKeysPage__dialogHint--warn {
+  color: #fcd34d;
+  background: rgba(120, 53, 15, 0.35);
+  border-color: rgba(252, 211, 77, 0.35);
+}
+
+html.app-theme-dark .apiKeysPage__label {
+  color: #cbd5e1;
+}
+
+html.app-theme-dark .apiKeysPage__input {
+  background: #0f172a;
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #f1f5f9;
+}
+
+html.app-theme-dark .apiKeysPage__input::placeholder {
+  color: #64748b;
 }
 
 .visually-hidden {

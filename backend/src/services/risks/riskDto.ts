@@ -51,6 +51,8 @@ export type CatalogRiskMatchDto = {
   domainMatchPercent: number;
   descriptionMatchPercent: number;
   matchSummary: string;
+  /** Established matches are catalog mappings. Suggestions are weaker candidates. */
+  matchStrength?: "established" | "suggestion";
 };
 
 export type VerifierCheckDto = {
@@ -69,6 +71,10 @@ export type EvidenceDisciplineDto = {
   proposedMitigation: string | null;
   mitigationsInSource: string[];
   reviewReasons: string[];
+  publication: {
+    decision: "publish" | "hold" | null;
+    status: string | null;
+  };
   verifier: {
     ran: boolean;
     passed: boolean | null;
@@ -182,6 +188,8 @@ type ExtractionJson = {
   risk_scoring?: Record<string, unknown>;
   analysis?: Record<string, unknown>;
   review_status?: string;
+  publication_status?: string;
+  publication_decision?: string;
   review_classification?: string;
   review_feedback?: string;
   reviewed_at?: string;
@@ -393,6 +401,11 @@ const VERIFIER_CHECK_ORDER = [
   "mitigations_reflected",
   "not_attributed_to_proposed_method",
   "severity_within_evidence",
+  "evidence_labels_match",
+  "classification_consistent",
+  "simulation_scope_respected",
+  "sensitive_claims_supported",
+  "scope_within_source",
 ];
 
 /** Evidence fields the reviewer must see to judge Patterns 1, 3 and 6. */
@@ -436,6 +449,13 @@ export function mapEvidenceDiscipline(ext: ExtractionJson): EvidenceDisciplineDt
     proposedMitigation: strOrNull(risk.proposed_mitigation),
     mitigationsInSource: stringList(risk.mitigations_in_source),
     reviewReasons: stringList(meta.verification?.review_reasons),
+    publication: {
+      decision:
+        ext.publication_decision === "publish" || ext.publication_decision === "hold"
+          ? ext.publication_decision
+          : null,
+      status: strOrNull(ext.publication_status),
+    },
     verifier,
     extraction: {
       mode: strOrNull(extractionRaw.mode),

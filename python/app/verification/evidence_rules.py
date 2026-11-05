@@ -187,6 +187,22 @@ def verify_record(record: dict, source_text: str = "") -> dict:
     if neg:
         reasons.append(neg)
 
+    publication: dict[str, Any] = {"decision": "publish", "checks": [], "hold_reasons": []}
+    try:
+        from app.verification.publication_rules import publication_review
+
+        publication = publication_review(record if isinstance(record, dict) else {}, source_text)
+        for reason in publication.get("hold_reasons") or []:
+            if reason not in reasons:
+                reasons.append(reason)
+    except Exception:
+        publication = {
+            "decision": "hold",
+            "checks": [],
+            "hold_reasons": ["Publication checks did not finish."],
+        }
+        reasons.append(publication["hold_reasons"][0])
+
     scoring = record.get("risk_scoring") if isinstance(record, dict) else None
     scoring = scoring if isinstance(scoring, dict) else {}
     for field in ("likelihood_reasoning", "impact_reasoning"):
@@ -200,4 +216,12 @@ def verify_record(record: dict, source_text: str = "") -> dict:
                     "in the source (BUG-04 / TC-09)"
                 )
 
-    return {"review_reasons": reasons, "citations": citations}
+    # Quote failures and the other rules above also hold the record. The
+    # publication decision is what the automatic release gate reads.
+    if reasons:
+        publication = {**publication, "decision": "hold"}
+    return {
+        "review_reasons": reasons,
+        "citations": citations,
+        "publication": publication,
+    }
