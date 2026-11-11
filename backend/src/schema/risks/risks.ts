@@ -8,6 +8,7 @@ import {
   jsonb,
   boolean,
   index,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { articles } from "../articles/articles.js";
 import { users } from "../users/users.js";
@@ -48,6 +49,13 @@ export const risks = pgTable(
     extractionJson: jsonb("extraction_json").notNull(),
     modelName: varchar("model_name", { length: 128 }),
     sourceFlag: varchar("source_flag", { length: 64 }),
+    // Force-reprocess (B-3): a re-run inserts a NEW risk row linked to the
+    // risk it replaces via this self-reference; the superseded row is left
+    // untouched so history/audit is preserved. Null for original extractions.
+    supersedesId: uuid("supersedes_id").references(
+      (): AnyPgColumn => risks.id,
+      { onDelete: "set null" },
+    ),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -62,6 +70,7 @@ export const risks = pgTable(
     index("risks_severity_band_idx").on(table.severityBand),
     index("risks_severity_score_idx").on(table.severityScore),
     index("risks_assigned_to_idx").on(table.assignedTo),
+    index("risks_supersedes_id_idx").on(table.supersedesId),
   ],
 );
 

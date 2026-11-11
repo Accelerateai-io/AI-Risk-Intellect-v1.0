@@ -9,6 +9,7 @@ from typing import Any
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
+from app.llm.bedrock_llm import bedrock_runtime_config, _collect_converse_stream
 from app.llm.bedrock_model_id import resolve_bedrock_invoke_model_id
 from app.llm.model_config import _bedrock_model_id, _get_catalog_model
 from app.llm.model_fulfillment import (
@@ -56,7 +57,19 @@ def _format_bedrock_error(err: BaseException) -> str:
 
 
 def _runtime_client():
-    return boto3.client("bedrock-runtime", region_name=_bedrock_region())
+    return boto3.client(
+        "bedrock-runtime",
+        region_name=_bedrock_region(),
+        config=bedrock_runtime_config(),
+    )
+
+
+def _stream_unsupported(err: ClientError) -> bool:
+    """True when a model accepts Converse but rejects ConverseStream."""
+    error = err.response.get("Error", {})
+    code = error.get("Code", "")
+    message = (error.get("Message") or "").lower()
+    return code == "ValidationException" and "stream" in message
 
 
 def _converse(
@@ -67,14 +80,24 @@ def _converse(
     temperature: float,
 ) -> dict[str, Any]:
     client = _runtime_client()
-    return client.converse(
-        modelId=invoke_id,
-        messages=[{"role": "user", "content": [{"text": prompt}]}],
-        inferenceConfig={
+    kwargs: dict[str, Any] = {
+        "modelId": invoke_id,
+        "messages": [{"role": "user", "content": [{"text": prompt}]}],
+        "inferenceConfig": {
             "maxTokens": max_tokens,
             "temperature": temperature,
         },
-    )
+    }
+    # Prefer converse_stream so long generations keep the socket active and do
+    # not trip the read timeout (B-2); fall back to unary converse() for the
+    # rare text model that does not support streaming.
+    if hasattr(client, "converse_stream"):
+        try:
+            return _collect_converse_stream(client.converse_stream(**kwargs))
+        except ClientError as err:
+            if not _stream_unsupported(err):
+                raise
+    return client.converse(**kwargs)
 
 
 def _extract_text(response: dict[str, Any]) -> str:

@@ -4,7 +4,28 @@ from __future__ import annotations
 
 import re
 
-_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+# Abbreviations whose trailing period must NOT end a sentence (B-5). Keep in
+# sync with backend/src/utils/normalizeNarrativeText.ts.
+ABBREVIATIONS = (
+    "u.s.a", "u.s", "u.k", "e.g", "i.e", "et al", "etc", "vs",
+    "fig", "figs", "no", "nos", "vol", "vols", "pp", "cf", "al",
+    "dr", "mr", "mrs", "ms", "prof", "sr", "jr", "st",
+    "inc", "ltd", "co", "corp", "dept", "approx", "eq", "sec", "ref",
+)
+
+# Sentinel standing in for an abbreviation's period during the split, then
+# swapped back to ".". A private-use code point (never in real prose) keeps the
+# source text-diffable and in parity with the TS port (which dropped a NUL). (B-5)
+_PLACEHOLDER = ""
+_PROTECT_ABBREV = re.compile(
+    r"\b(?:" + "|".join(a.replace(".", r"\.") for a in ABBREVIATIONS) + r")\.",
+    re.IGNORECASE,
+)
+_PROTECT_INITIAL = re.compile(r"\b[A-Z]\.")  # initials: J., U., S.
+_PROTECT_DECIMAL = re.compile(r"\d\.\d")  # 3.14
+# Only break when the next token starts a new sentence (capital / digit / quote),
+# so "U.S. agency" and "vol. 30" never split mid-abbreviation.
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[\"'(\[]?[A-Z0-9])")
 _COMPLETE_SENTENCE_END = re.compile(r'[.!?]["\')\]]*\s*$')
 
 
@@ -19,12 +40,30 @@ def ends_complete_sentence(text: str) -> bool:
     return bool(_COMPLETE_SENTENCE_END.search(cleaned))
 
 
+def _protect_abbreviations(text: str) -> str:
+    def repl(match: re.Match[str]) -> str:
+        return match.group(0).replace(".", _PLACEHOLDER)
+
+    text = _PROTECT_ABBREV.sub(repl, text)
+    text = _PROTECT_INITIAL.sub(repl, text)
+    text = _PROTECT_DECIMAL.sub(repl, text)
+    return text
+
+
 def split_sentences(text: str) -> list[str]:
+    """Abbreviation-safe sentence split (B-5).
+
+    Periods inside known abbreviations (U.S., e.g., vol., et al., …), capital
+    initials, and decimals are shielded before the split, so "U.S. agency" and
+    "ETO vol. 30, …" stay inside one sentence instead of fragmenting.
+    """
     cleaned = " ".join((text or "").split())
     if not cleaned:
         return []
-    parts = _SENTENCE_SPLIT.split(cleaned)
-    return [part.strip() for part in parts if part.strip()]
+    protected = _protect_abbreviations(cleaned)
+    parts = _SENTENCE_SPLIT.split(protected)
+    restored = [part.replace(_PLACEHOLDER, ".").strip() for part in parts]
+    return [part for part in restored if part]
 
 
 def normalize_narrative_text(text: str) -> str:

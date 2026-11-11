@@ -9,7 +9,10 @@ function errorMessage(data: ApiErrorBody, fallback: string): string {
   return data.error?.message ?? data.message ?? fallback;
 }
 
-export async function enqueueJobUrl(url: string): Promise<
+export async function enqueueJobUrl(
+  url: string,
+  forceReprocess = false,
+): Promise<
   | { status: "created"; message: string }
   | { status: "conflict"; message: string }
   | { status: "error"; message: string }
@@ -17,10 +20,12 @@ export async function enqueueJobUrl(url: string): Promise<
 > {
   const trimmed = url.trim();
   try {
+    const body: { url: string; forceReprocess?: boolean } = { url: trimmed };
+    if (forceReprocess) body.forceReprocess = true;
     const res = await authFetch("/admin/jobs/enqueue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: trimmed }),
+      body: JSON.stringify(body),
     });
     const data = (await res.json().catch(() => ({}))) as ApiErrorBody;
 

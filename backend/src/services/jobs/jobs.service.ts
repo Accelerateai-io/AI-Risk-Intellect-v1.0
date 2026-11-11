@@ -3,7 +3,6 @@ import { db } from "../../db/index.js";
 import { jobs } from "../../schema/jobs/jobs.js";
 import { batchRunItems } from "../../schema/batchRuns/batchRunItems.js";
 import { batchRuns } from "../../schema/batchRuns/batchRuns.js";
-import { risks } from "../../schema/risks/risks.js";
 import { llmObservability } from "../../schema/observability/llmObservability.js";
 import { urlExecutionBlocks } from "../../schema/jobs/urlExecutionBlocks.js";
 import { HttpError } from "../../utils/httpError.js";
@@ -25,6 +24,7 @@ export type JobListItem = {
   tries: number;
   errorMessage: string | null;
   startedAt: Date | null;
+  finishedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   riskFetchedAt: Date | null;
@@ -256,6 +256,7 @@ type JobListQueryRow = {
   tries: number;
   errorMessage: string | null;
   startedAt: Date | null;
+  finishedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   ingestLinkItemId: number | null;
@@ -286,6 +287,7 @@ async function loadJobListRows(query: ListJobsQuery): Promise<{
           tries: jobs.tries,
           errorMessage: jobs.errorMessage,
           startedAt: jobs.startedAt,
+          finishedAt: jobs.finishedAt,
           createdAt: jobs.createdAt,
           updatedAt: jobs.updatedAt,
           ingestLinkItemId: jobs.ingestLinkItemId,
@@ -344,6 +346,7 @@ async function loadJobListRows(query: ListJobsQuery): Promise<{
     return {
       rows: rows.map((row) => ({
         ...row,
+        finishedAt: null,
         batchRunId: null,
         jobModelName: null,
         jobModelLabel: null,
@@ -372,25 +375,6 @@ export async function listJobs(query: ListJobsQuery = DEFAULT_LIST_JOBS_QUERY): 
   pagination: JobListPagination;
 }> {
   const { rows, filteredTotal } = await loadJobListRows(query);
-
-  const articleIds = [...new Set(rows.map((row) => row.articleId).filter((id) => id > 0))];
-  let riskFetchedAtByArticleId = new Map<number, Date>();
-  if (articleIds.length > 0) {
-    const riskRows = await db
-      .select({
-        articleId: risks.articleId,
-        riskFetchedAt: sql<Date>`max(${risks.createdAt})`,
-      })
-      .from(risks)
-      .where(inArray(risks.articleId, articleIds))
-      .groupBy(risks.articleId);
-
-    riskFetchedAtByArticleId = new Map(
-      riskRows
-        .filter((row) => row.riskFetchedAt)
-        .map((row) => [row.articleId, row.riskFetchedAt]),
-    );
-  }
 
   const urls = [...new Set(rows.map((row) => row.url).filter(Boolean))];
   let blockedByUrl = new Map<
@@ -454,9 +438,10 @@ export async function listJobs(query: ListJobsQuery = DEFAULT_LIST_JOBS_QUERY): 
       tries: row.tries,
       errorMessage: row.errorMessage,
       startedAt: row.startedAt,
+      finishedAt: row.finishedAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-      riskFetchedAt: riskFetchedAtByArticleId.get(row.articleId) ?? null,
+      riskFetchedAt: null,
       llmDurationMs: llm?.durationMs ?? null,
       wordCount: llm?.wordCount ?? null,
       doNotExecute: blocked != null,
@@ -486,12 +471,8 @@ export async function listJobs(query: ListJobsQuery = DEFAULT_LIST_JOBS_QUERY): 
     db
       .select({
         startedAt: jobs.startedAt,
+        finishedAt: jobs.finishedAt,
         updatedAt: jobs.updatedAt,
-        riskFetchedAt: sql<Date | null>`(
-          select max(${risks.createdAt})
-          from ${risks}
-          where ${risks.articleId} = ${jobs.articleId}
-        )`,
       })
       .from(jobs)
       .where(sql`${jobs.status} in ('done', 'completed')`),

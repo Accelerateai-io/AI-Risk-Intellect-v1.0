@@ -75,6 +75,7 @@ type JobRow = {
   createdAt: string;
   startedAt: string;
   updatedAt: string;
+  finishedAt: string;
   riskFetchedAt: string;
   errorMessage: string;
   doNotExecute: boolean;
@@ -92,22 +93,23 @@ function resolveJobStartedAt(
 }
 
 function resolveJobCompletedAt(
-  row: Pick<JobRow, "status" | "updatedAt" | "riskFetchedAt">,
+  row: Pick<JobRow, "status" | "updatedAt" | "finishedAt">,
 ): string {
   const status = row.status.toLowerCase();
-  if (status === "done" || status === "completed") {
-    return row.riskFetchedAt || row.updatedAt;
-  }
-  if (status === "error" || status === "failed" || status === "skipped") {
-    return row.updatedAt;
-  }
-  return "";
+  const terminal =
+    status === "done" ||
+    status === "completed" ||
+    status === "error" ||
+    status === "failed" ||
+    status === "skipped";
+  if (!terminal) return "";
+  return row.finishedAt.trim() || row.updatedAt;
 }
 
 function formatJobExecutedDisplay(
   row: Pick<
     JobRow,
-    "status" | "startedAt" | "createdAt" | "updatedAt" | "riskFetchedAt"
+    "status" | "startedAt" | "createdAt" | "updatedAt" | "finishedAt"
   >,
 ): string {
   const status = row.status.toLowerCase();
@@ -115,7 +117,7 @@ function formatJobExecutedDisplay(
     return formatJobExecutedAt(resolveJobStartedAt(row));
   }
   const completedAt = resolveJobCompletedAt(row);
-  if (TERMINAL_JOB_STATUSES.has(status) && completedAt) {
+  if ((TERMINAL_JOB_STATUSES.has(status) || status === "failed") && completedAt) {
     return formatJobExecutedAt(completedAt);
   }
   if (status === "pending") {
@@ -131,7 +133,7 @@ function jobExecutionMs(
     | "startedAt"
     | "createdAt"
     | "updatedAt"
-    | "riskFetchedAt"
+    | "finishedAt"
     | "llmDurationMs"
   >,
 ): number | null {
@@ -951,6 +953,7 @@ function normalizeJobsFromApi(raw: unknown, timeoutMinutes = 5): {
       createdAt?: string;
       startedAt?: string | null;
       updatedAt?: string;
+      finishedAt?: string | null;
       riskFetchedAt?: string | null;
       llmDurationMs?: number | null;
       wordCount?: number | null;
@@ -991,6 +994,7 @@ function normalizeJobsFromApi(raw: unknown, timeoutMinutes = 5): {
       createdAt: j.createdAt ?? "",
       startedAt: j.startedAt ?? "",
       updatedAt,
+      finishedAt: j.finishedAt ?? "",
       riskFetchedAt: j.riskFetchedAt ?? "",
       executed: "—",
       errorMessage: (j.errorMessage ?? "").trim(),

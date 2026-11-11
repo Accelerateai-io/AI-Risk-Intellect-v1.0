@@ -247,12 +247,10 @@ export function ApiKeysPage() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="apiKeysPage__dialogHead">
-                  <h2 id={generateTitleId} className="apiKeysPage__dialogTitle">
-                    Generate API key
-                  </h2>
+                  <h2 id={generateTitleId}>Generate API key</h2>
                   <button
                     type="button"
-                    className="apiKeysPage__dialogClose"
+                    className="apiKeysPage__iconBtn"
                     aria-label="Close"
                     disabled={generating}
                     onClick={() => setGenerateOpen(false)}
@@ -284,6 +282,7 @@ export function ApiKeysPage() {
                   disabled={generating}
                   autoFocus
                 />
+                </div>
                 <div className="apiKeysPage__dialogActions">
                   <button
                     type="button"
@@ -311,7 +310,6 @@ export function ApiKeysPage() {
                     Generate API key
                   </button>
                 </div>
-                </div>
               </div>
             </div>,
             document.body,
@@ -333,12 +331,10 @@ export function ApiKeysPage() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="apiKeysPage__dialogHead">
-                  <h2 id={revealTitleId} className="apiKeysPage__dialogTitle">
-                    Your new API key
-                  </h2>
+                  <h2 id={revealTitleId}>Your new API key</h2>
                   <button
                     type="button"
-                    className="apiKeysPage__dialogClose"
+                    className="apiKeysPage__iconBtn"
                     aria-label="Close"
                     onClick={() => setRevealedKey(null)}
                   >
@@ -372,6 +368,7 @@ export function ApiKeysPage() {
                     )}
                   </button>
                 </div>
+                </div>
                 <div className="apiKeysPage__dialogActions">
                   <button
                     type="button"
@@ -380,7 +377,6 @@ export function ApiKeysPage() {
                   >
                     Done
                   </button>
-                </div>
                 </div>
               </div>
             </div>,
@@ -393,22 +389,22 @@ export function ApiKeysPage() {
             <div
               className="apiKeysPage__overlay"
               role="presentation"
-              onClick={() => revokingId !== revokeTarget.id && setRevokeTarget(null)}
+              onClick={() => {
+                if (revokingId !== revokeTarget.id) setRevokeTarget(null);
+              }}
             >
               <div
-                className="apiKeysPage__dialog"
+                className="apiKeysPage__dialog apiKeysPage__dialog--confirm"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={revokeTitleId}
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="apiKeysPage__dialogHead">
-                  <h2 id={revokeTitleId} className="apiKeysPage__dialogTitle">
-                    Revoke API key
-                  </h2>
+                  <h2 id={revokeTitleId}>Revoke API key</h2>
                   <button
                     type="button"
-                    className="apiKeysPage__dialogClose"
+                    className="apiKeysPage__iconBtn"
                     aria-label="Close"
                     disabled={revokingId === revokeTarget.id}
                     onClick={() => setRevokeTarget(null)}
@@ -418,32 +414,36 @@ export function ApiKeysPage() {
                 </div>
                 <div className="apiKeysPage__dialogBody">
                   <p className="apiKeysPage__dialogHint">
-                    Revoke <strong>{revokeTarget.name}</strong>? This key will
-                    stop working immediately.
+                    Revoke {revokeTarget.name || "this API key"}? It will stop
+                    working immediately.
                   </p>
-                  <div className="apiKeysPage__dialogActions">
-                    <button
-                      type="button"
-                      className="apiKeysPage__btn apiKeysPage__btn--ghost"
-                      disabled={revokingId === revokeTarget.id}
-                      onClick={() => setRevokeTarget(null)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      className="apiKeysPage__btn apiKeysPage__btn--danger"
-                      disabled={revokingId === revokeTarget.id}
-                      onClick={() => void confirmRevoke()}
-                    >
-                      {revokingId === revokeTarget.id ? (
-                        <Loader2 className="apiKeysPage__spin" size={16} aria-hidden />
-                      ) : (
-                        <ShieldOff size={16} aria-hidden />
-                      )}
-                      Revoke
-                    </button>
-                  </div>
+                </div>
+                <div className="apiKeysPage__dialogActions">
+                  <button
+                    type="button"
+                    className="apiKeysPage__btn apiKeysPage__btn--ghost"
+                    disabled={revokingId === revokeTarget.id}
+                    onClick={() => setRevokeTarget(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="apiKeysPage__btn apiKeysPage__btn--danger"
+                    disabled={revokingId === revokeTarget.id}
+                    onClick={() => void confirmRevoke()}
+                  >
+                    {revokingId === revokeTarget.id ? (
+                      <Loader2
+                        className="apiKeysPage__spin"
+                        size={14}
+                        aria-hidden
+                      />
+                    ) : (
+                      <ShieldOff size={14} aria-hidden />
+                    )}
+                    Revoke
+                  </button>
                 </div>
               </div>
             </div>,

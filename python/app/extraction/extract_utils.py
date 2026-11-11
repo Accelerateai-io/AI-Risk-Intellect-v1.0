@@ -445,10 +445,16 @@ def extract_with_auto_chunking(
         except Exception as exc:  # defensive: rules must never break extraction
             logger.warning("EVIDENCE_RULES: skipped (%s)", str(exc)[:150])
 
-        # Independent verifier pass (BUG-06): a second call grades the record
-        # against the source. Failed checks route to Review; storage is never
-        # blocked. Skipped for stubs and for non-Bedrock backends.
-        if source_flag != "stub":
+        # Evidence rules stay attached as hints. For facts-v2 the worker runs
+        # the nine-check assessor after catalog candidates exist, so this
+        # in-extraction grader must not add a second hold.
+        contract = meta.get("extraction_contract")
+        if contract == "facts_v2":
+            meta["verifier"] = {
+                "ran": False,
+                "reason": "facts_v2 assessment runs in the worker",
+            }
+        elif source_flag != "stub":
             try:
                 _run_verifier_pass(obj, body, meta)
             except Exception as exc:  # defensive

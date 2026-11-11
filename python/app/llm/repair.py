@@ -101,43 +101,6 @@ def _coerce_int(x, default=0):
         return default
 
 
-def _self_assessment_reasoning_present(self_assessment: dict) -> bool:
-    for key in (
-        "context_clarity_reasoning",
-        "keyword_reasoning",
-        "tagging_reasoning",
-        "evidence_reasoning",
-    ):
-        if str(self_assessment.get(key) or "").strip():
-            return True
-    return False
-
-
-def _sum_self_assessment_subscores(self_assessment: dict) -> int:
-    return (
-        _coerce_int(self_assessment.get("context_clarity_score"), 0)
-        + _coerce_int(self_assessment.get("keyword_score"), 0)
-        + _coerce_int(self_assessment.get("tagging_accuracy_score"), 0)
-        + _coerce_int(self_assessment.get("evidence_strength_score"), 0)
-    )
-
-
-def _apply_default_self_assessment_scores(self_assessment: dict) -> None:
-    self_assessment["context_clarity_score"] = 30
-    self_assessment["context_clarity_reasoning"] = "Default reasoning"
-    self_assessment["keyword_score"] = 10
-    self_assessment["keyword_reasoning"] = "Default keyword analysis"
-    self_assessment["tagging_accuracy_score"] = 15
-    self_assessment["tagging_reasoning"] = "Default tagging analysis"
-    self_assessment["evidence_strength_score"] = 10
-    self_assessment["evidence_reasoning"] = "Default evidence analysis"
-    self_assessment["evidence_strength_breakdown"] = {
-        "directness": 3,
-        "specificity": 3,
-        "taxonomy_alignment": 3,
-    }
-    self_assessment["total_score"] = min(100, _sum_self_assessment_subscores(self_assessment))
-
 def _clamp01(x, default=0.5):
     try:
         v = float(x)
@@ -241,13 +204,96 @@ def _clean_product(value) -> Optional[str]:
     return v[:256]
 
 
+_SILENCE_MITIGATION = "not described in source"
+
+
+def _silence_mitigation_only(entries: list) -> bool:
+    """True when every entry is the allowed absence phrase and the list is not empty."""
+    if not entries:
+        return False
+    for entry in entries:
+        if not isinstance(entry, str):
+            return False
+        norm = entry.strip().rstrip(".").strip().lower()
+        if norm != _SILENCE_MITIGATION:
+            return False
+    return True
+
+
+_METHOD_TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*")
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _method_tokens(text: str) -> list[str]:
+    """Case-folded words, with punctuation stripped and hyphenated compounds kept."""
+    return [m.group(0).lower() for m in _METHOD_TOKEN_RE.finditer(text or "")]
+
+
+def _quoted_method_sentence(proposed: str, source_text: str) -> Optional[str]:
+    """Verbatim source sentence that describes a paraphrased proposed method.
+
+    A paraphrase such as "two-stage framework with foundation-correspondence-guided
+    grasp" shares no five-word span with the paper, so it must not be copied as
+    a mitigation. A sentence qualifies only when it contains one of the proposal's
+    hyphenated terms and at least one other content word from the proposal.
+    """
+    proposed_tokens = [t for t in _method_tokens(proposed) if len(t) >= 5]
+    anchors = [t for t in proposed_tokens if "-" in t and len(t) >= 8]
+    if not anchors or not source_text:
+        return None
+    best: Optional[str] = None
+    best_score = 0
+    for sentence in _SENTENCE_SPLIT_RE.split(source_text):
+        sentence = sentence.strip()
+        if len(sentence.split()) < 5:
+            continue
+        present = set(_method_tokens(sentence))
+        anchor_hits = [t for t in anchors if t in present]
+        if not anchor_hits:
+            continue
+        other_hits = [t for t in proposed_tokens if t not in anchors and t in present]
+        if not other_hits:
+            continue
+        score = len(set(anchor_hits)) + len(set(other_hits))
+        if score > best_score:
+            best = sentence
+            best_score = score
+    return best
+
+
+def _reconcile_cited_method(risk: dict, source_text: str) -> bool:
+    """Replace a silence-only mitigation list when the source describes the method.
+
+    Copies proposed_mitigation itself only when that string has a five-word
+    source span. A paraphrase is not copied. When the paper still describes
+    the method, the silence phrase is replaced by the verbatim source sentence.
+    Does nothing when proposed_mitigation is empty, the list names a real
+    safeguard, or the source does not describe the method.
+    """
+    proposed = risk.get("proposed_mitigation")
+    if not isinstance(proposed, str) or not proposed.strip():
+        return False
+    mitigations = risk.get("mitigations_in_source")
+    if not isinstance(mitigations, list) or not _silence_mitigation_only(mitigations):
+        return False
+    from app.verification.evidence_rules import check_citation
+
+    source = source_text or ""
+    if check_citation(proposed, source).get("ok"):
+        risk["mitigations_in_source"] = [proposed.strip()]
+        return True
+    sentence = _quoted_method_sentence(proposed, source)
+    if not sentence or not check_citation(sentence, source).get("ok"):
+        return False
+    risk["mitigations_in_source"] = [sentence]
+    return True
+
+
 def _repair_against_schema(obj: dict, source_text: str) -> dict:
     """Repair and validate extraction object against new 21-field schema."""
     obj = obj or {}
     risk = obj.get("risk") or {}
     controls = obj.get("controls") or []
-    analysis = obj.get("analysis") or {}
-    justification = obj.get("justification") or {}
     
     # Required fields for new schema (risk_id will be generated by backend)
     if not risk.get("risk_title") or len(risk.get("risk_title", "")) < 5:
@@ -415,6 +461,18 @@ def _repair_against_schema(obj: dict, source_text: str) -> dict:
     else:
         risk["mitigations_in_source"] = cleaned_mits
 
+    # A silence phrase next to a method that is actually quoted in the source is a
+    # contradiction, not evidence of absence. Replace only that case. A genuine
+    # "not described in source" list stays when the method is missing or unquoted.
+    if _reconcile_cited_method(risk, source_text):
+        if "mitigations_in_source" in defaulted_fields:
+            defaulted_fields.remove("mitigations_in_source")
+        meta = obj.setdefault("_meta", {})
+        if not isinstance(meta, dict):
+            meta = {}
+            obj["_meta"] = meta
+        meta["mitigations_reconciled"] = True
+
     # Record which evidence fields were defaulted so the extraction path can
     # route the record to review and skip the likelihood cap for a defaulted
     # evidence_type (an artificial default must not silently lower a real score).
@@ -450,108 +508,13 @@ def _repair_against_schema(obj: dict, source_text: str) -> dict:
             "score": 0.5
         }]
     
-    # Fix justification field structure
-    if not isinstance(justification, dict):
-        justification = {}
-    
-    # Fix self_assessment
-    self_assessment = justification.get("self_assessment") or {}
-    if not isinstance(self_assessment, dict):
-        self_assessment = {}
-    
-    # Fix total_score - must be integer
-    total_score = self_assessment.get("total_score", 0)
-    self_assessment["total_score"] = _coerce_int(total_score, default=0)
-    
-    # Add missing score fields with defaults
-    if "context_clarity_score" not in self_assessment:
-        self_assessment["context_clarity_score"] = 30
-    if "context_clarity_reasoning" not in self_assessment:
-        self_assessment["context_clarity_reasoning"] = "Default reasoning"
-    
-    if "keyword_score" not in self_assessment:
-        self_assessment["keyword_score"] = 10
-    if "keyword_reasoning" not in self_assessment:
-        self_assessment["keyword_reasoning"] = "Default keyword analysis"
-    
-    if "tagging_accuracy_score" not in self_assessment:
-        self_assessment["tagging_accuracy_score"] = 15
-    if "tagging_reasoning" not in self_assessment:
-        self_assessment["tagging_reasoning"] = "Default tagging analysis"
-    
-    if "evidence_strength_score" not in self_assessment:
-        self_assessment["evidence_strength_score"] = 10
-    if "evidence_reasoning" not in self_assessment:
-        self_assessment["evidence_reasoning"] = "Default evidence analysis"
-    
-    if "evidence_strength_breakdown" not in self_assessment:
-        self_assessment["evidence_strength_breakdown"] = {
-            "directness": 3,
-            "specificity": 3,
-            "taxonomy_alignment": 3
-        }
-
-    sub_sum = _sum_self_assessment_subscores(self_assessment)
-    total = _coerce_int(self_assessment.get("total_score"), 0)
-    if (
-        total <= 0
-        and sub_sum <= 0
-        and not _self_assessment_reasoning_present(self_assessment)
-    ):
-        _apply_default_self_assessment_scores(self_assessment)
-    elif total <= 0 and sub_sum > 0:
-        self_assessment["total_score"] = min(100, sub_sum)
-    
-    # Fix confidence_level - must be 'high', 'medium', or 'low' (REQUIRED)
-    confidence = self_assessment.get("confidence_level", "medium")
-    if confidence not in ["high", "medium", "low"]:
-        self_assessment["confidence_level"] = "medium"
-    else:
-        self_assessment["confidence_level"] = confidence
-    
-    justification["self_assessment"] = self_assessment
-    
-    # Ensure other required justification fields exist
-    if not justification.get("decision_rationale"):
-        justification["decision_rationale"] = "Risk classification based on article content"
-    
-    if not justification.get("taxonomy_mapping"):
-        justification["taxonomy_mapping"] = {
-            "domain_match": {
-                "chosen_domain": risk.get("domains", "7. AI System Safety, Failures, & Limitations"),
-                "evidence_excerpts": [],
-                "keyword_matches": [],
-                "confidence_reasoning": "Default classification"
-            },
-            "primary_risk_match": {
-                "chosen_primary": risk.get("primary_risk", "Technical Risks"),
-                "evidence_excerpts": [],
-                "keyword_matches": [],
-                "confidence_reasoning": "Default classification"
-            },
-            "secondary_risk_match": {
-                "chosen_secondary": risk.get("secondary_risks", "Technical/Performance Risk"),
-                "evidence_excerpts": [],
-                "keyword_matches": [],
-                "confidence_reasoning": "Default classification"
-            }
-        }
-    
-    if not justification.get("evidence_breakdown"):
-        justification["evidence_breakdown"] = []
-    
-    # Fix analysis field (risk-specific reasoning)
-    if not isinstance(analysis, dict):
-        analysis = {}
-    
-    if not analysis.get("risk_identified"):
-        analysis["risk_identified"] = f"Risk identified: {risk.get('risk_title', 'AI Risk')}"
-    
-    if not analysis.get("article_context"):
-        analysis["article_context"] = "Article describes an AI-related incident or risk scenario."
-    
-    if not analysis.get("alignment_reasoning"):
-        analysis["alignment_reasoning"] = "Risk classification aligns with article content and taxonomy."
+    # Facts-only contract (workflow v2). Drop self-grading if the model still
+    # emits it so a fabricated total_score cannot become the quality gate.
+    # Rows already stored are not rewritten by this function.
+    obj.pop("analysis", None)
+    obj.pop("justification", None)
+    if isinstance(risk, dict):
+        risk.pop("matching_keywords", None)
 
     obj["risk_scoring"] = _repair_risk_scoring(obj.get("risk_scoring"))
 
@@ -562,10 +525,13 @@ def _repair_against_schema(obj: dict, source_text: str) -> dict:
         else None
     )
 
-    obj["analysis"] = analysis
-    obj["justification"] = justification
     obj["risk"] = risk
     obj["controls"] = fixed_controls
+    meta = obj.setdefault("_meta", {})
+    if not isinstance(meta, dict):
+        meta = {}
+        obj["_meta"] = meta
+    meta["extraction_contract"] = "facts_v2"
     return obj
 
 # --- Compatibility shim for local_llm.generate_json() ---

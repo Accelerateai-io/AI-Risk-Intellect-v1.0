@@ -198,7 +198,8 @@ export async function authFetch(
       headers.set("Authorization", `Bearer ${token}`);
     }
     const credentials = rest.credentials ?? "include";
-    const res = await fetch(url, { ...rest, headers, credentials });
+    const cache = rest.cache ?? "no-store";
+    const res = await fetch(url, { ...rest, headers, credentials, cache });
 
     if (res.status !== 401 || skipAuthExpiredRedirect) {
       return res;

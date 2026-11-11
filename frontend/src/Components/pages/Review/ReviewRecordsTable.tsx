@@ -12,6 +12,7 @@ import {
   formatRiskId,
   type RiskDetail,
 } from "../Risk/riskData";
+import { displayGroundingScore } from "../Risk/assessmentDisplay";
 import { isExistingHumanReview } from "../Risk/humanReviewHelpers";
 import { ReviewWhyPill } from "./ReviewWhyPill";
 
@@ -183,7 +184,8 @@ export const ReviewRecordsTable = memo(function ReviewRecordsTable({
                   WHY
                 </th>
                 <th scope="col" className="riskPage__th riskPage__th--center">
-                  QUALITY SCORE
+                  {/* QUALITY SCORE */}
+                  GROUNDING SCORE
                 </th>
                 <th scope="col" className="riskPage__th riskPage__th--left">
                   ASSIGNEE
@@ -268,7 +270,8 @@ export const ReviewRecordsTable = memo(function ReviewRecordsTable({
                         />
                       </td>
                       <td className="riskPage__td riskPage__td--center riskPage__td--score">
-                        {row.qualityScore}
+                        {/* {row.qualityScore} */}
+                        {displayGroundingScore(row)}
                       </td>
                       <td className="riskPage__td riskPage__td--muted">
                         {row.assignment?.assigneeName ? (

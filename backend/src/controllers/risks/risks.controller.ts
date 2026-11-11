@@ -12,17 +12,92 @@ import {
   getRiskById,
   getTaxonomyDomains,
   countPendingReviewRisks,
+  iterateVisibleRiskDtos,
   listReviewQueueRisks,
   listRisks,
 } from "../../services/risks/risks.service.js";
+import {
+  isFullListRequest,
+  normalizeRiskListParams,
+} from "../../services/risks/riskListQuery.js";
 import { HttpError } from "../../utils/httpError.js";
 
+/**
+ * Service seam for the list handler. Defaults to the real service functions; the
+ * request-level controller test injects fakes so the routing decision (full list
+ * vs paginated) can be exercised without a database.
+ */
+export type ListRisksDeps = {
+  listRisks: typeof listRisks;
+  iterateVisibleRiskDtos: typeof iterateVisibleRiskDtos;
+};
+
+/**
+ * AI-Q compatibility (B-7): stream the FULL visible list in the legacy
+ * `{ risks, metrics }` shape for API-key callers that send no offset/page.
+ * Rows are written to the response as they are produced, so the whole table is
+ * never buffered in memory even though every row is returned.
+ */
+async function streamFullVisibleRisks(
+  res: Response,
+  iterate: ListRisksDeps["iterateVisibleRiskDtos"],
+): Promise<void> {
+  res.status(200);
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.write('{"risks":[');
+  let first = true;
+  let total = 0;
+  let technical = 0;
+  let operational = 0;
+  let business = 0;
+  for await (const dto of iterate()) {
+    res.write((first ? "" : ",") + JSON.stringify(dto));
+    first = false;
+    total += 1;
+    if (dto.primaryKey === "operational") operational += 1;
+    else if (dto.primaryKey === "business") business += 1;
+    else technical += 1;
+  }
+  const metrics = { total, technical, operational, business };
+  res.write(`],"metrics":${JSON.stringify(metrics)}}`);
+  res.end();
+}
+
+/** Core list handler, parameterised over its service dependencies (testable). */
+export async function runListRisksHandler(
+  req: Request,
+  res: Response,
+  deps: ListRisksDeps,
+): Promise<void> {
+  const query = req.query as Record<string, unknown>;
+  const isApiKey = (req as Request & { apiKey?: unknown }).apiKey != null;
+
+  // External AI-Q integrations (API key, no offset/page) keep today's behaviour
+  // exactly: the full visible list in the legacy shape. The UI (JWT) and any
+  // caller that pages via offset/page get a paginated response.
+  if (isFullListRequest(query, isApiKey)) {
+    await streamFullVisibleRisks(res, deps.iterateVisibleRiskDtos);
+    return;
+  }
+
+  const params = normalizeRiskListParams(query);
+  const result = await deps.listRisks(params);
+  res.status(200).json({
+    risks: result.risks,
+    // Only advertise metrics when the caller asked for them (the page loads
+    // that skip metrics get { technical/operational/business: 0 } placeholders).
+    ...(result.metricsIncluded ? { metrics: result.metrics } : {}),
+    metricsIncluded: result.metricsIncluded,
+    total: result.total,
+    hasMore: result.hasMore,
+  });
+}
+
 export async function listRisksHandler(
-  _req: Request,
+  req: Request,
   res: Response,
 ): Promise<void> {
-  const result = await listRisks();
-  res.status(200).json(result);
+  await runListRisksHandler(req, res, { listRisks, iterateVisibleRiskDtos });
 }
 
 export async function listReviewQueueHandler(

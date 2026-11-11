@@ -47,6 +47,35 @@ _NEGATIVE_RE = re.compile(
 _WORD_RE = re.compile(r"\S+")
 _CITATION_MIN_WORDS = 5
 
+# Harms the extractor must not invent. A hit is a review reason only; the
+# record text is left unchanged for the verifier to judge.
+_HARM_TERMS = ("damage", "equipment", "injury", "death", "unsafe")
+
+
+def unsupported_harm_reasons(record: dict, source_text: str = "") -> list[str]:
+    """Review reasons for harm words in the description or impact that the source lacks.
+
+    Never rewrites the record. An empty source yields no reasons, so a missing
+    document is not treated as proof the harm is invented.
+    """
+    if not isinstance(record, dict) or not (source_text or "").strip():
+        return []
+    risk = record.get("risk") if isinstance(record.get("risk"), dict) else {}
+    scoring = record.get("risk_scoring") if isinstance(record.get("risk_scoring"), dict) else {}
+    text = " ".join(
+        str(part)
+        for part in (risk.get("description"), scoring.get("impact_reasoning"))
+        if isinstance(part, str) and part.strip()
+    )
+    if not text:
+        return []
+    reasons: list[str] = []
+    for term in _HARM_TERMS:
+        pattern = re.compile(rf"\b{re.escape(term)}\b", re.IGNORECASE)
+        if pattern.search(text) and not pattern.search(source_text):
+            reasons.append(f"Unsupported harm: '{term}' is not in the source")
+    return reasons
+
 
 def enforce_hypothesized_cap(record: dict) -> Optional[str]:
     """Cap likelihood at 2 when evidence_type is "hypothesized" (BUG-01).
@@ -168,10 +197,11 @@ def check_citation(
 def verify_record(record: dict, source_text: str = "") -> dict:
     """Run all evidence rules over a record; collect review reasons (no I/O).
 
-    Returns ``{"review_reasons": [...], "citations": {...}}``. Only mutation is
-    the likelihood cap from :func:`enforce_hypothesized_cap`. Never raises, so it
-    is safe to call just before storing an extraction result; a failure in any
-    single rule must never block storage.
+    Returns ``{"review_reasons": [...], "citations": {...}}``. The only mutation
+    is the likelihood cap from :func:`enforce_hypothesized_cap`. The unsupported
+    harm check adds a reason and does not rewrite the record. Never raises, so
+    it is safe to call just before storing an extraction result; a failure in
+    any single rule must never block storage.
     """
     reasons: list[str] = []
     citations: dict[str, Any] = {}
@@ -187,22 +217,6 @@ def verify_record(record: dict, source_text: str = "") -> dict:
     if neg:
         reasons.append(neg)
 
-    publication: dict[str, Any] = {"decision": "publish", "checks": [], "hold_reasons": []}
-    try:
-        from app.verification.publication_rules import publication_review
-
-        publication = publication_review(record if isinstance(record, dict) else {}, source_text)
-        for reason in publication.get("hold_reasons") or []:
-            if reason not in reasons:
-                reasons.append(reason)
-    except Exception:
-        publication = {
-            "decision": "hold",
-            "checks": [],
-            "hold_reasons": ["Publication checks did not finish."],
-        }
-        reasons.append(publication["hold_reasons"][0])
-
     scoring = record.get("risk_scoring") if isinstance(record, dict) else None
     scoring = scoring if isinstance(scoring, dict) else {}
     for field in ("likelihood_reasoning", "impact_reasoning"):
@@ -216,12 +230,6 @@ def verify_record(record: dict, source_text: str = "") -> dict:
                     "in the source (BUG-04 / TC-09)"
                 )
 
-    # Quote failures and the other rules above also hold the record. The
-    # publication decision is what the automatic release gate reads.
-    if reasons:
-        publication = {**publication, "decision": "hold"}
-    return {
-        "review_reasons": reasons,
-        "citations": citations,
-        "publication": publication,
-    }
+    reasons.extend(unsupported_harm_reasons(record, source_text))
+
+    return {"review_reasons": reasons, "citations": citations}

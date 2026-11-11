@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mapEvidenceDiscipline, mapRiskRowToDto } from "./riskDto.js";
+import { mapEvidenceDiscipline, mapFactsV2Assessment, mapRiskRowToDto } from "./riskDto.js";
 
 const row = {
   id: "r1",
@@ -94,6 +94,9 @@ test("mapEvidenceDiscipline exposes BUG-01/02/03 fields and the verifier verdict
   assert.equal(ed.extraction.modelFallback, true);
   assert.equal(ed.extraction.referencesRemoved, true);
   assert.equal(dto.reviewWhy, "Verifier");
+  assert.equal(dto.assessment, null);
+  assert.equal(dto.confidence, "HIGH");
+  assert.equal(dto.qualityScore, "0.93");
 });
 
 test("mapEvidenceDiscipline is safe on legacy records without the fields", () => {
@@ -104,4 +107,62 @@ test("mapEvidenceDiscipline is safe on legacy records without the fields", () =>
   assert.equal(ed.extraction.mode, null);
   assert.equal(ed.extraction.modelFallback, false);
   assert.deepEqual(ed.reviewReasons, []);
+});
+
+test("facts-v2 detail mapping exposes the nine checks without changing quality confidence", () => {
+  const dto = mapRiskRowToDto(
+    {
+      ...row,
+      qualityScore: 50,
+      extractionJson: {
+        pipeline_version: "2026.11.facts-v2",
+        grounding_score: 0.95,
+        confidence: "HIGH",
+        decision_reason: "CATALOG_SUGGESTED",
+        publication_status: "published",
+        verifier_checks: {
+          claim_is_demonstrated: { pass: true, quote: "models leaked training text" },
+          mitigations_reflected: { pass: true, reason: "controls listed" },
+          not_attributed_to_proposed_method: { pass: true },
+          severity_within_evidence: { pass: false, reason: "impact overstated" },
+          evidence_type_consistent: { pass: true },
+          rationale_supported: { pass: true },
+          domain_correct: { pass: true },
+          primary_secondary_correct: { pass: true },
+          catalog_match: { pass: false, reason: "below 60 percent" },
+        },
+        _meta: {
+          extraction_contract: "facts_v2",
+          verifier: { ran: false, reason: "facts_v2 assessment runs in the worker" },
+        },
+        risk: { risk_title: "Hallucination in EEG pipelines", description: "desc" },
+      },
+    },
+    "R-04",
+  );
+
+  assert.equal(dto.qualityScore, "0.50");
+  assert.equal(dto.confidence, "LOW");
+  assert.equal(dto.evidenceDiscipline.verifier?.ran, false);
+  const assessment = dto.assessment;
+  assert.ok(assessment);
+  assert.equal(assessment.groundingScore, 0.95);
+  assert.equal(assessment.confidence, "HIGH");
+  assert.equal(assessment.decisionReason, "CATALOG_SUGGESTED");
+  assert.equal(assessment.publicationStatus, "published");
+  assert.equal(assessment.checks.length, 9);
+  assert.deepEqual(assessment.checks[0], {
+    name: "claim_is_demonstrated",
+    pass: true,
+    reason: "",
+    quote: "models leaked training text",
+  });
+  assert.deepEqual(assessment.checks[3], {
+    name: "severity_within_evidence",
+    pass: false,
+    reason: "impact overstated",
+    quote: "",
+  });
+  assert.equal(assessment.checks[8].name, "catalog_match");
+  assert.equal(mapFactsV2Assessment({ pipeline_version: "2026.10" }), null);
 });

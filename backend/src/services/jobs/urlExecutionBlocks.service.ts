@@ -251,12 +251,14 @@ export async function markJobUrlDoNotExecute(jobId: number): Promise<{
       .onConflictDoNothing({ target: urlExecutionBlocks.url });
   }
 
+  const finishedAt = new Date();
   await db
     .update(jobs)
     .set({
       status: "skipped",
       errorMessage: DO_NOT_EXECUTE_REASON,
-      updatedAt: new Date(),
+      finishedAt,
+      updatedAt: finishedAt,
     })
     .where(
       and(
@@ -270,7 +272,8 @@ export async function markJobUrlDoNotExecute(jobId: number): Promise<{
     .set({
       status: "skipped",
       errorMessage: DO_NOT_EXECUTE_REASON,
-      updatedAt: new Date(),
+      finishedAt,
+      updatedAt: finishedAt,
     })
     .where(and(eq(jobs.url, url), inArray(jobs.status, ["pending", "running"])));
 

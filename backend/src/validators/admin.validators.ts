@@ -26,10 +26,41 @@ export const enqueueUrlSchema = z.object({
 
 export type EnqueueUrlInput = z.infer<typeof enqueueUrlSchema>;
 
+const httpUrlSchema = z
+  .string()
+  .trim()
+  .min(1, "URL is required.")
+  .max(2048, "URL is too long.")
+  .refine(
+    (value) => {
+      try {
+        const parsed = new URL(value);
+        return parsed.protocol === "http:" || parsed.protocol === "https:";
+      } catch {
+        return false;
+      }
+    },
+    { message: "Enter a valid http or https URL." },
+  );
+
 /** Jobs page: queue article ingest (no RSS feed fields). */
-export const enqueueJobUrlSchema = enqueueUrlSchema.pick({ url: true });
+export const enqueueJobUrlSchema = enqueueUrlSchema.pick({ url: true }).extend({
+  /** B-3: bypass dedup and insert a new superseding risk row. */
+  forceReprocess: z.boolean().optional().default(false),
+});
 
 export type EnqueueJobUrlInput = z.infer<typeof enqueueJobUrlSchema>;
+
+/** Jobs page: queue a batch of URLs (optionally force-reprocess each). */
+export const enqueueJobUrlsBulkSchema = z.object({
+  urls: z
+    .array(httpUrlSchema)
+    .min(1, "Provide at least one URL.")
+    .max(200, "Too many URLs in one batch (max 200)."),
+  forceReprocess: z.boolean().optional().default(false),
+});
+
+export type EnqueueJobUrlsBulkInput = z.infer<typeof enqueueJobUrlsBulkSchema>;
 
 export const setLlmModelSchema = z.object({
   modelId: z.string().trim().min(1, "Model is required.").max(256),

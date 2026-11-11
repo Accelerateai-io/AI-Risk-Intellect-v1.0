@@ -1,6 +1,10 @@
 import dns from "node:dns/promises";
 import { extractTitleFromHtml } from "../../ingestion/extractText.js";
-import { detectBotBlockPage, looksLikeSoft404 } from "../../ingestion/filters.js";
+import {
+  detectBotBlockPage,
+  looksLikeSoft404,
+  FETCH_FAILED_SKIP_MESSAGE,
+} from "../../ingestion/filters.js";
 import { isBlockedResolvedIp } from "./ipAddress.js";
 
 const UA =
@@ -15,6 +19,32 @@ const DEFAULT_HEADERS: Record<string, string> = {
   Connection: "keep-alive",
   "Upgrade-Insecure-Requests": "1",
 };
+
+/**
+ * Fuller browser fingerprint used for the single retry after a block (B-4):
+ * a newer UA plus Client-Hint / Sec-Fetch headers that some sites require
+ * before serving the real article to a non-interactive client.
+ */
+const BROWSER_RETRY_HEADERS: Record<string, string> = {
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+  Accept:
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Accept-Encoding": "gzip, deflate, br",
+  "Sec-Ch-Ua": '"Chromium";v="126", "Google Chrome";v="126", "Not/A)Brand";v="8"',
+  "Sec-Ch-Ua-Mobile": "?0",
+  "Sec-Ch-Ua-Platform": '"macOS"',
+  "Sec-Fetch-Dest": "document",
+  "Sec-Fetch-Mode": "navigate",
+  "Sec-Fetch-Site": "none",
+  "Sec-Fetch-User": "?1",
+  "Upgrade-Insecure-Requests": "1",
+  Connection: "keep-alive",
+};
+
+/** Below this raw-body size a response is a stub/error page, not an article (B-4). */
+const MIN_FETCH_BODY_CHARS = 500;
 
 /** Browser-like headers for RSS/Atom feed fetch (many sites block bot user agents). */
 export const FEED_FETCH_HEADERS: Record<string, string> = {
@@ -372,57 +402,71 @@ export async function fetchPageContentDetailed(
   }
   externalSignal?.addEventListener("abort", onExternalAbort, { once: true });
 
+  // Blocked / denied / paywalled / tiny responses are retried ONCE with a
+  // fuller browser fingerprint before the URL is given up on (B-4). If both
+  // attempts look blocked the job ends as a fetch failure with no risk row.
+  const headerCandidates = [DEFAULT_HEADERS, BROWSER_RETRY_HEADERS];
   try {
-    const getRes = await fetch(url, {
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: DEFAULT_HEADERS,
-    });
+    let lastBlockReason = "";
+    for (let attempt = 0; attempt < headerCandidates.length; attempt++) {
+      const getRes = await fetch(url, {
+        method: "GET",
+        redirect: "follow",
+        signal: controller.signal,
+        headers: headerCandidates[attempt]!,
+      });
 
-    const contentType = (getRes.headers.get("content-type") ?? "").toLowerCase();
-    const isPdf =
-      contentType.includes("application/pdf") ||
-      url.toLowerCase().split("?")[0]!.endsWith(".pdf");
+      const contentType = (getRes.headers.get("content-type") ?? "")
+        .toLowerCase();
+      const isPdf =
+        contentType.includes("application/pdf") ||
+        url.toLowerCase().split("?")[0]!.endsWith(".pdf");
 
-    if (isPdf) {
-      if ([404, 410, 451].includes(getRes.status)) {
-        return { ok: false, reason: `HTTP ${getRes.status} for PDF` };
+      if (isPdf) {
+        if ([404, 410, 451].includes(getRes.status)) {
+          return { ok: false, reason: `HTTP ${getRes.status} for PDF` };
+        }
+        const bytes = Buffer.from(await getRes.arrayBuffer());
+        return { ok: true, page: { kind: "pdf", bytes, title: "" } };
       }
-      const bytes = Buffer.from(await getRes.arrayBuffer());
-      return { ok: true, page: { kind: "pdf", bytes, title: "" } };
-    }
 
-    const html = await getRes.text();
+      const html = await getRes.text();
 
-    const botBlock = detectBotBlockPage(html, { httpStatus: getRes.status });
-    if (botBlock) {
-      return { ok: false, reason: botBlock };
-    }
+      // A pure not-found is a definite miss; a browser UA will not change it.
+      if ([404, 410, 451].includes(getRes.status)) {
+        return { ok: false, reason: `HTTP ${getRes.status}` };
+      }
 
-    if ([404, 410, 451].includes(getRes.status)) {
-      return { ok: false, reason: `HTTP ${getRes.status}` };
-    }
+      // Judge "too small" and the paywall gate on the extracted body TEXT, not
+      // the raw HTML: a page can carry kilobytes of markup/nav chrome yet have
+      // almost no article text, and a full article can mention "subscribe" in
+      // its footer without being a paywall. (B-4 review)
+      const extractedText = stripHtml(html);
+      const botBlock = detectBotBlockPage(html, {
+        httpStatus: getRes.status,
+        extractedText,
+      });
+      const tooSmall = extractedText.trim().length < MIN_FETCH_BODY_CHARS;
+      if (botBlock || tooSmall) {
+        lastBlockReason = botBlock
+          ? botBlock
+          : html.trim()
+            ? FETCH_FAILED_SKIP_MESSAGE
+            : "empty response body";
+        continue; // one retry with a browser user agent
+      }
 
-    if (getRes.status >= 400 && html.trim().length < 200) {
       return {
-        ok: false,
-        reason: `HTTP ${getRes.status} (site blocked the request — try another URL or paste content)`,
+        ok: true,
+        page: {
+          kind: "html",
+          html,
+          title: extractTitleFromHtml(html),
+        },
       };
     }
 
-    if (!html.trim()) {
-      return { ok: false, reason: "empty response body" };
-    }
-
-    return {
-      ok: true,
-      page: {
-        kind: "html",
-        html,
-        title: extractTitleFromHtml(html),
-      },
-    };
+    return { ok: false, reason: lastBlockReason || FETCH_FAILED_SKIP_MESSAGE };
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
       return {

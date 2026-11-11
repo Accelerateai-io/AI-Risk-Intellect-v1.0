@@ -13,8 +13,47 @@ const dbLog = createLogger("db");
 const DATABASE_URI =
   process.env.DATABASE_URL?.trim() || databaseUrlFromParts();
 
+/**
+ * Per-statement timeout (ms) applied to the web API server's connection pool so
+ * a runaway request query (e.g. an unbounded risks scan) cannot hold a
+ * connection open forever. Defaults to 30s; override with PG_STATEMENT_TIMEOUT_MS
+ * (0 disables it).
+ */
+const STATEMENT_TIMEOUT_MS = (() => {
+  const raw = process.env.PG_STATEMENT_TIMEOUT_MS?.trim();
+  if (raw === undefined || raw === "") return 30_000;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 30_000;
+})();
+
+/**
+ * The timeout must apply ONLY to the web request pool — one-off scripts,
+ * migrations and the job worker run legitimately long queries and must not be
+ * killed at 30s. We detect the web server by its entrypoint (`server.ts` in dev,
+ * `server.js` in prod) rather than a flag, so no import-order coordination is
+ * needed. A zero/negative timeout disables the guard everywhere.
+ */
+export function shouldApplyWebStatementTimeout(
+  entry: string | undefined,
+  timeoutMs: number,
+): boolean {
+  if (!(timeoutMs > 0)) return false;
+  return /(^|[\\/])server\.(ts|js|mts|cts)$/.test(entry ?? "");
+}
+
+const APPLY_STATEMENT_TIMEOUT = shouldApplyWebStatementTimeout(
+  process.argv[1],
+  STATEMENT_TIMEOUT_MS,
+);
+
 const pool = new Pool({
   connectionString: DATABASE_URI,
+  // pg sends `statement_timeout` as a startup parameter on each connection, so
+  // it applies before the first query. Only the web server process sets it;
+  // scripts/migrations/worker (and tests) leave it unset.
+  ...(APPLY_STATEMENT_TIMEOUT
+    ? { statement_timeout: STATEMENT_TIMEOUT_MS }
+    : {}),
 });
 
 pool.on("error", (err) => {

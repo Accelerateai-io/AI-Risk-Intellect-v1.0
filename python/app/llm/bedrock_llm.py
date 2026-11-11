@@ -10,6 +10,7 @@ import os
 import re
 import time
 from typing import Dict, Any, Optional
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 try:
@@ -17,6 +18,7 @@ try:
         retry,
         retry_if_exception,
         stop_after_attempt,
+        stop_after_delay,
         wait_exponential,
     )
     _TENACITY_AVAILABLE = True
@@ -31,6 +33,80 @@ from app.llm.bedrock_model_id import (
 from app.llm.model_registry import is_anthropic_model, supports_prompt_cache
 
 logger = logging.getLogger("airisk")
+
+
+# --- Bedrock client transport config (B-2) ----------------------------------
+# The backend's python-bridge aborts a single extraction request after 120s
+# (jobTimeout.service.ts INGEST_TIMEOUT_MS), and the overall job window is a few
+# minutes. So one Bedrock call — INCLUDING retries — must finish well under that
+# 120s, otherwise the whole job is killed mid-flight and the retries are wasted.
+# This is the "job limit" the per-call budget below is kept under.
+JOB_LIMIT_SECONDS: float = 120.0
+
+
+def bedrock_call_budget_seconds() -> float:
+    """Total wall-clock budget for ONE Bedrock call, including tenacity retries.
+
+    Kept strictly under JOB_LIMIT_SECONDS so a single call can never consume the
+    whole job window. Override with BEDROCK_CALL_BUDGET_S (seconds).
+    """
+    raw = os.getenv("BEDROCK_CALL_BUDGET_S", "").strip()
+    try:
+        budget = float(raw) if raw else 90.0
+    except ValueError:
+        budget = 90.0
+    if budget <= 0:
+        budget = 90.0
+    # Always leave headroom beneath the job limit (never reach 120s).
+    return min(budget, JOB_LIMIT_SECONDS - 15.0)
+
+
+def bedrock_read_timeout_seconds() -> float:
+    """Socket read timeout for a SINGLE attempt.
+
+    Bounded by the per-call budget so one hung read cannot outlast the whole-call
+    budget (tenacity's stop_after_delay only fires between attempts). Streaming
+    keeps the socket active, so this is the max gap between chunks, not the total
+    generation time. Override with BEDROCK_READ_TIMEOUT_S.
+    """
+    budget = bedrock_call_budget_seconds()
+    raw = os.getenv("BEDROCK_READ_TIMEOUT_S", "").strip()
+    try:
+        read_timeout = float(raw) if raw else budget
+    except ValueError:
+        read_timeout = budget
+    if read_timeout <= 0:
+        read_timeout = budget
+    return min(read_timeout, budget)
+
+
+def bedrock_max_attempts() -> int:
+    """Max tenacity attempts (first try + retries) for one Bedrock call.
+
+    Also bounded by the time budget via stop_after_delay, whichever trips first.
+    Override with BEDROCK_MAX_ATTEMPTS.
+    """
+    raw = os.getenv("BEDROCK_MAX_ATTEMPTS", "").strip()
+    try:
+        attempts = int(raw) if raw else 3
+    except ValueError:
+        attempts = 3
+    return max(1, attempts)
+
+
+def bedrock_runtime_config() -> Config:
+    """botocore Config shared by every bedrock-runtime client we build.
+
+    botocore retries are DISABLED (max_attempts=1) so tenacity is the single
+    source of retry truth. Otherwise botocore's own retries multiply with
+    tenacity's (3 x 3 = up to 9 calls), blowing the per-call time budget and
+    double-counting throttles.
+    """
+    return Config(
+        read_timeout=bedrock_read_timeout_seconds(),
+        connect_timeout=10,
+        retries={"mode": "standard", "max_attempts": 1},
+    )
 
 
 # --- Throttle / retry classification ----------------------------------------
@@ -125,6 +201,52 @@ def _converse_text(resp: dict) -> str:
     return _THINK_RE.sub("", text).strip()
 
 
+def _collect_converse_stream(response: dict) -> dict:
+    """Rebuild a unary Converse response dict from a converse_stream reply.
+
+    converse_stream returns ``{"stream": <event iterable>}``; we fold the
+    answer-text deltas back into the same ``{"output": ..., "usage": ...}``
+    shape the rest of the adapter already consumes, so streaming is a pure
+    transport swap (B-2). reasoningContent deltas are dropped to match the
+    unary ``_converse_text`` behaviour; the usage block (including cache
+    token counts) arrives in the terminal ``metadata`` event.
+    """
+    parts: list[str] = []
+    usage: dict = {}
+    stop_reason: Optional[str] = None
+    # stop_after_delay only runs between attempts. A single converse_stream can
+    # otherwise keep a reasoning model generating for many minutes. Cut it at
+    # the same per-call budget the retry policy already uses.
+    deadline = time.monotonic() + bedrock_call_budget_seconds()
+    stream = response.get("stream")
+    for event in stream or []:
+        if time.monotonic() >= deadline:
+            closer = getattr(stream, "close", None)
+            if callable(closer):
+                try:
+                    closer()
+                except Exception:
+                    logger.debug("Could not close Bedrock stream after budget", exc_info=True)
+            budget = bedrock_call_budget_seconds()
+            raise TimeoutError(
+                f"Bedrock generation exceeded the {budget:.0f}s call budget"
+            )
+        if "contentBlockDelta" in event:
+            delta = event["contentBlockDelta"].get("delta") or {}
+            text = delta.get("text")
+            if isinstance(text, str):
+                parts.append(text)
+        elif "messageStop" in event:
+            stop_reason = event["messageStop"].get("stopReason")
+        elif "metadata" in event:
+            usage = event["metadata"].get("usage") or usage
+    return {
+        "output": {"message": {"role": "assistant", "content": [{"text": "".join(parts)}]}},
+        "usage": usage,
+        "stopReason": stop_reason,
+    }
+
+
 class BedrockLLM:
     """AWS Bedrock client for LLM inference using Claude or other models"""
     
@@ -173,7 +295,8 @@ class BedrockLLM:
 
         self.client = boto3.client(
             service_name='bedrock-runtime',
-            region_name=region_name
+            region_name=region_name,
+            config=bedrock_runtime_config(),
         )
 
         logger.info(f"✅ Initialized AWS Bedrock LLM client")
@@ -213,7 +336,13 @@ class BedrockLLM:
                 @retry(
                     retry=retry_if_exception(_is_retryable_bedrock_error),
                     wait=wait_exponential(multiplier=1, min=1, max=8),
-                    stop=stop_after_attempt(3),
+                    # Stop on the attempt cap OR the per-call time budget,
+                    # whichever trips first, so total retry time stays under the
+                    # job limit (B-2).
+                    stop=(
+                        stop_after_attempt(bedrock_max_attempts())
+                        | stop_after_delay(bedrock_call_budget_seconds())
+                    ),
                     reraise=True,
                 )
                 def _inner():
@@ -276,6 +405,17 @@ class BedrockLLM:
                 ordered.append(candidate)
         return ordered
 
+    def _streaming(self) -> bool:
+        """Use converse_stream on the Converse path unless explicitly disabled.
+
+        Streaming keeps the socket active as tokens arrive, so a slow multi-
+        minute generation never idles long enough to trip the read timeout
+        (B-2). Set BEDROCK_CONVERSE_STREAM=0 to fall back to the unary
+        converse() call (e.g. for a model that does not support streaming).
+        """
+        flag = os.getenv("BEDROCK_CONVERSE_STREAM", "1").strip().lower()
+        return flag not in ("0", "false", "no", "off")
+
     def _converse_once(
         self,
         model_id: str,
@@ -291,6 +431,8 @@ class BedrockLLM:
         }
         if system_blocks:
             kwargs["system"] = system_blocks
+        if self._streaming() and hasattr(self.client, "converse_stream"):
+            return _collect_converse_stream(self.client.converse_stream(**kwargs))
         return self.client.converse(**kwargs)
 
     def converse_with_retry(
@@ -314,7 +456,13 @@ class BedrockLLM:
                 @retry(
                     retry=retry_if_exception(_is_retryable_bedrock_error),
                     wait=wait_exponential(multiplier=1, min=1, max=8),
-                    stop=stop_after_attempt(3),
+                    # Stop on the attempt cap OR the per-call time budget,
+                    # whichever trips first, so total retry time stays under the
+                    # job limit (B-2).
+                    stop=(
+                        stop_after_attempt(bedrock_max_attempts())
+                        | stop_after_delay(bedrock_call_budget_seconds())
+                    ),
                     reraise=True,
                 )
                 def _inner():

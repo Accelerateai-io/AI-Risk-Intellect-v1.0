@@ -67,7 +67,7 @@ export function RiskListFilters({
         >
           <option value="newest">Newest</option>
           <option value="oldest">Oldest</option>
-          <option value="score">Highest score</option>
+          <option value="score">Highest grounding</option>
           <option value="severity">Highest severity</option>
         </select>
       </div>

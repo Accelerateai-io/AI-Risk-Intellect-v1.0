@@ -11,6 +11,7 @@ import {
   formatSeverityCell,
   type RiskDetail,
 } from "./riskData";
+import { displayGroundingScore } from "./assessmentDisplay";
 import { getHumanReviewMoveDetails } from "./humanReviewHelpers";
 import { RiskMoveInfoDialog } from "./RiskMoveInfoDialog";
 
@@ -73,7 +74,8 @@ const RiskRecordRow = memo(function RiskRecordRow({
         {formatSeverityCell(row.riskScoring)}
       </td>
       <td className="riskPage__td riskPage__td--right riskPage__td--score riskPage__td--sticky riskPage__td--stickyRight riskPage__td--stickyScore">
-        {row.qualityScore}
+        {/* {row.qualityScore} */}
+        {displayGroundingScore(row)}
       </td>
       <td className="riskPage__td riskPage__td--center riskPage__td--actions riskPage__td--sticky riskPage__td--stickyRight riskPage__td--stickyActions">
         <div className="riskPage__actions">
@@ -179,7 +181,8 @@ export const RiskRecordsTable = memo(function RiskRecordsTable({
                   scope="col"
                   className="riskPage__th riskPage__th--right riskPage__th--sticky riskPage__th--stickyRight riskPage__th--stickyScore"
                 >
-                  QUALITY SCORE
+                  {/* QUALITY SCORE */}
+                  GROUNDING SCORE
                 </th>
                 <th
                   scope="col"

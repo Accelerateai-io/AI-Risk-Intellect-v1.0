@@ -89,6 +89,93 @@ def test_tc02_schema_accepts_complete_record() -> None:
     validate(_valid_record(), _load_schema())
 
 
+def test_facts_v2_schema_does_not_require_self_grading() -> None:
+    schema = _load_schema()
+    assert "justification" not in schema["required"]
+    assert "analysis" not in schema["properties"]
+    assert "justification" not in schema["properties"]
+    record = _valid_record()
+    record.pop("justification", None)
+    validate(record, schema)
+
+
+def test_facts_v2_prompt_asks_for_facts_not_self_grading() -> None:
+    prompt = _PROMPT_PATH.read_text(encoding="utf-8")
+    schema = prompt.split("=== OUTPUT SCHEMA ===", 1)[1]
+    for banned in (
+        "decision_rationale",
+        "taxonomy_mapping",
+        "evidence_breakdown",
+        "self_assessment",
+        "context_clarity_score",
+        "matching_keywords",
+    ):
+        assert banned not in schema, banned
+    assert "SELF-ASSESSMENT" not in prompt
+    assert "Do not return analysis, justification" in prompt
+    for kept in (
+        "risk_title",
+        "primary_risk",
+        "secondary_risks",
+        "likelihood_reasoning",
+        "impact_reasoning",
+        "loss_categories",
+        "ai_product_name",
+        "ai_product_vendor",
+        "demonstrated_finding",
+        "mitigations_in_source",
+        "not described in source",
+        "representability result",
+        "unpredictable",
+        "CAPTCHA-solving accuracy",
+        "account takeover",
+    ):
+        assert kept in prompt, kept
+
+
+def test_repair_strips_self_grading_and_keeps_facts() -> None:
+    obj = {
+        "risk": {
+            "risk_title": "A grounded example risk title",
+            "description": "A concise, source-grounded description of the risk.",
+            "domains": "2. Privacy & Security",
+            "primary_risk": "Technical Risks",
+            "secondary_risks": "Privacy Risk",
+            "sector": "Private",
+            "industry": "Technology & Software",
+            "intent": "Accidental",
+            "source_type": "empirical_study",
+            "evidence_type": "demonstrated",
+            "demonstrated_finding": "Accuracy dropped three percent in tests.",
+            "stated_implication": None,
+            "paper_stance": "documents_problem",
+            "proposed_mitigation": None,
+            "mitigations_in_source": ["human review"],
+            "ai_product_name": "ExampleModel",
+            "ai_product_vendor": "ExampleCo",
+        },
+        "risk_scoring": {
+            "likelihood": 2,
+            "likelihood_reasoning": "Accuracy dropped three percent in tests.",
+            "impact": 2,
+            "impact_reasoning": "Accuracy dropped three percent in tests.",
+            "loss_categories": ["Reputation"],
+        },
+        "controls": [],
+        "analysis": {"risk_identified": "should be dropped"},
+        "justification": {"self_assessment": {"total_score": 99}},
+    }
+    repaired = repair_extraction_obj(obj, "Accuracy dropped three percent in tests.")
+    assert "analysis" not in repaired
+    assert "justification" not in repaired
+    assert repaired["_meta"]["extraction_contract"] == "facts_v2"
+    assert repaired["risk"]["risk_title"] == "A grounded example risk title"
+    assert repaired["risk"]["ai_product_name"] == "ExampleModel"
+    assert repaired["risk"]["evidence_type"] == "demonstrated"
+    assert repaired["risk_scoring"]["likelihood"] == 2
+    assert repaired["risk_scoring"]["loss_categories"] == ["Reputation"]
+
+
 def test_tc02_schema_rejects_missing_evidence_type() -> None:
     record = _valid_record()
     del record["risk"]["evidence_type"]
@@ -356,3 +443,184 @@ def test_tc40_prompt_mentions_operational_risk_secondary() -> None:
 def test_tc40_prompt_contains_not_described_in_source_phrase() -> None:
     prompt = _PROMPT_PATH.read_text(encoding="utf-8")
     assert "not described in source" in prompt
+
+
+# --------------------------------------------------------------------------
+# R-28 mitigation reconciliation and unsupported-harm reasons.
+# The verifier prompt and its four checks stay as they are.
+# --------------------------------------------------------------------------
+def test_repair_empty_mitigations_still_mean_absent() -> None:
+    repaired = repair_extraction_obj(
+        {"risk": {"risk_title": "A paper with no method"}, "controls": [], "justification": {}},
+        "an AI paper with no method described here at all",
+    )
+    assert repaired["risk"]["proposed_mitigation"] is None
+    assert repaired["risk"]["mitigations_in_source"] == ["not described in source"]
+    assert "mitigations_in_source" in repaired["_meta"]["defaulted_fields"]
+    assert repaired["_meta"].get("mitigations_reconciled") is not True
+
+
+def test_repair_keeps_model_silence_phrase_when_no_method() -> None:
+    repaired = repair_extraction_obj(
+        {
+            "risk": {
+                "risk_title": "No safeguards in this paper",
+                "source_type": "empirical_study",
+                "evidence_type": "demonstrated",
+                "paper_stance": "documents_problem",
+                "demonstrated_finding": "accuracy fell",
+                "stated_implication": None,
+                "proposed_mitigation": None,
+                "mitigations_in_source": ["not described in source"],
+            },
+            "controls": [],
+            "justification": {},
+        },
+        "source text with enough words but no method quote here",
+    )
+    assert repaired["risk"]["mitigations_in_source"] == ["not described in source"]
+    assert "mitigations_in_source" not in repaired.get("_meta", {}).get("defaulted_fields", [])
+    assert repaired.get("_meta", {}).get("mitigations_reconciled") is not True
+
+
+def test_reconcile_replaces_silence_when_method_is_in_source() -> None:
+    source = (
+        "HeteroGenManip is a task conditioned two-stage framework designed "
+        "to decouple grasp from interaction"
+    )
+    method = "a task conditioned two-stage framework designed to decouple grasp"
+    repaired = repair_extraction_obj(
+        {
+            "risk": {
+                "risk_title": "Heterogeneous grasp failures",
+                "source_type": "empirical_study",
+                "evidence_type": "demonstrated",
+                "paper_stance": "proposes_mitigation",
+                "demonstrated_finding": "success rate fell",
+                "stated_implication": None,
+                "proposed_mitigation": method,
+                "mitigations_in_source": ["not described in source"],
+            },
+            "controls": [],
+            "justification": {},
+        },
+        source,
+    )
+    assert repaired["risk"]["mitigations_in_source"] == [method]
+    assert "not described in source" not in repaired["risk"]["mitigations_in_source"]
+    assert repaired["_meta"]["mitigations_reconciled"] is True
+
+
+# Stored R-28 (arXiv 2605.10201, risk 797b417c) after the first repair.
+# The model paraphrased the method, so no five-word span of proposed_mitigation
+# exists in the paper, and the silence phrase was left in place.
+R28_PROPOSED = (
+    "Two-stage framework with foundation-correspondence-guided grasp "
+    "and multi-foundation-model routing"
+)
+R28_SOURCE = (
+    "To overcome these limitations, we propose HeteroGenManip, a task- "
+    "conditioned, two-stage framework designed to decouple initial grasp "
+    "from complex interaction execution. First, Foundation-Correspondence-Guided "
+    "Grasp module leverages structural priors to align the initial contact state. "
+    "Subsequently, Multi-Foundation-Model Diffusion Policy routes objects to "
+    "category-specialized foundation models."
+)
+
+
+def test_r28_paraphrase_has_no_five_word_span() -> None:
+    from app.verification.evidence_rules import check_citation
+
+    assert check_citation(R28_PROPOSED, R28_SOURCE)["ok"] is False
+
+
+def test_r28_paraphrased_method_replaces_silence_with_source_sentence() -> None:
+    from app.verification.evidence_rules import check_citation
+
+    repaired = repair_extraction_obj(
+        {
+            "risk": {
+                "risk_title": "Potential for robotic manipulation failures",
+                "source_type": "empirical_study",
+                "evidence_type": "demonstrated",
+                "paper_stance": "proposes_mitigation",
+                "demonstrated_finding": "success rate fell when components were removed",
+                "stated_implication": None,
+                "proposed_mitigation": R28_PROPOSED,
+                "mitigations_in_source": ["not described in source"],
+            },
+            "controls": [],
+            "justification": {},
+        },
+        R28_SOURCE,
+    )
+    mitigations = repaired["risk"]["mitigations_in_source"]
+    assert mitigations != ["not described in source"]
+    assert mitigations != [R28_PROPOSED]
+    assert "two-stage framework" in mitigations[0]
+    assert check_citation(mitigations[0], R28_SOURCE)["ok"] is True
+    assert repaired["_meta"]["mitigations_reconciled"] is True
+    assert "mitigations_in_source" not in repaired["_meta"].get("defaulted_fields", [])
+
+
+def test_reconcile_does_not_copy_method_absent_from_source() -> None:
+    repaired = repair_extraction_obj(
+        {
+            "risk": {
+                "risk_title": "Hallucinated method kept out",
+                "source_type": "empirical_study",
+                "evidence_type": "demonstrated",
+                "paper_stance": "proposes_mitigation",
+                "demonstrated_finding": "success rate fell",
+                "stated_implication": None,
+                "proposed_mitigation": "hallucinated quantum shield for robots in orbit",
+                "mitigations_in_source": ["not described in source"],
+            },
+            "controls": [],
+            "justification": {},
+        },
+        "two-stage framework designed to decouple initial grasp from interaction execution now",
+    )
+    assert repaired["risk"]["mitigations_in_source"] == ["not described in source"]
+    assert repaired.get("_meta", {}).get("mitigations_reconciled") is not True
+
+
+def test_harm_term_absent_from_source_is_a_review_reason() -> None:
+    record = _valid_record()
+    sentence = "Failed manipulations could damage objects or equipment"
+    record["risk_scoring"]["impact_reasoning"] = sentence
+    source = "two-stage framework designed to decouple initial grasp from interaction"
+    out = verify_record(record, source)
+    assert "Unsupported harm: 'equipment' is not in the source" in out["review_reasons"]
+    assert "Unsupported harm: 'damage' is not in the source" in out["review_reasons"]
+    assert record["risk_scoring"]["impact_reasoning"] == sentence
+
+    source_with_harm = source + " and can damage objects or equipment"
+    out_supported = verify_record(record, source_with_harm)
+    harm_reasons = [r for r in out_supported["review_reasons"] if r.startswith("Unsupported harm:")]
+    assert harm_reasons == []
+    assert record["risk_scoring"]["impact_reasoning"] == sentence
+
+
+def test_assessor_prompt_has_nine_checks_and_accepts_paraphrase() -> None:
+    from app.verification.llm_verifier import VERIFIER_CHECKS, VERIFIER_SYSTEM_PROMPT
+
+    assert VERIFIER_CHECKS == (
+        "claim_is_demonstrated",
+        "mitigations_reflected",
+        "not_attributed_to_proposed_method",
+        "severity_within_evidence",
+        "evidence_type_consistent",
+        "rationale_supported",
+        "domain_correct",
+        "primary_secondary_correct",
+        "catalog_match",
+    )
+    assert "rationale_supported" in VERIFIER_SYSTEM_PROMPT
+    assert "paraphrase" in VERIFIER_SYSTEM_PROMPT
+    assert "five consecutive" in VERIFIER_SYSTEM_PROMPT
+    assert "better outcomes" in VERIFIER_SYSTEM_PROMPT
+    assert "does not support a harm rationale" in VERIFIER_SYSTEM_PROMPT
+    assert "potential health or physical-safety harm" in VERIFIER_SYSTEM_PROMPT
+    assert "return repair null" in VERIFIER_SYSTEM_PROMPT
+    assert "account takeover" in VERIFIER_SYSTEM_PROMPT

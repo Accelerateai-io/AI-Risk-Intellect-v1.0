@@ -1,4 +1,7 @@
 import { decodeDisplayTitle } from "../../../utils/decodeHtmlEntities";
+import type { FactsV2AssessmentView } from "./assessmentDisplay";
+
+export type { FactsV2AssessmentView as FactsV2AssessmentInfo } from "./assessmentDisplay";
 
 export type CatalogRiskMatch = {
   riskId: string;
@@ -9,7 +12,6 @@ export type CatalogRiskMatch = {
   domainMatchPercent: number;
   descriptionMatchPercent: number;
   matchSummary: string;
-  matchStrength?: "established" | "suggestion";
 };
 
 export type HumanReviewInfo = {
@@ -88,10 +90,6 @@ export type EvidenceDisciplineInfo = {
   proposedMitigation: string | null;
   mitigationsInSource: string[];
   reviewReasons: string[];
-  publication?: {
-    decision: "publish" | "hold" | null;
-    status: string | null;
-  };
   verifier: {
     ran: boolean;
     passed: boolean | null;
@@ -170,6 +168,8 @@ export type RiskDetail = {
   product?: ProductInfo;
   /** Present on API rows; absent on mock rows. */
   evidenceDiscipline?: EvidenceDisciplineInfo;
+  /** Facts-v2 assessment. Absent on v1 and mock rows. Not the quality-score confidence. */
+  assessment?: FactsV2AssessmentView | null;
   /** Present on Review Queue rows: who the review is assigned to (may be null). */
   assignment?: ReviewAssignmentInfo;
 };
@@ -625,6 +625,7 @@ export function normalizeRisksFromApi(raw: unknown): {
     },
     modelName: r.modelName ?? null,
     evidenceDiscipline: r.evidenceDiscipline,
+    assessment: r.assessment ?? null,
     riskScoring: {
       likelihood: r.riskScoring?.likelihood ?? null,
       likelihoodLabel: r.riskScoring?.likelihoodLabel ?? "—",

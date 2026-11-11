@@ -1,23 +1,9 @@
-"""Independent verifier pass (BUG-06).
+"""Independent assessor (workflow v2).
 
-A second model call receives the source text and the extracted record and
-answers the publication checks. The same checks are used for a first
-extraction and for a retry output:
-
-* claim_is_demonstrated            - the risk is an observed result or real
-                                     incident, not a speculation written as fact
-* mitigations_reflected            - safeguards, validation and limitations the
-                                     source describes are reflected in the record
-* not_attributed_to_proposed_method - the risk is the problem the source
-                                     documents, not the method it proposes
-* severity_within_evidence         - likelihood / impact and their rationale do
-                                     not go beyond what the source supports
-
-Any failed check becomes a review reason ("Verifier: ...") that routes the
-record to the Review queue; the record is still stored. The grader is a
-different call from the extractor and may be a different model
-(VERIFIER_MODEL). Prompt building and response parsing are pure functions so
-they are unit-testable without Bedrock.
+A second model call, separate from extraction, reads the source and the
+facts-only record and answers nine checks. A supported paraphrase passes.
+Five consecutive source words are not a pass rule. The worker's decision
+function, not this module, chooses the single publication outcome.
 """
 
 from __future__ import annotations
@@ -35,23 +21,28 @@ VERIFIER_CHECKS: tuple[str, ...] = (
     "mitigations_reflected",
     "not_attributed_to_proposed_method",
     "severity_within_evidence",
-    "evidence_labels_match",
-    "classification_consistent",
-    "simulation_scope_respected",
-    "sensitive_claims_supported",
-    "scope_within_source",
+    "evidence_type_consistent",
+    "rationale_supported",
+    "domain_correct",
+    "primary_secondary_correct",
+    "catalog_match",
 )
+
+# These failures are returned and stored. They are not review reasons.
+NON_HOLDING_CHECKS = frozenset({
+    "mitigations_reflected",
+    "severity_within_evidence",
+    "evidence_type_consistent",
+    "rationale_supported",
+    "domain_correct",
+    "primary_secondary_correct",
+})
 
 CHECK_LABELS: dict[str, str] = {
     "claim_is_demonstrated": "the risk is stated as demonstrated but the source only speculates",
     "mitigations_reflected": "safeguards or limitations in the source are not reflected",
     "not_attributed_to_proposed_method": "the risk is attributed to the method the source proposes",
     "severity_within_evidence": "likelihood or impact goes beyond the evidence",
-    "evidence_labels_match": "a demonstrated label is used for an inference or for prior work",
-    "classification_consistent": "the domain or risk labels disagree with the explanation",
-    "simulation_scope_respected": "a simulation or uncertified estimate is written as a real-world incident",
-    "sensitive_claims_supported": "a healthcare or physical-safety claim is not supported by the source",
-    "scope_within_source": "the record generalizes beyond the tasks the source tested",
 }
 
 REASON_PREFIX = "Verifier:"
@@ -59,72 +50,40 @@ REASON_PREFIX = "Verifier:"
 # Source text handed to the verifier. Beyond this, head + tail are sent.
 DEFAULT_MAX_SOURCE_CHARS = 150_000
 
-VERIFIER_SYSTEM_PROMPT = """You are an independent evidence auditor for AI risk records.
+VERIFIER_SYSTEM_PROMPT = """You are an independent evidence auditor for AI risk records. You did not write the record. Do not rewrite the finding except to name a domain or category correction, or one unsupported secondary clause to drop.
 
-You receive a SOURCE document and a RECORD that another system extracted from
-it. Decide, for each check, whether the RECORD is faithful to the SOURCE.
-Judge only against the SOURCE text given. Silence in the source is not
-evidence of absence.
+You receive a SOURCE document, a RECORD extracted from it, up to five catalog candidates, and optional hints. Judge only against the SOURCE. A sentence that paraphrases the source passes when the source supports that meaning. Do not require five consecutive words copied from the source. Silence in the source is not evidence of absence.
 
 Checks:
-1. claim_is_demonstrated: true when the record's risk is something the
-   source reports as observed, measured or as a real incident, OR the record
-   itself marks it as hypothesized and writes it as a suggestion. False when a
-   speculation, limitation or future-work remark is written as an observed
-   fact, or when evidence_type says "demonstrated" without a result to back it.
-2. mitigations_reflected: true when every safeguard, validation, control,
-   limitation or mitigation the source describes is reflected in
-   mitigations_in_source / proposed_mitigation, or the source describes none.
-   False when the record says "not described in source" or omits a safeguard
-   that the source does describe, or claims a safeguard is absent.
-3. not_attributed_to_proposed_method: true when the risk is the problem the
-   source documents. False when the record blames the method, tool or system
-   the source proposes or evaluates for the problem it was built to solve.
-4. severity_within_evidence: true when likelihood and impact and their
-   rationale sentences are supported by the source and consistent with the
-   record's own evidence_type. False when the rationale cites consequences,
-   deployments, populations or harms the source does not describe, or when
-   the rationale is about a different topic than the record's title.
-5. evidence_labels_match: true when a demonstrated finding is an observed or
-   measured result in the SOURCE, and inferences are marked as implications.
-   False when "demonstrated" is used for a speculation, or when the record
-   presents a finding the SOURCE attributes to prior work as its own result.
-6. classification_consistent: true when the domain, primary risk, and
-   secondary risk describe the same harm as the explanation. False when they
-   disagree, including a fairness or protected-group label the explanation
-   does not support.
-7. simulation_scope_respected: true when a simulation, counterfactual, or
-   uncertified estimate stays labeled as such. False when it is written as a
-   deployed incident, a certified probability, or real-world harm.
-8. sensitive_claims_supported: true when every healthcare or physical-safety
-   claim (patients, clinicians, mortality, injury, safety-critical equipment)
-   is quoted from the SOURCE or explicitly hedged as a possible consequence.
-   False when patient impact or physical harm is stated as fact without that
-   support. Silence in the source is not evidence of harm.
-9. scope_within_source: true when capability and fairness claims stay inside
-   the tasks the SOURCE tested. False when a task-specific result is
-   generalized to a broader ability or to a protected-group finding the
-   SOURCE did not test.
+1. claim_is_demonstrated: pass when the record's risk is something the source reports as observed, measured, or as a real incident, OR the record marks it as hypothesized and writes it as a suggestion. Fail when a speculation is written as an observed fact, or evidence_type is "demonstrated" without a result.
+2. mitigations_reflected: pass when safeguards, validation, limitations, or mitigations in the source are reflected, or the source describes none.
+3. not_attributed_to_proposed_method: pass when the risk is the problem the source documents. Fail when the record blames the method the source proposes.
+4. severity_within_evidence: pass when likelihood, impact, and their rationales stay within what the source reports. Fail when a rationale states patient harm, physical harm, or a deployment failure the source does not report. A sentence about improved patient care, resource allocation, better outcomes, or another hoped-for benefit does not show that harm occurred. This check does not by itself decide publication.
+5. evidence_type_consistent: pass when "demonstrated" has a measured result or incident, "mitigation_target" is a fix the source proposes, and anything else is "hypothesized".
+6. rationale_supported: pass when each rationale sentence is supported by a passage you can quote, including a faithful paraphrase. A benefit or improvement sentence does not support a harm rationale. This check does not by itself decide publication.
+7. domain_correct: pass when the domain matches the harm. If not, return the corrected domain string.
+8. primary_secondary_correct: pass when primary and secondary categories match the mechanism of harm, not a single keyword. Technical/Performance Risk is only for output quality: hallucination, inaccurate output, inconsistent responses, or performance degradation. CAPTCHA-solving accuracy, a success rate, learning a new CAPTCHA class, and simulated perturbation recovery are Technical/Performance Risk. The words CAPTCHA, bypass, evasion, or defeat alone are not Security Risk. Security Risk for a CAPTCHA system requires the source to report unauthorized access, account takeover, or credential abuse. Unauthorized agent actions, cyberattacks, prompt injection, data exposure, and system compromise are Security Risk under Technical Risks. If the record uses the wrong one, fail and return corrected_primary and corrected_secondary. Do not rewrite the finding.
+9. catalog_match: best candidate id, verdict ("same mechanism", "related", or "topical only"), and percent 0 to 100. No candidate: best_id null and percent null.
 
-These checks apply equally to a first extraction and to a retry output.
+Also return grounding_score 0 to 1 (share of the record the source supports, paraphrase included), quoted_support (source passages), safety_claim, and repair (one secondary clause to drop, or null). safety_claim is "real_world" when the record asserts actual or potential health or physical-safety harm in the finding or the impact, including harm that could follow from a test, benchmark, or simulation. Use "research_only" when the work is research and the record does not assert that harm. Use "none" when there is no health or physical-safety claim. A measured accuracy, AUC, F1, or error count is not by itself a safety harm. When the record asserts that harm, return repair null. Do not name the harm sentence as the clause to drop.
 
-Also give grounding_score: a 0 to 1 estimate of how much of the record's
-description and rationale is directly supported by the source, and list any
-unsupported_claims (short quotes from the RECORD).
-
-Return ONLY a JSON object:
+Return ONLY this JSON object:
 {
-  "claim_is_demonstrated": {"pass": true|false, "reason": "one sentence"},
-  "mitigations_reflected": {"pass": true|false, "reason": "one sentence"},
-  "not_attributed_to_proposed_method": {"pass": true|false, "reason": "one sentence"},
-  "severity_within_evidence": {"pass": true|false, "reason": "one sentence"},
-  "evidence_labels_match": {"pass": true|false, "reason": "one sentence"},
-  "classification_consistent": {"pass": true|false, "reason": "one sentence"},
-  "simulation_scope_respected": {"pass": true|false, "reason": "one sentence"},
-  "sensitive_claims_supported": {"pass": true|false, "reason": "one sentence"},
-  "scope_within_source": {"pass": true|false, "reason": "one sentence"},
+  "checks": {
+    "claim_is_demonstrated": {"pass": true, "quote": "..."},
+    "mitigations_reflected": {"pass": true, "quote": "..."},
+    "not_attributed_to_proposed_method": {"pass": true, "quote": "..."},
+    "severity_within_evidence": {"pass": true, "quote": "..."},
+    "evidence_type_consistent": {"pass": true, "quote": "..."},
+    "rationale_supported": {"pass": true, "quote": "..."},
+    "domain_correct": {"pass": true, "corrected": ""},
+    "primary_secondary_correct": {"pass": true, "corrected_primary": "", "corrected_secondary": ""},
+    "catalog_match": {"best_id": "AIQ-0000", "verdict": "related", "percent": 0}
+  },
   "grounding_score": 0.0,
-  "unsupported_claims": ["..."]
+  "quoted_support": ["..."],
+  "safety_claim": "none",
+  "repair": null
 }
 No markdown, no text outside the JSON."""
 
@@ -176,6 +135,8 @@ def build_verifier_blocks(
     *,
     max_source_chars: int = DEFAULT_MAX_SOURCE_CHARS,
     cache_source: bool = False,
+    catalog_candidates: Optional[list] = None,
+    hints: Any = None,
 ) -> list[dict]:
     """Converse content blocks: source first (cacheable), then the record."""
     blocks: list[dict] = [
@@ -183,11 +144,17 @@ def build_verifier_blocks(
     ]
     if cache_source:
         blocks.append({"cachePoint": {"type": "default"}})
+    tail = {
+        "record": record_summary(record),
+        "catalog_candidates": catalog_candidates or [],
+        "hints": hints or {},
+    }
     blocks.append(
         {
             "text": "=== RECORD ===\n"
-            + json.dumps(record_summary(record), ensure_ascii=False, indent=1)
-            + "\n\nRun every check and return the JSON object."
+            + json.dumps(tail, ensure_ascii=False, indent=1)
+            + "\n\nRun the nine checks and return the JSON object. "
+            + "A supported paraphrase passes. Do not apply a five-word rule."
         }
     )
     return blocks
@@ -207,6 +174,47 @@ def _as_bool(value: Any) -> Optional[bool]:
     return None
 
 
+def _check_blob(raw: dict, name: str) -> Any:
+    nested = raw.get("checks")
+    if isinstance(nested, dict) and name in nested:
+        return nested.get(name)
+    return raw.get(name)
+
+
+def _parse_check(name: str, entry: Any) -> dict:
+    if name == "catalog_match":
+        if not isinstance(entry, dict):
+            return {"pass": None, "best_id": None, "verdict": None, "percent": None, "reason": "", "quote": ""}
+        percent = entry.get("percent")
+        try:
+            percent = float(percent) if percent is not None else None
+        except (TypeError, ValueError):
+            percent = None
+        best_id = entry.get("best_id")
+        best_id = str(best_id).strip() if best_id else None
+        verdict = str(entry.get("verdict") or "").strip() or None
+        return {
+            "pass": percent is not None and percent >= 60 and bool(best_id),
+            "best_id": best_id,
+            "verdict": verdict,
+            "percent": percent,
+            "reason": str(entry.get("reason") or "").strip(),
+            "quote": str(entry.get("quote") or "").strip(),
+        }
+    if isinstance(entry, dict):
+        parsed = {
+            "pass": _as_bool(entry.get("pass")),
+            "reason": str(entry.get("reason") or "").strip(),
+            "quote": str(entry.get("quote") or "").strip(),
+        }
+        for key in ("corrected", "corrected_primary", "corrected_secondary"):
+            value = entry.get(key)
+            if isinstance(value, str) and value.strip():
+                parsed[key] = value.strip()
+        return parsed
+    return {"pass": _as_bool(entry), "reason": "", "quote": ""}
+
+
 def parse_verifier_response(text: str) -> dict:
     """Normalise the model's answer. Never raises; missing checks are None."""
     from app.llm.json_parse import parse_llm_json
@@ -218,16 +226,7 @@ def parse_verifier_response(text: str) -> dict:
     if not isinstance(raw, dict):
         raw = {}
 
-    checks: dict[str, dict] = {}
-    for name in VERIFIER_CHECKS:
-        entry = raw.get(name)
-        if isinstance(entry, dict):
-            ok = _as_bool(entry.get("pass"))
-            reason = str(entry.get("reason") or "").strip()
-        else:
-            ok = _as_bool(entry)
-            reason = ""
-        checks[name] = {"pass": ok, "reason": reason}
+    checks = {name: _parse_check(name, _check_blob(raw, name)) for name in VERIFIER_CHECKS}
 
     score: Optional[float]
     try:
@@ -236,24 +235,47 @@ def parse_verifier_response(text: str) -> dict:
     except (TypeError, ValueError):
         score = None
 
-    claims_raw = raw.get("unsupported_claims")
-    claims = [str(c).strip() for c in claims_raw if str(c).strip()] if isinstance(claims_raw, list) else []
+    quotes_raw = raw.get("quoted_support")
+    if not isinstance(quotes_raw, list):
+        quotes_raw = raw.get("unsupported_claims")
+    quotes = [str(c).strip() for c in quotes_raw if str(c).strip()] if isinstance(quotes_raw, list) else []
+
+    safety = str(raw.get("safety_claim") or "").strip().lower()
+    if safety not in ("real_world", "research_only", "none"):
+        safety = None
+
+    repair = raw.get("repair")
+    if not isinstance(repair, dict) or not str(repair.get("drop_clause") or "").strip():
+        repair = None
+    else:
+        repair = {
+            "drop_clause": str(repair.get("drop_clause")).strip(),
+            "reason": str(repair.get("reason") or "").strip(),
+        }
 
     return {
         "checks": checks,
         "grounding_score": score,
-        "unsupported_claims": claims[:10],
+        "quoted_support": quotes[:10],
+        "unsupported_claims": quotes[:10],
+        "safety_claim": safety,
+        "repair": repair,
         "parsed": bool(raw),
     }
 
 
 def verifier_review_reasons(result: dict, *, grounding_min: float) -> list[str]:
+    """Reasons for a failed main-claim check only.
+
+    Checks 2, 4, 5, 6, 7 and 8 are stored on the result and are not reasons.
+    Catalog match is not a hold. The worker decision function is the gate.
+    """
     reasons: list[str] = []
     checks = result.get("checks") or {}
-    for name in VERIFIER_CHECKS:
+    for name in ("claim_is_demonstrated", "not_attributed_to_proposed_method"):
         entry = checks.get(name) or {}
         if entry.get("pass") is False:
-            label = CHECK_LABELS[name]
+            label = CHECK_LABELS.get(name, name)
             reason = (entry.get("reason") or "").strip()
             reasons.append(
                 f"{REASON_PREFIX} {name} failed - {label}" + (f": {reason}" if reason else "")
@@ -277,16 +299,38 @@ def run_verifier(
     max_source_chars: int = DEFAULT_MAX_SOURCE_CHARS,
     cache_source: bool = False,
     grounding_min: float = 0.6,
+    catalog_candidates: Optional[list] = None,
+    hints: Any = None,
 ) -> dict:
-    """Run the verifier once. Returns the result dict with review_reasons.
+    """Run the assessor once, plus one JSON repair if the reply does not parse.
 
     ``generate_text(system, blocks, max_tokens=, temperature=, model_id=)``
     returns (text, model_used, usage). Never raises: a transport failure
-    yields a result whose only reason says the verifier did not run.
+    yields a result whose only reason says the assessor did not run.
     """
     blocks = build_verifier_blocks(
-        record, source_text, max_source_chars=max_source_chars, cache_source=cache_source
+        record,
+        source_text,
+        max_source_chars=max_source_chars,
+        cache_source=cache_source,
+        catalog_candidates=catalog_candidates,
+        hints=hints,
     )
+
+    def _empty(error: str) -> dict:
+        return {
+            "ran": False,
+            "error": error[:200],
+            "checks": {name: _parse_check(name, None) for name in VERIFIER_CHECKS},
+            "grounding_score": None,
+            "quoted_support": [],
+            "unsupported_claims": [],
+            "safety_claim": None,
+            "repair": None,
+            "review_reasons": [f"{REASON_PREFIX} did not run - {error[:120]}"],
+            "passed": False,
+        }
+
     try:
         text, model_used, usage = generate_text(
             VERIFIER_SYSTEM_PROMPT,
@@ -297,15 +341,20 @@ def run_verifier(
         )
     except Exception as exc:
         logger.warning("VERIFIER: call failed (%s)", str(exc)[:160])
-        return {
-            "ran": False,
-            "error": str(exc)[:200],
-            "checks": {},
-            "grounding_score": None,
-            "unsupported_claims": [],
-            "review_reasons": [f"{REASON_PREFIX} did not run - {str(exc)[:120]}"],
-        }
+        return _empty(str(exc))
     result = parse_verifier_response(text)
+    if not result["parsed"]:
+        try:
+            text, model_used, usage = generate_text(
+                VERIFIER_SYSTEM_PROMPT,
+                blocks + [{"text": "The previous reply was not valid JSON. Return only the JSON object."}],
+                max_tokens=1_500,
+                temperature=0.0,
+                model_id=model_id,
+            )
+            result = parse_verifier_response(text)
+        except Exception as exc:
+            logger.warning("VERIFIER: JSON repair failed (%s)", str(exc)[:160])
     result["ran"] = True
     result["model_used"] = model_used
     result["usage"] = usage

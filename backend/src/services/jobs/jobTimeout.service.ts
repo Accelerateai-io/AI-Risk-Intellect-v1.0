@@ -33,6 +33,17 @@ let activeRunAbort: AbortController | null = null;
 let activeRunTimer: ReturnType<typeof setTimeout> | null = null;
 let activeAttemptJobId: number | null = null;
 let activeAttemptLimitMs: number | null = null;
+let jobAttemptSeq = 0;
+
+/** Start a new attempt. In-flight work from the previous id must not finish the job. */
+export function beginJobAttempt(): number {
+  jobAttemptSeq += 1;
+  return jobAttemptSeq;
+}
+
+export function isCurrentJobAttempt(attemptId: number): boolean {
+  return attemptId === jobAttemptSeq;
+}
 
 export function getJobRunSignal(): AbortSignal | undefined {
   return activeRunAbort?.signal;
@@ -131,12 +142,14 @@ export async function skipJobIfStillRunning(
   reason?: string,
 ): Promise<boolean> {
   const message = reason ?? (await currentJobTimeoutSkipReason());
+  const finishedAt = new Date();
   const [updated] = await db
     .update(jobs)
     .set({
       status: "skipped",
       errorMessage: message,
-      updatedAt: new Date(),
+      finishedAt,
+      updatedAt: finishedAt,
     })
     .where(and(eq(jobs.id, jobId), eq(jobs.status, "running")))
     .returning({
@@ -161,12 +174,14 @@ export async function skipStaleRunningJobs(): Promise<number> {
         ? ne(jobs.id, activeAttemptJobId)
         : undefined,
     );
+    const finishedAt = new Date();
     const skipped = await db
       .update(jobs)
       .set({
         status: "skipped",
         errorMessage: reason,
-        updatedAt: new Date(),
+        finishedAt,
+        updatedAt: finishedAt,
       })
       .where(runningTooLong)
       .returning({

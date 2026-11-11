@@ -86,25 +86,57 @@ def test_parse_handles_shapes_and_garbage():
     assert not r["parsed"] and r["grounding_score"] is None
 
 
-def test_review_reasons_name_each_failed_check():
+def test_review_reasons_hold_only_the_main_claim():
     result = parse_verifier_response(
         _verdict(
             severity_within_evidence={"pass": False, "reason": "rationale is about privacy, title is about hallucination"},
             mitigations_reflected={"pass": False, "reason": "paper validates on 3 datasets"},
+            rationale_supported={"pass": False, "reason": "paraphrase still supported"},
             grounding_score=0.3,
         )
     )
     reasons = verifier_review_reasons(result, grounding_min=0.6)
-    assert len(reasons) == 3
-    assert reasons[0].startswith(f"{REASON_PREFIX} mitigations_reflected failed")
-    assert "paper validates on 3 datasets" in reasons[0]
-    assert reasons[1].startswith(f"{REASON_PREFIX} severity_within_evidence failed")
-    assert "grounding_score 0.30 below 0.60" in reasons[2]
+    assert len(reasons) == 1
+    assert "grounding_score 0.30 below 0.60" in reasons[0]
+    assert not any("mitigations_reflected" in r for r in reasons)
+    assert not any("severity_within_evidence" in r for r in reasons)
+    assert not any("rationale_supported" in r for r in reasons)
+    assert set(result["checks"]) == set(VERIFIER_CHECKS)
 
     assert verifier_review_reasons(parse_verifier_response(_verdict()), grounding_min=0.6) == []
     assert verifier_review_reasons(parse_verifier_response("garbage"), grounding_min=0.6) == [
         f"{REASON_PREFIX} no verdict - verifier response could not be parsed"
     ]
+
+
+def test_nested_assessment_keeps_all_nine_checks_and_a_paraphrase_quote():
+    payload = {
+        "checks": {
+            name: {"pass": True, "quote": "paraphrased support"} for name in VERIFIER_CHECKS
+        },
+        "grounding_score": 0.91,
+        "quoted_support": ["measured drop"],
+        "safety_claim": "research_only",
+        "repair": None,
+    }
+    payload["checks"]["catalog_match"] = {
+        "best_id": "AIQ-0412",
+        "verdict": "related",
+        "percent": 54,
+    }
+    parsed = parse_verifier_response(json.dumps(payload))
+    assert len(parsed["checks"]) == 9
+    assert parsed["checks"]["rationale_supported"]["pass"] is True
+    assert parsed["checks"]["rationale_supported"]["quote"] == "paraphrased support"
+    assert parsed["checks"]["catalog_match"]["percent"] == 54
+    assert parsed["safety_claim"] == "research_only"
+    from app.verification.llm_verifier import VERIFIER_SYSTEM_PROMPT
+
+    assert "paraphrase" in VERIFIER_SYSTEM_PROMPT.lower()
+    assert "five consecutive" in VERIFIER_SYSTEM_PROMPT
+    assert "Security Risk" in VERIFIER_SYSTEM_PROMPT
+    assert "Technical/Performance Risk" in VERIFIER_SYSTEM_PROMPT
+    assert "hallucination" in VERIFIER_SYSTEM_PROMPT
 
 
 def test_run_verifier_passes_model_and_never_raises():
@@ -183,26 +215,25 @@ def _wire(monkeypatch, verdict: str) -> FakeClient:
     return client
 
 
-def test_tc15_ungrounded_record_routed_to_review(monkeypatch):
+def test_facts_v2_extraction_does_not_run_the_in_process_verifier(monkeypatch):
     client = _wire(
         monkeypatch,
         _verdict(severity_within_evidence={"pass": False, "reason": "rationale about another topic"}),
     )
     obj, flag, _ = extract_utils.extract_with_auto_chunking("word word word word word word " * 50, extract_utils.load_risk_schema())
-    assert flag == "bedrock" and client.calls == 1
-    meta = obj["_meta"]
-    assert meta["verifier"]["ran"] and not meta["verifier"]["passed"]
-    reasons = meta["verification"]["review_reasons"]
-    assert any(r.startswith("Verifier: severity_within_evidence failed") for r in reasons)
-    assert reasons == meta["review_reasons"]
+    assert flag == "bedrock" and client.calls == 0
+    assert obj["_meta"]["extraction_contract"] == "facts_v2"
+    assert obj["_meta"]["verifier"] == {
+        "ran": False,
+        "reason": "facts_v2 assessment runs in the worker",
+    }
 
 
-def test_tc16_grounded_record_has_no_verifier_reason(monkeypatch):
+def test_tc16_facts_v2_extraction_skips_verifier(monkeypatch):
     client = _wire(monkeypatch, _verdict())
     obj, _, _ = extract_utils.extract_with_auto_chunking("word word word word word word " * 50, extract_utils.load_risk_schema())
-    assert client.calls == 1
-    assert obj["_meta"]["verifier"]["passed"] is True
-    assert not any(r.startswith("Verifier:") for r in obj["_meta"].get("review_reasons", []))
+    assert client.calls == 0
+    assert obj["_meta"]["verifier"]["ran"] is False
 
 
 def test_verifier_can_be_disabled(monkeypatch):
@@ -210,4 +241,4 @@ def test_verifier_can_be_disabled(monkeypatch):
     monkeypatch.setenv("ENABLE_VERIFIER", "false")
     obj, _, _ = extract_utils.extract_with_auto_chunking("word " * 300, extract_utils.load_risk_schema())
     assert client.calls == 0
-    assert obj["_meta"]["verifier"] == {"ran": False, "reason": "ENABLE_VERIFIER=false"}
+    assert obj["_meta"]["verifier"]["ran"] is False

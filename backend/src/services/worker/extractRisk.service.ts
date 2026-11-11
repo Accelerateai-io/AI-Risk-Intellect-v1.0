@@ -5,6 +5,7 @@ import { risks } from "../../schema/risks/risks.js";
 import {
   pythonExtractRisk,
   StubExtractionError,
+  NoAiRiskError,
   type RiskExtractionObject,
 } from "../../extraction/pythonBridge.js";
 import {
@@ -30,7 +31,10 @@ import {
   noteRiskSaved,
   noteRiskSaveStarted,
 } from "../jobs/jobPipelineTrace.js";
+import { isCurrentJobAttempt } from "../jobs/jobTimeout.service.js";
 import {
+  blockingEvidenceReviewReasons,
+  citationHintReasons,
   DOMAIN_REVIEW_REASON,
   DUPLICATE_RISK_REVIEW_REASON,
   evidenceReviewReasons,
@@ -38,11 +42,11 @@ import {
   MISSING_JUSTIFICATION_REVIEW_REASON,
   NON_ENGLISH_REVIEW_REASON,
   resolveQualityScore100,
+  verifierDecidesPublishEnabled,
 } from "../risks/riskQuality.js";
 import { findDuplicateRisk } from "../risks/riskDedup.service.js";
 import { preserveReviewState } from "../risks/riskReviewState.js";
 import { resolveRiskScoring } from "../risks/riskScoring.js";
-import { applyPublicationDecision } from "../risks/publicationGate.js";
 import {
   detectTextLanguage,
   isEnglishLanguageCode,
@@ -53,11 +57,44 @@ import {
   persistEnglishArticleTitle,
   resolveEnglishArticleTitle,
 } from "../../services/articles/articleTitleLocalization.js";
+import {
+  isFactsV2Extraction,
+  FACTS_V2_PIPELINE_VERSION,
+  runFactsV2AssessmentCycle,
+  appendEvidenceEntry,
+  type RiskAssessment,
+} from "../risks/workflowDecision.js";
+import { pythonAssessRisk } from "../../extraction/pythonBridge.js";
 import { withUsModelPrefix } from "../../utils/bedrockModelId.js";
 
 export type ExtractRiskResult =
   | { outcome: "done"; riskId: string; created: boolean; modelName: string }
   | { outcome: "skipped"; reason: string };
+
+export type RiskWriteMode =
+  | "insert-new"
+  | "reprocess-new"
+  | "reextract-in-place"
+  | "refresh-existing";
+
+/**
+ * Decide how a freshly extracted risk is persisted (B-3). force_reprocess
+ * always bypasses dedup and inserts a NEW row (linked to the row it
+ * supersedes when one exists); force_reextract rebuilds the existing row in
+ * place; otherwise an existing row is refreshed and a missing one inserted.
+ */
+export function decideRiskWriteMode(input: {
+  hasExisting: boolean;
+  forceReprocess?: boolean;
+  forceReextract?: boolean;
+}): RiskWriteMode {
+  if (input.forceReprocess) {
+    return input.hasExisting ? "reprocess-new" : "insert-new";
+  }
+  if (input.hasExisting && input.forceReextract) return "reextract-in-place";
+  if (input.hasExisting) return "refresh-existing";
+  return "insert-new";
+}
 
 function appendReviewReason(
   extractionJson: Record<string, unknown>,
@@ -70,6 +107,16 @@ function appendReviewReason(
 }
 
 const UNKNOWN_MODEL_KEY = "__unknown__";
+
+/**
+ * Version of the extraction/scoring pipeline stamped onto every persisted risk
+ * (B-3). Lets a force-reprocess row be told apart from the older row it
+ * supersedes and makes "which pipeline produced this risk" queryable. Bump when
+ * the extraction/scoring behaviour changes.
+ */
+export const PIPELINE_VERSION = FACTS_V2_PIPELINE_VERSION;
+
+export const MERGED_SKIP_MESSAGE = "merged with existing risk";
 
 /** Normalize model id for comparison (case-insensitive, trimmed, with `us.` prefix). */
 export function normalizeModelKey(modelName: string | null | undefined): string {
@@ -163,6 +210,7 @@ async function buildPersistedExtraction(input: {
   articleTitle: string | null;
   result: Awaited<ReturnType<typeof pythonExtractRisk>>;
   resolvedModel: string;
+  forceReprocess?: boolean;
 }) {
   const risk = input.result.object.risk ?? {};
   let riskTitle = (risk.risk_title as string) || "Untitled risk";
@@ -198,7 +246,9 @@ async function buildPersistedExtraction(input: {
     limit: 5,
   });
 
-  if (isJudgeEnabled() && catalogMatches.length > 0) {
+  const factsV2 = isFactsV2Extraction(input.result.object);
+
+  if (!factsV2 && isJudgeEnabled() && catalogMatches.length > 0) {
     catalogMatches = await judgeAndApplyVerdicts(catalogMatches, {
       title: riskTitle,
       description: description || riskTitle,
@@ -235,12 +285,17 @@ async function buildPersistedExtraction(input: {
     catalogMatches,
   );
 
-  if (!inTaxonomy) {
+  // Stamp the pipeline version onto every persisted risk (B-3).
+  extractionJson.pipeline_version = PIPELINE_VERSION;
+  let semanticDuplicate: { riskId: string; articleId: number } | null = null;
+
+  if (!factsV2 && !inTaxonomy) {
     extractionJson.review_status = "pending";
     extractionJson.review_reason = DOMAIN_REVIEW_REASON;
   }
 
-  // Semantic near-duplicate check: flag for review, never block insertion.
+  // Semantic near-duplicate check. Facts-v2 merges into the existing row
+  // instead of inserting, and only when this run is not a force reprocess.
   if (riskEmbedding) {
     try {
       const duplicate = await findDuplicateRisk({
@@ -254,29 +309,49 @@ async function buildPersistedExtraction(input: {
           duplicate_of_article_id: duplicate.articleId,
           similarity: Math.round(duplicate.similarity * 1000) / 1000,
         };
-        appendReviewReason(extractionJson, DUPLICATE_RISK_REVIEW_REASON);
+        if (factsV2 && !input.forceReprocess) {
+          semanticDuplicate = {
+            riskId: duplicate.riskId,
+            articleId: duplicate.articleId,
+          };
+        } else if (!factsV2) {
+          appendReviewReason(extractionJson, DUPLICATE_RISK_REVIEW_REASON);
+        }
       }
     } catch {
       // Dedup is advisory; a failed lookup must not fail extraction.
     }
   }
 
-  if (catalogMatches[0]?.judgeVerdict === "no_match") {
+  if (!factsV2 && catalogMatches[0]?.judgeVerdict === "no_match") {
     appendReviewReason(extractionJson, JUDGE_NO_MATCH_REVIEW_REASON);
   }
 
   if (
+    !factsV2 &&
     matchSignals.keywordMatches.length === 0 &&
     matchSignals.evidenceExcerpts.length === 0
   ) {
     appendReviewReason(extractionJson, MISSING_JUSTIFICATION_REVIEW_REASON);
   }
 
-  // Evidence-discipline rules (BUG-01/02/03/04) ran in the Python extractor and
-  // attached review reasons under _meta.verification.review_reasons. Route the
-  // record to review and surface each reason to the reviewer.
-  for (const reason of evidenceReviewReasons(input.result.object)) {
-    appendReviewReason(extractionJson, reason);
+  // Evidence-discipline rules stay on the record as hints for facts-v2.
+  // They are not a publication gate. Older rows keep the previous hold.
+  const evidenceHints = evidenceReviewReasons(input.result.object);
+  if (factsV2) {
+    if (evidenceHints.length > 0) extractionJson.citation_hints = evidenceHints;
+  } else if (verifierDecidesPublishEnabled()) {
+    for (const reason of blockingEvidenceReviewReasons(extractionJson)) {
+      appendReviewReason(extractionJson, reason);
+    }
+    const citationHints = citationHintReasons(extractionJson);
+    if (citationHints.length > 0) {
+      extractionJson.citation_hints = citationHints;
+    }
+  } else {
+    for (const reason of evidenceHints) {
+      appendReviewReason(extractionJson, reason);
+    }
   }
 
   const sourceLanguage = await detectTextLanguage(input.articleText);
@@ -330,14 +405,6 @@ async function buildPersistedExtraction(input: {
       ? risk.ai_product_vendor.trim()
       : null;
 
-  const qualityScore = qualityScoreFromObject(input.result.object);
-  // Same gate for a first extraction and for a retry that stores a new output.
-  applyPublicationDecision({
-    qualityScore,
-    extractionJson,
-    domains,
-  });
-
   return {
     riskTitle,
     articleTitle,
@@ -347,7 +414,7 @@ async function buildPersistedExtraction(input: {
     sector: (risk.sector as string) ?? null,
     industry: (risk.industry as string) ?? null,
     intent: (risk.intent as string) ?? null,
-    qualityScore,
+    qualityScore: qualityScoreFromObject(input.result.object),
     likelihood,
     impact,
     severityScore,
@@ -359,6 +426,13 @@ async function buildPersistedExtraction(input: {
     sourceFlag: input.result.sourceFlag,
     riskEmbedding,
     embeddingText,
+    catalogCandidates: catalogMatches.slice(0, 5).map((match) => ({
+      id: match.riskId,
+      title: match.title,
+      description: match.description,
+      percent: match.accuracyPercent,
+    })),
+    semanticDuplicate,
   };
 }
 
@@ -369,6 +443,8 @@ function toRiskInsertValues(
     articleTitle: _articleTitle,
     riskEmbedding: _riskEmbedding,
     embeddingText: _embeddingText,
+    catalogCandidates: _catalogCandidates,
+    semanticDuplicate: _semanticDuplicate,
     ...riskRow
   } = persisted;
   return riskRow;
@@ -405,6 +481,85 @@ async function persistTranslatedArticleTitle(
   await persistEnglishArticleTitle(articleId, nextTitle ?? null);
 }
 
+type PersistedExtraction = Awaited<ReturnType<typeof buildPersistedExtraction>>;
+
+/**
+ * Append one evidence pair onto an existing risk. The row lock keeps two
+ * duplicate jobs from dropping each other's entry. Facts, score, and
+ * publication status are not written.
+ */
+async function appendAdditionalEvidence(
+  riskId: string,
+  entry: { article_id: number; url: string },
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ extractionJson: risks.extractionJson })
+      .from(risks)
+      .where(eq(risks.id, riskId))
+      .limit(1)
+      .for("update");
+    if (!row) return;
+    const ext = (row.extractionJson ?? {}) as Record<string, unknown>;
+    const next = appendEvidenceEntry(ext.additional_evidence, entry);
+    await tx
+      .update(risks)
+      .set({
+        extractionJson: sql`jsonb_set(${risks.extractionJson}, '{additional_evidence}', ${JSON.stringify(next)}::jsonb, true)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(risks.id, riskId));
+  });
+}
+
+/** Assessor plus decision for a facts-v2 row that this worker is about to store. */
+async function assessFactsV2(
+  persisted: PersistedExtraction,
+  articleText: string,
+  modelId: string,
+): Promise<void> {
+  if (!isFactsV2Extraction(persisted.extractionJson)) return;
+  const meta = persisted.extractionJson._meta as
+    | { defaulted_fields?: unknown }
+    | undefined;
+  await runFactsV2AssessmentCycle({
+    extractionJson: persisted.extractionJson,
+    sourceText: articleText,
+    catalogCandidates: persisted.catalogCandidates,
+    hints: {
+      citation_hints: persisted.extractionJson.citation_hints ?? [],
+      defaulted_fields: meta?.defaulted_fields ?? [],
+    },
+    assess: async (request) =>
+      (await pythonAssessRisk({
+        text: request.sourceText,
+        record: request.record,
+        modelId,
+        catalogCandidates: request.catalogCandidates,
+        hints: request.hints,
+      })) as RiskAssessment,
+  });
+  const risk = (persisted.extractionJson.risk ?? {}) as Record<string, unknown>;
+  if (typeof risk.domains === "string" && risk.domains.trim()) {
+    persisted.domains = risk.domains;
+  }
+  if (typeof risk.primary_risk === "string") persisted.primaryRisk = risk.primary_risk;
+  if (typeof risk.secondary_risks === "string") {
+    persisted.secondaryRisk = risk.secondary_risks;
+  }
+  persisted.qualityScore = null;
+  const scoring = (persisted.extractionJson.risk_scoring ?? {}) as {
+    severity_score?: unknown;
+    likelihood?: unknown;
+    impact?: unknown;
+  };
+  if (typeof scoring.severity_score === "number") {
+    persisted.severityScore = scoring.severity_score;
+  }
+  if (typeof scoring.likelihood === "number") persisted.likelihood = scoring.likelihood;
+  if (typeof scoring.impact === "number") persisted.impact = scoring.impact;
+}
+
 /**
  * Run LLM risk extraction on ingested article text and persist `risks` row.
  * At most one risk per (article, model). Re-runs with the same model return the
@@ -415,7 +570,13 @@ async function persistTranslatedArticleTitle(
  */
 export async function extractRiskForArticle(
   articleId: number,
-  options?: { modelId?: string | null; forceReextract?: boolean },
+  options?: {
+    modelId?: string | null;
+    forceReextract?: boolean;
+    forceReprocess?: boolean;
+    /** Set by the worker. A timed-out attempt must not insert a risk row. */
+    attemptId?: number;
+  },
 ): Promise<ExtractRiskResult> {
   const [article] = await db
     .select({
@@ -449,6 +610,15 @@ export async function extractRiskForArticle(
     });
 
     notePythonResponded();
+    if (
+      options?.attemptId != null &&
+      !isCurrentJobAttempt(options.attemptId)
+    ) {
+      return {
+        outcome: "skipped",
+        reason: "execution interval ended before the model finished",
+      };
+    }
     noteRiskSaveStarted();
 
     const resolvedModel = displayModelName(result.model);
@@ -470,6 +640,62 @@ export async function extractRiskForArticle(
       durationMs: result.metrics.duration_ms,
     });
 
+    const writeMode = decideRiskWriteMode({
+      hasExisting: Boolean(existing),
+      forceReprocess: options?.forceReprocess,
+      forceReextract: options?.forceReextract,
+    });
+
+    // Force-reprocess (B-3): insert a NEW risk row linked to the one it
+    // supersedes. The old row is never updated or deleted, so re-running an
+    // article from scratch keeps a full audit trail.
+    if (writeMode === "reprocess-new") {
+      const persisted = await buildPersistedExtraction({
+        articleId,
+        articleText: text,
+        articleTitle: article.title,
+        result,
+        resolvedModel,
+        forceReprocess: true,
+      });
+      await assessFactsV2(persisted, text, resolvedModel);
+
+      const [newRow] = await db
+        .insert(risks)
+        .values({
+          articleId: article.id,
+          ...toRiskInsertValues(persisted),
+          ...(existing ? { supersedesId: existing.id } : {}),
+        })
+        .returning({ id: risks.id });
+
+      await persistRiskEmbedding(newRow!.id, persisted);
+      await persistTranslatedArticleTitle(
+        articleId,
+        article.title,
+        persisted.articleTitle,
+      );
+
+      await db
+        .update(articles)
+        .set({
+          riskCount: sql`${articles.riskCount} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(eq(articles.id, articleId));
+
+      noteRiskSaved(newRow!.id);
+      console.log(
+        `[batch-worker] force-reprocess url=${article.url} articleId=${articleId} newRisk=${newRow!.id} supersedes=${existing?.id ?? "none"}`,
+      );
+      return {
+        outcome: "done",
+        riskId: newRow!.id,
+        created: true,
+        modelName: resolvedModel,
+      };
+    }
+
     if (existing && options?.forceReextract) {
       const persisted = await buildPersistedExtraction({
         articleId,
@@ -477,7 +703,9 @@ export async function extractRiskForArticle(
         articleTitle: article.title,
         result,
         resolvedModel,
+        forceReprocess: options?.forceReprocess,
       });
+      await assessFactsV2(persisted, text, resolvedModel);
 
       const preservedExtraction = preserveReviewState(
         (existing.extractionJson ?? {}) as Record<string, unknown>,
@@ -511,12 +739,25 @@ export async function extractRiskForArticle(
     }
 
     if (existing) {
+      const existingVersion = (
+        existing.extractionJson as { pipeline_version?: unknown } | null
+      )?.pipeline_version;
+      if (existingVersion !== PIPELINE_VERSION) {
+        noteRiskSaved(existing.id);
+        return {
+          outcome: "done",
+          riskId: existing.id,
+          created: false,
+          modelName: resolvedModel,
+        };
+      }
       const persisted = await buildPersistedExtraction({
         articleId,
         articleText: text,
         articleTitle: article.title,
         result,
         resolvedModel,
+        forceReprocess: options?.forceReprocess,
       });
       const shouldRefreshStoredScore =
         (existing.qualityScore == null || existing.qualityScore === 0) &&
@@ -535,6 +776,7 @@ export async function extractRiskForArticle(
         shouldRefreshNonEnglish ||
         shouldRefreshMissingScoring
       ) {
+        await assessFactsV2(persisted, text, resolvedModel);
         await db
           .update(risks)
           .set({
@@ -567,7 +809,21 @@ export async function extractRiskForArticle(
       articleTitle: article.title,
       result,
       resolvedModel,
+      forceReprocess: options?.forceReprocess,
     });
+
+    if (persisted.semanticDuplicate) {
+      await appendAdditionalEvidence(persisted.semanticDuplicate.riskId, {
+        article_id: article.id,
+        url: article.url,
+      });
+      console.log(
+        `[batch-worker] merged url=${article.url} articleId=${articleId} into=${persisted.semanticDuplicate.riskId}`,
+      );
+      return { outcome: "skipped", reason: MERGED_SKIP_MESSAGE };
+    }
+
+    await assessFactsV2(persisted, text, resolvedModel);
 
     const [row] = await db
       .insert(risks)
@@ -601,6 +857,15 @@ export async function extractRiskForArticle(
       modelName: resolvedModel,
     };
   } catch (err) {
+    if (err instanceof NoAiRiskError) {
+      // Python found no AI-relevant risk in the page (B-4). Do not insert a
+      // risks row and do not bump articles.risk_count — the article simply
+      // carries no AI risk.
+      console.log(
+        `[batch-worker] no AI risk url=${article.url} articleId=${articleId} — skipping insert`,
+      );
+      return { outcome: "skipped", reason: err.message };
+    }
     if (err instanceof StubExtractionError) {
       // StubExtractionError means Python responded; the LLM path ran but returned
       // a fallback object (Bedrock/JSON failure, etc.). Do not append dev-setup hints.

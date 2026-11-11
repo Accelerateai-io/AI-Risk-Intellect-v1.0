@@ -32,6 +32,8 @@ export type CreateJobInput = {
   batchRunId?: number | null;
   modelName?: string | null;
   modelLabel?: string | null;
+  /** B-3: stamp the job so the worker inserts a new superseding risk row. */
+  forceReprocess?: boolean;
 };
 
 export type CreateJobResult = {
@@ -135,6 +137,7 @@ export async function createJob(
         url,
         status: "skipped",
         errorMessage: DO_NOT_EXECUTE_REASON,
+        finishedAt: new Date(),
         jobType,
         source,
         ...(input.ingestLinkId != null
@@ -181,10 +184,18 @@ export async function createJob(
 
     const existing = await findExistingActiveJob(conn, { url, jobType });
     if (existing) {
-      return {
-        job: await attachBatchToJob(conn, existing, input),
-        created: false,
-      };
+      let job = await attachBatchToJob(conn, existing, input);
+      // Upgrade an already-queued run to force-reprocess rather than inserting a
+      // duplicate pending job for the same URL (B-3 review).
+      if (input.forceReprocess && !job.forceReprocess) {
+        const [upgraded] = await conn
+          .update(jobs)
+          .set({ forceReprocess: true })
+          .where(eq(jobs.id, job.id))
+          .returning();
+        job = upgraded ?? { ...job, forceReprocess: true };
+      }
+      return { job, created: false };
     }
   }
 
@@ -209,6 +220,7 @@ export async function createJob(
       ...(input.modelLabel?.trim()
         ? { modelLabel: input.modelLabel.trim() }
         : {}),
+      ...(input.forceReprocess ? { forceReprocess: true } : {}),
     })
     .returning();
 
@@ -283,6 +295,7 @@ export async function createArticleWithIngestJob(
     batchRunId?: number | null;
     modelName?: string | null;
     modelLabel?: string | null;
+    forceReprocess?: boolean;
   },
 ): Promise<{
   article: { id: number; url: string; createdAt: Date };
@@ -300,12 +313,16 @@ export async function createArticleWithIngestJob(
     articleId: article.id,
     jobType: "ingest",
     source: input.source,
+    // Force-reprocess must NOT create a second pending job for the same URL
+    // (B-3 review): dedup still applies, and when an active job already exists
+    // createJob stamps force_reprocess onto it instead of inserting a duplicate.
     allowDuplicates: input.allowDuplicates,
     ingestLinkId: input.ingestLinkId,
     ingestLinkItemId: input.ingestLinkItemId,
     batchRunId: input.batchRunId,
     modelName: input.modelName,
     modelLabel: input.modelLabel,
+    forceReprocess: input.forceReprocess,
   });
 
   return {

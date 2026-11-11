@@ -81,16 +81,23 @@ export async function processUrlToDb(
   // page's submission history is marked withdrawn) are skipped (not ingested)
   // with reason "Source withdrawn by authors" rather than falling back to an
   // older version.
+  // Titles fall back to "Untitled", never the raw URL (titles). For arXiv the
+  // /abs/ page is rewritten to a PDF (title-less), so capture the real title
+  // from the abstract HTML's <title>/citation_title before the rewrite.
+  const UNTITLED = "Untitled";
   let fetched: Awaited<ReturnType<typeof fetchPageContentDetailed>>;
+  let arxivTitle = "";
   const arxivId = parseArxivAbsId(url);
   if (arxivId) {
     const resolution = await resolveArxivSource({
       id: arxivId,
       fetchAbsHtml: async (absUrl) => {
         const r = await fetchPageContentDetailed(absUrl, 30_000, signal);
-        return r.ok && r.page.kind === "html"
-          ? { ok: true, html: r.page.html }
-          : { ok: false };
+        if (r.ok && r.page.kind === "html") {
+          if (!arxivTitle) arxivTitle = extractTitleFromHtml(r.page.html);
+          return { ok: true, html: r.page.html };
+        }
+        return { ok: false };
       },
       fetchPdf: async (pdfUrl) => {
         const r = await fetchPageContentDetailed(pdfUrl, 30_000, signal);
@@ -109,7 +116,10 @@ export async function processUrlToDb(
     if (resolution.kind === "fetch_failed") {
       return { outcome: "skipped", reason: resolution.reason };
     }
-    fetched = { ok: true, page: { kind: "pdf", bytes: resolution.bytes, title: "" } };
+    fetched = {
+      ok: true,
+      page: { kind: "pdf", bytes: resolution.bytes, title: arxivTitle },
+    };
   } else {
     fetched = await fetchPageContentDetailed(url, 30_000, signal);
   }
@@ -121,10 +131,7 @@ export async function processUrlToDb(
   }
 
   const page = fetched.page;
-  const title =
-    options?.title?.trim() ||
-    (page.kind === "html" ? page.title : "") ||
-    url;
+  const title = options?.title?.trim() || page.title?.trim() || arxivTitle || "";
 
   try {
     if (page.kind === "pdf") {
@@ -170,7 +177,14 @@ export async function processUrlToDb(
         text: result.text,
         html: null,
         url,
-        title: result.title || title,
+        // Title precedence: manual (caller-supplied) -> arXiv abstract title ->
+        // PDF-extracted title -> Untitled. Previously the PDF title won over the
+        // manual/arXiv title. (titles review)
+        title:
+          options?.title?.trim() ||
+          arxivTitle.trim() ||
+          result.title?.trim() ||
+          UNTITLED,
       });
       noteFeedStored(result.text.trim().length);
 
@@ -191,7 +205,10 @@ export async function processUrlToDb(
       return { outcome: "skipped", reason: botBlockBeforeExtract };
     }
 
-    const pageTitle = page.title || extractTitleFromHtml(html) || title;
+    // Title precedence: manual (caller-supplied) -> page/arXiv meta title ->
+    // re-extracted <title>. Manual must win over the scraped title. (titles review)
+    const pageTitle =
+      options?.title?.trim() || page.title?.trim() || extractTitleFromHtml(html) || "";
     const minTextBytes = 200;
 
     let text: string;
@@ -249,7 +266,7 @@ export async function processUrlToDb(
       text,
       html,
       url,
-      title: pageTitle || url,
+      title: pageTitle || UNTITLED,
     });
     noteFeedStored(text.trim().length);
 

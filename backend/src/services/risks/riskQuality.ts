@@ -1,4 +1,5 @@
 import { isDomainInTaxonomy } from "./riskCatalogMatch.service.js";
+import { isFactsV2Extraction } from "./workflowDecision.js";
 
 /** Default: risks strictly below this unit score (0–1) require human review. */
 const DEFAULT_REVIEW_QUALITY_THRESHOLD = 0.9;
@@ -248,15 +249,114 @@ export function evidenceReviewReasons(extractionJson: unknown): string[] {
   return out;
 }
 
-/** True when the Python evidence rules attached at least one review reason. */
-export function hasEvidenceReviewReasons(extractionJson: unknown): boolean {
-  return evidenceReviewReasons(extractionJson).length > 0;
+/**
+ * B-1 (verifier-decides-publish) feature flag. OFF by default: today's
+ * behaviour, where ANY evidence review reason — including a 5-word citation
+ * miss — holds the record. ON: a record is published only when its ONLY
+ * remaining reasons are "Uncited <field>_reasoning: no 5-word span" citation
+ * misses AND the 9-check verifier ran, passed, and scored grounding >= 0.6;
+ * those citation reasons are downgraded to a non-blocking hint.
+ *
+ * Against the 30-record golden set, with the flag ON that publishes
+ * R-25, R-26, R-28, R-29 (citation-only misses). It does NOT publish:
+ *   - R-23 — carries a "Source support failed … five-word span" verifier
+ *     grounding failure, which is a real support failure, not a citation miss;
+ *   - R-22 — carries an unsupported-healthcare-claim safety hold;
+ *   - R-19 (verifier failed) and R-01..R-11 (no verifier) — never qualify.
+ * NOTE: these qualify only once the 9-check verifier runs on dev; the current
+ * 4-check verifier's pass does not count, so today the flag ON publishes none.
+ *
+ * Ghassan disagreed on R-23/R-25/R-29 (the verifier passes records that still
+ * carry wrong claims), so the flag stays OFF until the v2 assessor lands or
+ * Asad decides otherwise.
+ */
+export function verifierDecidesPublishEnabled(): boolean {
+  const raw = (process.env.VERIFIER_DECIDES_PUBLISH ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
 }
 
-/** True when automatic publication held the record for review. */
-export function isPublicationHeld(extractionJson: unknown): boolean {
-  const ext = (extractionJson ?? {}) as { publication_status?: unknown };
-  return String(ext.publication_status ?? "").trim().toLowerCase() === "held";
+/**
+ * A citation "5-word span" miss (B-1). ONLY the evidence-rule form is a citation
+ * hint: "Uncited <field>_reasoning: no 5-word span found…". The verifier's
+ * grounding form ("Source support failed: … does not contain a five-word span…")
+ * is a genuine support failure, NOT a citation-only miss, so it must stay
+ * blocking and is deliberately excluded here. (B-1 review)
+ */
+export function isCitationHintReason(raw: string): boolean {
+  const r = (raw ?? "").trim();
+  if (!r) return false;
+  return /^uncited\s+\w+_reasoning:\s*no\s+(?:5-word|five-word)\s+span\b/i.test(r);
+}
+
+/**
+ * The 9-check verifier is the only one whose pass counts (B-1 review). The old
+ * 4-check verifier's pass is ignored, and grounding must clear the minimum, so a
+ * weakly-grounded or legacy-verified record is never auto-published.
+ */
+const MIN_VERIFIER_CHECKS = 9;
+const MIN_VERIFIER_GROUNDING = 0.6;
+
+/**
+ * True when the 9-check independent verifier ran AND passed on this record with
+ * grounding at or above the minimum (B-1). A record verified only by the old
+ * 4-check pass, or with grounding below MIN_VERIFIER_GROUNDING, does NOT qualify.
+ */
+export function verifierRanAndPassed(extractionJson: unknown): boolean {
+  const ext = (extractionJson ?? {}) as {
+    _meta?: {
+      verifier?: {
+        ran?: unknown;
+        passed?: unknown;
+        checks?: unknown;
+        grounding_score?: unknown;
+      };
+    };
+  };
+  const v = ext._meta?.verifier;
+  if (!v || v.ran !== true || v.passed !== true) return false;
+
+  // Only the 9-check verifier counts; count the named checks it recorded.
+  const checkCount =
+    v.checks && typeof v.checks === "object" && !Array.isArray(v.checks)
+      ? Object.keys(v.checks as Record<string, unknown>).length
+      : 0;
+  if (checkCount < MIN_VERIFIER_CHECKS) return false;
+
+  const grounding =
+    typeof v.grounding_score === "number" ? v.grounding_score : NaN;
+  return grounding >= MIN_VERIFIER_GROUNDING;
+}
+
+/**
+ * Review reasons that still force human review when the flag is on. A citation
+ * "5-word span" miss is downgraded to a hint only when the verifier ran and
+ * passed (B-1); records with no verifier result, a failed verifier, or any
+ * non-citation reason (e.g. the unsupported-healthcare-claim safety hold) keep
+ * every reason as blocking.
+ */
+export function blockingEvidenceReviewReasons(extractionJson: unknown): string[] {
+  const reasons = evidenceReviewReasons(extractionJson);
+  if (!verifierRanAndPassed(extractionJson)) return reasons;
+  return reasons.filter((r) => !isCitationHintReason(r));
+}
+
+/** Citation reasons kept on the record as a non-blocking reviewer hint (B-1). */
+export function citationHintReasons(extractionJson: unknown): string[] {
+  if (!verifierRanAndPassed(extractionJson)) return [];
+  return evidenceReviewReasons(extractionJson).filter(isCitationHintReason);
+}
+
+/**
+ * True when the Python evidence rules attached at least one *blocking* review
+ * reason. With VERIFIER_DECIDES_PUBLISH off (default) every reason blocks
+ * (today's behaviour); with it on, citation-only misses on a verifier-passed
+ * record are surfaced as hints instead of holding the record (B-1).
+ */
+export function hasEvidenceReviewReasons(extractionJson: unknown): boolean {
+  if (!verifierDecidesPublishEnabled()) {
+    return evidenceReviewReasons(extractionJson).length > 0;
+  }
+  return blockingEvidenceReviewReasons(extractionJson).length > 0;
 }
 
 /** Reviewer-facing sentence per verifier check (BUG-06). */
@@ -269,16 +369,6 @@ const VERIFIER_CHECK_TEXT: Record<string, string> = {
     "The record blames the method the source proposes for the problem it was built to solve.",
   severity_within_evidence:
     "The likelihood or impact rationale goes beyond what the source supports.",
-  evidence_labels_match:
-    "The record labels an inference, or a prior-work finding, as demonstrated.",
-  classification_consistent:
-    "The domain or risk labels do not match the explanation.",
-  simulation_scope_respected:
-    "A simulation or uncertified estimate is written as a real-world incident.",
-  sensitive_claims_supported:
-    "A healthcare or physical-safety claim is not supported by the source.",
-  scope_within_source:
-    "The record generalizes beyond the tasks the source tested.",
 };
 
 const VERIFIER_PREFIX_RE = /^verifier:\s*/i;
@@ -410,7 +500,14 @@ export function needsHumanReview(input: {
 
 }): boolean {
 
-  if (isPublicationHeld(input.extractionJson)) return true;
+  if (isFactsV2Extraction(input.extractionJson)) {
+    const ext = input.extractionJson as {
+      decision_reason?: unknown;
+      publication_status?: unknown;
+    };
+    if (!ext.decision_reason) return true;
+    return ext.publication_status !== "published";
+  }
 
   if (isNonEnglishRisk(input.extractionJson)) return true;
 
@@ -452,6 +549,12 @@ export function resolveReviewWhy(input: {
   domains?: string | null;
 }): ReviewWhy {
   const stored = storedReviewReason(input.extractionJson);
+
+  if (isFactsV2Extraction(input.extractionJson)) {
+    const ext = input.extractionJson as { decision_reason?: unknown };
+    const reason = String(ext.decision_reason ?? "").trim();
+    if (reason) return { label: reason, reason: stored || reason };
+  }
 
   if (isNonEnglishRisk(input.extractionJson)) {
     return { label: "Language", reason: stored || NON_ENGLISH_REVIEW_REASON };

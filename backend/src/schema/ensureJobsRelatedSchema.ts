@@ -54,6 +54,13 @@ END $$`,
   `ALTER TABLE "jobs" ADD COLUMN IF NOT EXISTS "batch_run_id" integer`,
   `ALTER TABLE "jobs" ADD COLUMN IF NOT EXISTS "model_name" varchar(128)`,
   `ALTER TABLE "jobs" ADD COLUMN IF NOT EXISTS "model_label" text`,
+  // B-4: machine-readable skip outcome (FETCH_FAIL / NOT_AI) on the job row.
+  `ALTER TABLE "jobs" ADD COLUMN IF NOT EXISTS "skip_reason_code" varchar(32)`,
+  `ALTER TABLE "jobs" ADD COLUMN IF NOT EXISTS "finished_at" timestamp with time zone`,
+  `UPDATE "jobs"
+   SET "finished_at" = "updated_at"
+   WHERE "finished_at" IS NULL
+     AND "status" IN ('done', 'completed', 'error', 'failed', 'skipped')`,
   `CREATE TABLE IF NOT EXISTS "url_execution_blocks" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"url" varchar(2048) NOT NULL,

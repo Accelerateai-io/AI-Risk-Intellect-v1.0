@@ -6,6 +6,36 @@ export { SkipIngest };
 export const BOT_BLOCK_SKIP_MESSAGE =
   "Site blocked automated access (Cloudflare or bot protection page)";
 
+/** Shown when the fetch returned an auth/forbidden/rate-limit status (B-4). */
+export const FETCH_FAILED_SKIP_MESSAGE =
+  "Fetch failed: the site returned an error or access-denied response";
+
+/** Shown when the page is a subscription / paywall interstitial (B-4). */
+export const PAYWALL_SKIP_MESSAGE =
+  "Site served a paywall or subscription wall instead of content";
+
+/** Bare access-denied / forbidden error pages (no Cloudflare challenge markup). */
+const ACCESS_DENIED_PATTERNS = [
+  /access denied/i,
+  /\b403\b[^\n]{0,20}\bforbidden\b/i,
+  /\bforbidden\b/i,
+  /you (?:don'?t|do not) have permission/i,
+  /not authori[sz]ed/i,
+  /request (?:blocked|unauthorized)/i,
+  /error[\s:]*403/i,
+];
+
+/** Subscription / paywall interstitials that carry no real article body. */
+const PAYWALL_PATTERNS = [
+  /subscribe to (?:continue|read)/i,
+  /subscribers? only/i,
+  /to continue reading/i,
+  /create a (?:free )?account to (?:continue|read)/i,
+  /this (?:article|content|story) is (?:for|available to) subscribers/i,
+  /already a subscriber\?/i,
+  /metered paywall/i,
+];
+
 const BOT_BLOCK_HTML_PATTERNS = [
   /just a moment/i,
   /enable javascript and cookies to continue/i,
@@ -32,6 +62,19 @@ const BOT_BLOCK_EXTRACTED_PATTERNS = [
 const BOT_BLOCK_SIGNAL_RE =
   /cloudflare|javascript|cookies|challenge|verify|enable js|ad blocker|datadome/i;
 
+/** Below this many chars of extracted body TEXT a paywall marker means a stub. */
+const PAYWALL_MIN_BODY_CHARS = 500;
+
+/** Crudely strip HTML to its visible text, for the paywall thinness check. */
+function stripTagsToText(html: string): string {
+  return (html || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /**
  * Detect Cloudflare and similar bot-protection challenge pages.
  * Returns a user-facing skip reason, or null when the page looks normal.
@@ -53,15 +96,40 @@ export function detectBotBlockPage(
     return BOT_BLOCK_SKIP_MESSAGE;
   }
 
+  // Paywall / subscription interstitials carry no real article body. A FULL
+  // article that merely mentions "subscribe" / "to continue reading" in its
+  // footer has a substantial body and must pass — only treat it as a paywall
+  // when the extracted body TEXT (not the raw HTML) is thin. (B-4 review)
+  if (sample && PAYWALL_PATTERNS.some((p) => p.test(sample))) {
+    const bodyText = (options?.extractedText ?? stripTagsToText(html)).trim();
+    if (bodyText.length < PAYWALL_MIN_BODY_CHARS) {
+      return PAYWALL_SKIP_MESSAGE;
+    }
+  }
+
   const status = options?.httpStatus;
-  if (
-    status != null &&
-    [401, 403, 429].includes(status) &&
-    extracted.length > 0 &&
-    extracted.length < 500 &&
-    BOT_BLOCK_SIGNAL_RE.test(`${sample} ${extracted}`)
-  ) {
-    return BOT_BLOCK_SKIP_MESSAGE;
+  if (status != null && status >= 400) {
+    // 401/403/407/429 are never real content — auth, forbidden, proxy-auth or
+    // rate-limit. Previously these were skipped only when the page also matched
+    // a Cloudflare keyword, so a bare "Access Denied" / "403 Forbidden" page
+    // (R-24) slipped through and produced a junk risk row. Treat them as a
+    // blocked fetch unconditionally (B-4).
+    if ([401, 403, 407, 429].includes(status)) {
+      return FETCH_FAILED_SKIP_MESSAGE;
+    }
+    // Other 4xx/5xx (except the pure not-found codes, which have their own
+    // HTTP-status handling) count as blocked when the body also looks denied,
+    // bot-challenged, or too thin to be an article.
+    if (![404, 410, 451].includes(status)) {
+      const blob = `${sample} ${extracted}`;
+      if (
+        ACCESS_DENIED_PATTERNS.some((p) => p.test(blob)) ||
+        BOT_BLOCK_SIGNAL_RE.test(blob) ||
+        (extracted.length > 0 && extracted.length < 500)
+      ) {
+        return FETCH_FAILED_SKIP_MESSAGE;
+      }
+    }
   }
 
   return null;
@@ -100,10 +168,11 @@ export function looksLikeSoft404(
 
 const AI_INCLUDE = [
   /\b(openai|chatgpt|gpt-4|gpt-3|gemini|anthropic|claude|copilot|deepseek)\b/i,
-  /\b(ai|artificial intelligence)\b/i,
-  /\b(llms?|large language model|language model)\b/i,
+  // "AIs" is the same token as "AI". Plurals are the same terms, not new topics.
+  /\b(ais?|artificial intelligence)\b/i,
+  /\b(llms?|large language models?|language models?)\b/i,
   /\b(machine learning|ml|deep learning|neural network)\b/i,
-  /\b(embedding|token|inference|fine[- ]?tuning|rlhf|safety|alignment)\b/i,
+  /\b(embedding|token|inference|fine[- ]?tun(?:ing|ed)|rlhf|safety|alignment)\b/i,
   /\b(prompt|prompt injection|jailbreak|hallucination|red teaming)\b/i,
   /\b(model weights?|training data|dataset|inference api)\b/i,
   /\b(privacy|pii|data leakage|governance|compliance) in (ai|ml)\b/i,
@@ -129,12 +198,69 @@ export type ClassifyDetails = {
 /** Job skip reason when URL/title/content matches a non-AI topic pattern. */
 export const NOT_AI_RELATED_SKIP_MESSAGE = "not ai related";
 
+/**
+ * Machine-readable outcome codes stored on the job (B-4). They let ops query
+ * *why* a job produced no risk row without string-matching the human message.
+ *   FETCH_FAIL — the page could not be fetched as real content (bot block,
+ *                paywall, auth/forbidden/rate-limit, network/HTTP error, soft-404).
+ *   NOT_AI     — the page was fetched fine but carries no AI-relevant risk.
+ *   MERGED     — the article was attached to an existing risk; no new row.
+ */
+export const JOB_SKIP_REASON_CODES = {
+  FETCH_FAIL: "FETCH_FAIL",
+  NOT_AI: "NOT_AI",
+  MERGED: "MERGED",
+} as const;
+
+export type JobSkipReasonCode =
+  (typeof JOB_SKIP_REASON_CODES)[keyof typeof JOB_SKIP_REASON_CODES];
+
+const NOT_AI_REASON_RE =
+  /not ai related|no ai-?relevant risk|no ai risk|not about ai|no ai signal/i;
+
+// Note: deliberately excludes the job execution-time ladder message ("took more
+// than N minutes without finishing") — that is a timeout outcome, not a fetch
+// failure, so it classifies as neither code.
+const FETCH_FAIL_REASON_RE =
+  /blocked automated access|paywall|subscription wall|fetch failed|access-denied|access denied|forbidden|returned an error|could not (?:fetch|reach)|did not respond|connection (?:timed out|refused|was reset)|cannot resolve hostname|ssl\/tls|\bHTTP \d{3}\b|not found|page not found/i;
+
+/**
+ * Classify a human skip reason into a stable outcome code, or null when the
+ * reason is neither a fetch failure nor a not-AI outcome (e.g. a timeout ladder
+ * message or a do-not-execute block). NOT_AI is checked first because a not-AI
+ * message never also implies a fetch failure.
+ */
+export function jobSkipReasonCode(
+  reason: string | null | undefined,
+): JobSkipReasonCode | null {
+  const text = (reason ?? "").trim();
+  if (!text) return null;
+  if (/^merged with existing risk$/i.test(text)) {
+    return JOB_SKIP_REASON_CODES.MERGED;
+  }
+  if (NOT_AI_REASON_RE.test(text)) return JOB_SKIP_REASON_CODES.NOT_AI;
+  if (FETCH_FAIL_REASON_RE.test(text)) return JOB_SKIP_REASON_CODES.FETCH_FAIL;
+  return null;
+}
+
+/**
+ * Tag and category lines that survive extraction ("Tags: air travel, football").
+ * The label is required so a normal sentence that mentions travel is kept.
+ */
+const LABELED_METADATA_LIST_RE =
+  /(?:^|(?<=[.!?])\s+|\n)\s*(?:blog\s+tags|tags|categories|filed\s+under)\s*:\s*[^.\n!?]*/gi;
+
+function relevanceText(text: string | undefined): string {
+  LABELED_METADATA_LIST_RE.lastIndex = 0;
+  return (text ?? "").replace(LABELED_METADATA_LIST_RE, " ");
+}
+
 function topicBlob(parts: {
   url?: string;
   title?: string;
   text?: string;
 }): string {
-  return [parts.title, parts.url, parts.text]
+  return [parts.title, parts.url, relevanceText(parts.text)]
     .map((part) => part?.trim())
     .filter((part): part is string => Boolean(part))
     .join(" ")

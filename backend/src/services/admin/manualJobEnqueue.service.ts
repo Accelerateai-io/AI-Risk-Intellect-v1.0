@@ -20,9 +20,13 @@ export type ManualJobEnqueueResult = {
 /**
  * Queue a manual ingest job for an article URL (Jobs → Enqueue).
  * SSRF / fetch / topic filters run in the worker — same as RSS and ETL.
+ *
+ * When `forceReprocess` is set (B-3) the job bypasses active-job dedup and the
+ * worker inserts a NEW risk row linked to the one it supersedes.
  */
 export async function enqueueManualJobUrl(
   rawUrl: string,
+  options?: { forceReprocess?: boolean },
 ): Promise<ManualJobEnqueueResult> {
   let normalized: string;
   try {
@@ -45,6 +49,7 @@ export async function enqueueManualJobUrl(
       source: "manual",
       modelName: model.modelName,
       modelLabel: model.modelLabel,
+      forceReprocess: options?.forceReprocess,
     }),
   );
 
@@ -75,4 +80,48 @@ export async function enqueueManualJobUrl(
     },
     created: true,
   };
+}
+
+export type BulkEnqueueItem =
+  | { url: string; ok: true; jobId: number; status: string }
+  | { url: string; ok: false; error: string };
+
+export type BulkEnqueueResult = {
+  total: number;
+  enqueued: number;
+  items: BulkEnqueueItem[];
+};
+
+/**
+ * Enqueue a list of URLs in one call (B-3). Each URL is processed
+ * independently so one bad URL never aborts the batch; failures are reported
+ * per item. Used to re-run every golden article from scratch.
+ */
+export async function enqueueManualJobUrls(
+  rawUrls: string[],
+  options?: { forceReprocess?: boolean },
+): Promise<BulkEnqueueResult> {
+  const items: BulkEnqueueItem[] = [];
+  let enqueued = 0;
+  for (const rawUrl of rawUrls) {
+    try {
+      const result = await enqueueManualJobUrl(rawUrl, options);
+      enqueued += 1;
+      items.push({
+        url: result.job.url,
+        ok: true,
+        jobId: result.job.id,
+        status: result.job.status,
+      });
+    } catch (err) {
+      const error =
+        err instanceof HttpError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Could not enqueue this URL.";
+      items.push({ url: rawUrl, ok: false, error });
+    }
+  }
+  return { total: rawUrls.length, enqueued, items };
 }

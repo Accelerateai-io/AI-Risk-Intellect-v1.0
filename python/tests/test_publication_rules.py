@@ -246,7 +246,12 @@ def test_r21_prior_work_and_conflicting_labels_are_held() -> None:
 
 
 def test_retry_output_uses_the_same_publication_decision() -> None:
-    """A retry is just another record passed through verify_record."""
+    """A second pass of the same record keeps the same publication decision.
+
+    verify_record returns evidence hints only. publication_review owns the
+    publish-or-hold decision. Facts-v2 does not fold that decision back into
+    verify_record.
+    """
     source = (
         "Low-information updates from similar group rewards slowed learning "
         "in the reported limitation of the benchmark."
@@ -266,8 +271,12 @@ def test_retry_output_uses_the_same_publication_decision() -> None:
     record["risk_scoring"]["impact_reasoning"] = (
         "in the reported limitation of the benchmark overall."
     )
-    first = verify_record(record, source)
-    retry = verify_record(record, source)
-    assert first["publication"]["decision"] == "publish"
-    assert retry["publication"]["decision"] == first["publication"]["decision"]
-    assert retry["review_reasons"] == []
+    first_evidence = verify_record(record, source)
+    retry_evidence = verify_record(record, source)
+    first_publication = publication_review(record, source)
+    retry_publication = publication_review(record, source)
+    assert "publication" not in first_evidence
+    assert first_publication["decision"] == "publish"
+    assert retry_publication["decision"] == first_publication["decision"]
+    assert retry_publication["hold_reasons"] == first_publication["hold_reasons"] == []
+    assert retry_evidence["review_reasons"] == first_evidence["review_reasons"] == []

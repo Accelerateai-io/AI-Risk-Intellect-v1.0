@@ -8,6 +8,7 @@ import { articles } from "../../schema/articles/articles.js";
 import { jobs } from "../../schema/jobs/jobs.js";
 import { extractRiskForArticle } from "./extractRisk.service.js";
 import { processUrlToDb } from "./processUrl.service.js";
+import { jobSkipReasonCode } from "../../ingestion/filters.js";
 import {
   ensureAssignedBatchModelForJob,
   refreshBatchRunStatusForJob,
@@ -20,8 +21,10 @@ import {
   JOB_MAX_RUNTIME_MS,
   JOB_TIMEOUT_SKIP_REASON,
   abortActiveJobRun,
+  beginJobAttempt,
   endJobRunTimer,
   isAbortOrTimeoutError,
+  isCurrentJobAttempt,
   noteActiveAttemptJob,
   skipJobIfStillRunning,
   skipStaleRunningJobs,
@@ -57,6 +60,7 @@ export type ClaimedJob = {
   batchRunId: number | null;
   modelName: string | null;
   modelLabel: string | null;
+  forceReprocess: boolean;
 };
 
 class JobTimeoutError extends Error {
@@ -96,6 +100,7 @@ export async function claimNextJob(
         batchRunId: jobs.batchRunId,
         modelName: jobs.modelName,
         modelLabel: jobs.modelLabel,
+        forceReprocess: jobs.forceReprocess,
       })
       .from(jobs)
       .where(pendingOnly)
@@ -114,6 +119,7 @@ export async function claimNextJob(
         status: "running",
         tries: sql`${jobs.tries} + 1`,
         startedAt: runStartedAt,
+        finishedAt: null,
         updatedAt: runStartedAt,
       })
       .where(eq(jobs.id, pending.id))
@@ -127,6 +133,7 @@ export async function claimNextJob(
         batchRunId: jobs.batchRunId,
         modelName: jobs.modelName,
         modelLabel: jobs.modelLabel,
+        forceReprocess: jobs.forceReprocess,
       });
 
     return claimed ?? null;
@@ -150,13 +157,20 @@ async function finishJob(
   const blocked = await isUrlDoNotExecute(existing.url);
   const nextStatus = blocked ? "skipped" : status;
   const nextMessage = blocked ? DO_NOT_EXECUTE_REASON : errorMessage;
+  // Record the machine-readable outcome (FETCH_FAIL / NOT_AI) on skips so ops can
+  // aggregate why jobs produced no risk row; cleared on non-skip states (B-4).
+  const skipReasonCode =
+    nextStatus === "skipped" ? jobSkipReasonCode(nextMessage) : null;
 
+  const finishedAt = new Date();
   await db
     .update(jobs)
     .set({
       status: nextStatus,
       errorMessage: nextMessage,
-      updatedAt: new Date(),
+      skipReasonCode,
+      finishedAt,
+      updatedAt: finishedAt,
     })
     .where(and(eq(jobs.id, jobId), eq(jobs.status, "running")));
 
@@ -303,8 +317,10 @@ export async function processClaimedJob(job: ClaimedJob): Promise<void> {
     url: job.url,
   };
 
-  const runWork = async (): Promise<void> => {
+  const runWork = async (attemptId: number): Promise<void> => {
+    const attemptStillCurrent = (): boolean => isCurrentJobAttempt(attemptId);
     if (await isUrlDoNotExecute(job.url)) {
+      if (!attemptStillCurrent()) return;
       log("do not execute, skipping LLM");
       await finishJob(job.id, "skipped", DO_NOT_EXECUTE_REASON, batchRefresh);
       return;
@@ -321,19 +337,21 @@ export async function processClaimedJob(job: ClaimedJob): Promise<void> {
       title: articleRow?.title ?? undefined,
     });
 
-    if (!(await jobStillRunning(job.id))) {
+    if (!attemptStillCurrent() || !(await jobStillRunning(job.id))) {
       log("stopped during ingest, aborting");
       await printLiveExecutionTimeSkip(job);
       return;
     }
 
     if (await isUrlDoNotExecute(job.url)) {
+      if (!attemptStillCurrent()) return;
       log("do not execute after ingest, skipping LLM");
       await finishJob(job.id, "skipped", DO_NOT_EXECUTE_REASON, batchRefresh);
       return;
     }
 
     if (ingest.outcome === "skipped") {
+      if (!attemptStillCurrent()) return;
       log("ingest skipped", { reason: ingest.reason });
       await finishJob(job.id, "skipped", ingest.reason, batchRefresh);
       return;
@@ -363,21 +381,25 @@ export async function processClaimedJob(job: ClaimedJob): Promise<void> {
 
     const extract = await extractRiskForArticle(job.articleId, {
       modelId: assigned.modelId !== "unknown" ? assigned.modelId : null,
+      forceReprocess: job.forceReprocess,
+      attemptId,
     });
 
-    if (!(await jobStillRunning(job.id))) {
+    if (!attemptStillCurrent() || !(await jobStillRunning(job.id))) {
       log("stopped during risk extract, aborting");
       await printLiveExecutionTimeSkip(job);
       return;
     }
 
     if (await isUrlDoNotExecute(job.url)) {
+      if (!attemptStillCurrent()) return;
       log("do not execute after extract, skipping");
       await finishJob(job.id, "skipped", DO_NOT_EXECUTE_REASON, batchRefresh);
       return;
     }
 
     if (extract.outcome === "skipped") {
+      if (!attemptStillCurrent()) return;
       log("risk extract skipped", { reason: extract.reason });
       await finishJob(job.id, "skipped", extract.reason, batchRefresh);
       return;
@@ -392,7 +414,7 @@ export async function processClaimedJob(job: ClaimedJob): Promise<void> {
         url: job.url,
       },
     );
-    if (!(await jobStillRunning(job.id))) {
+    if (!attemptStillCurrent() || !(await jobStillRunning(job.id))) {
       log("timed out before finish, not marking done", { url: job.url });
       await printLiveExecutionTimeSkip(job);
       return;
@@ -443,6 +465,7 @@ export async function processClaimedJob(job: ClaimedJob): Promise<void> {
         })
         .where(and(eq(jobs.id, job.id), eq(jobs.status, "running")));
 
+      const attemptId = beginJobAttempt();
       const stopWatch = watchForReleasedJob(job);
       const signal = await startJobRunTimer(minutes * 60_000);
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -456,12 +479,16 @@ export async function processClaimedJob(job: ClaimedJob): Promise<void> {
         signal.addEventListener("abort", fail, { once: true });
       });
 
-      const work = runWork();
+      const work = runWork(attemptId);
       try {
         await Promise.race([work, timeoutPromise]);
       } catch (err) {
+        // Drop this attempt immediately. Waiting for the model call to return
+        // is what left a force-reprocess running for many minutes after the
+        // interval had already expired.
+        beginJobAttempt();
         abortActiveJobRun();
-        await work.catch(() => undefined);
+        void work.catch(() => undefined);
         const blocked = await isUrlDoNotExecute(job.url);
         if (!(await jobStillRunning(job.id)) || blocked) {
           if (blocked) {

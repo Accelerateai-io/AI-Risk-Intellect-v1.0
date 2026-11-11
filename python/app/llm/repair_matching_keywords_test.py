@@ -1,4 +1,4 @@
-"""Tests for matching_keywords normalization in repair_extraction_obj."""
+"""Facts-only repair drops matching_keywords instead of normalising them."""
 
 from app.llm.repair import repair_extraction_obj
 
@@ -10,26 +10,16 @@ def _repair(risk_fields: dict) -> dict:
     return repair_extraction_obj(obj, SOURCE)
 
 
-def test_matching_keywords_list_passthrough():
-    repaired = _repair({"matching_keywords": ["prompt injection", "UWB ranging"]})
-    assert repaired["risk"]["matching_keywords"] == [
-        "prompt injection",
-        "UWB ranging",
-    ]
-
-
-def test_matching_keywords_string_is_split_on_commas():
-    repaired = _repair({"matching_keywords": "deepfake, voice cloning , fraud"})
-    assert repaired["risk"]["matching_keywords"] == [
-        "deepfake",
-        "voice cloning",
-        "fraud",
-    ]
-
-
-def test_matching_keywords_capped_at_15():
-    repaired = _repair({"matching_keywords": [f"kw{i}" for i in range(30)]})
-    assert len(repaired["risk"]["matching_keywords"]) == 15
+def test_matching_keywords_are_removed():
+    for value in (
+        ["prompt injection", "UWB ranging"],
+        "deepfake, voice cloning , fraud",
+        [f"kw{i}" for i in range(30)],
+        {"not": "a list"},
+        ["", "  ", None],
+    ):
+        repaired = _repair({"matching_keywords": value})
+        assert "matching_keywords" not in repaired["risk"]
 
 
 def test_matching_keywords_absent_stays_absent():
@@ -37,20 +27,22 @@ def test_matching_keywords_absent_stays_absent():
     assert "matching_keywords" not in repaired["risk"]
 
 
-def test_matching_keywords_garbage_is_dropped():
-    repaired = _repair({"matching_keywords": {"not": "a list"}})
-    assert "matching_keywords" not in repaired["risk"]
-
-    repaired = _repair({"matching_keywords": ["", "  ", None]})
-    assert "matching_keywords" not in repaired["risk"]
-
-
-def test_prompt_contains_quality_rules():
+def test_prompt_is_facts_only():
     # Read the file directly: prompt_loader transitively imports torch via
     # local_llm, which is unavailable in lightweight test environments.
     from pathlib import Path
 
     prompt = (Path(__file__).parent / "system_prompt.txt").read_text()
-    assert "matching_keywords" in prompt
-    assert "BANNED title openings" in prompt
-    assert "MANDATORY PENALTIES" in prompt
+    schema = prompt.split("=== OUTPUT SCHEMA ===", 1)[1]
+    for banned in (
+        "decision_rationale",
+        "taxonomy_mapping",
+        "evidence_breakdown",
+        "self_assessment",
+        "context_clarity_score",
+        "matching_keywords",
+    ):
+        assert banned not in schema
+    assert "SELF-ASSESSMENT" not in prompt
+    assert "risk_title" in schema
+    assert "mitigations_in_source" in schema

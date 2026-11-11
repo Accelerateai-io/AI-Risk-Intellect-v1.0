@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "required": ["risk", "risk_scoring", "controls", "justification"],
+  "required": ["risk", "risk_scoring", "controls"],
   "properties": {
     "_source": { "type": "string" },
     "_meta": { "type": "object" },
@@ -104,23 +104,6 @@
           "why": { "type": "string" },
           "score": { "type": "number" }
         }
-      }
-    },
-    "analysis": {
-      "type": "object",
-      "properties": {
-        "risk_identified": { "type": "string" },
-        "article_context": { "type": "string" },
-        "alignment_reasoning": { "type": "string" }
-      }
-    },
-    "justification": {
-      "type": "object",
-      "properties": {
-        "decision_rationale": { "type": "string" },
-        "taxonomy_mapping": { "type": "object" },
-        "evidence_breakdown": { "type": "array" },
-        "self_assessment": { "type": "object" }
       }
     }
   }

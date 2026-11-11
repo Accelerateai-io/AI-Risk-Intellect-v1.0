@@ -32,12 +32,15 @@ export function UrlIngestionDialog({
   const [suggestedName, setSuggestedName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [urlReason, setUrlReason] = useState("");
+  // B-3: force-reprocess bypasses dedup and inserts a new superseding risk row.
+  const [forceReprocess, setForceReprocess] = useState(false);
 
   const close = useCallback(() => {
     if (submitting) return;
     setIngestUrl("");
     setSuggestedName("");
     setUrlReason("");
+    setForceReprocess(false);
     onClose();
   }, [submitting, onClose]);
 
@@ -61,7 +64,7 @@ export function UrlIngestionDialog({
     setSubmitting(true);
     try {
       const result = isJobs
-        ? await enqueueJobUrl(url)
+        ? await enqueueJobUrl(url, forceReprocess)
         : await enqueueIngestUrl(url, suggestedName);
 
       if (result.status === "created") {
@@ -69,6 +72,7 @@ export function UrlIngestionDialog({
         setIngestUrl("");
         setSuggestedName("");
         setUrlReason("");
+        setForceReprocess(false);
         onEnqueued?.();
         onClose();
         return;
@@ -96,7 +100,7 @@ export function UrlIngestionDialog({
     } finally {
       setSubmitting(false);
     }
-  }, [ingestUrl, suggestedName, isJobs, onClose, onEnqueued]);
+  }, [ingestUrl, suggestedName, isJobs, forceReprocess, onClose, onEnqueued]);
 
   if (!open) return null;
 
@@ -223,6 +227,29 @@ export function UrlIngestionDialog({
             <p className="jobsPage__enqueueFieldReason" role="status">
               {urlReason}
             </p>
+          ) : null}
+          {isJobs ? (
+            <label
+              className="jobsPage__enqueueForceReprocess"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                marginTop: "0.5rem",
+                fontSize: "0.85rem",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={forceReprocess}
+                onChange={(e) => setForceReprocess(e.target.checked)}
+                disabled={submitting}
+              />
+              <span>
+                Force reprocess (bypass dedup; add a new risk row that
+                supersedes the old one)
+              </span>
+            </label>
           ) : null}
           <div className={actionsClass}>
             <button

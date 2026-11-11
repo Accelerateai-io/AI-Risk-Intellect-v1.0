@@ -108,6 +108,9 @@ function handleExtractResponse(parsed: ExtractResponse): PythonExtractResult {
     if (parsed.error === "StubExtraction") {
       throw new StubExtractionError(stubExtractionDetail(parsed));
     }
+    if (parsed.error === "NoAiRisk") {
+      throw new NoAiRiskError(parsed.message || "no AI-relevant risk in content");
+    }
     throw new Error(parsed.message || parsed.error);
   }
 
@@ -129,6 +132,18 @@ export class StubExtractionError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "StubExtractionError";
+  }
+}
+
+/**
+ * Raised when Python extracted no AI-relevant risk from the content (B-4):
+ * the page is not about AI, so no `risks` row should be inserted. Distinct
+ * from StubExtractionError, which means the LLM transport/JSON itself failed.
+ */
+export class NoAiRiskError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NoAiRiskError";
   }
 }
 
@@ -154,6 +169,16 @@ function postExtraction(
       return;
     }
 
+    let settled = false;
+    let response: import("node:http").IncomingMessage | null = null;
+    const finish = (err: Error | null, raw?: string) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      if (err) reject(err);
+      else resolve(raw ?? "");
+    };
+
     const target = new URL(url);
     const transport = target.protocol === "https:" ? https : http;
     const req = transport.request(
@@ -169,24 +194,29 @@ function postExtraction(
         },
       },
       (res) => {
+        response = res;
         const chunks: Buffer[] = [];
         res.on("data", (chunk: Buffer) => {
           chunks.push(chunk);
         });
         res.on("end", () => {
-          signal.removeEventListener("abort", onAbort);
-          resolve(Buffer.concat(chunks).toString("utf8"));
+          finish(null, Buffer.concat(chunks).toString("utf8"));
+        });
+        res.on("error", (err) => {
+          finish(err instanceof Error ? err : timeoutAbortError());
         });
       },
     );
 
     const onAbort = () => {
-      req.destroy(timeoutAbortError());
+      const err = timeoutAbortError();
+      req.destroy(err);
+      response?.destroy(err);
+      finish(err);
     };
     signal.addEventListener("abort", onAbort, { once: true });
     req.on("error", (err) => {
-      signal.removeEventListener("abort", onAbort);
-      reject(err);
+      finish(err instanceof Error ? err : timeoutAbortError());
     });
     req.write(body);
     req.end();
@@ -328,4 +358,139 @@ export async function pythonExtractRisk(payload: {
     return runExtractCli(body);
   }
   return runExtractHttp(body);
+}
+
+export type PythonAssessment = {
+  ran?: boolean;
+  parsed?: boolean;
+  checks?: Record<string, unknown>;
+  grounding_score?: number | null;
+  quoted_support?: string[];
+  safety_claim?: string | null;
+  repair?: { drop_clause?: string; reason?: string } | null;
+};
+
+async function runAssessHttp(payload: {
+  text: string;
+  record: Record<string, unknown>;
+  modelId?: string;
+  catalogCandidates: unknown[];
+  hints: unknown;
+}): Promise<PythonAssessment> {
+  const base = pythonUrl();
+  const limitMs = getActiveAttemptLimitMs() ?? (await getJobMaxRuntimeMs());
+  const signal = signalWithJobTimeout(limitMs);
+  let raw: string;
+  try {
+    raw = await postExtraction(
+      `${base}/extract/assess`,
+      JSON.stringify({
+        text: payload.text,
+        record: payload.record,
+        catalogCandidates: payload.catalogCandidates,
+        hints: payload.hints ?? {},
+        ...(payload.modelId?.trim() ? { modelId: payload.modelId.trim() } : {}),
+      }),
+      signal,
+    );
+  } catch (err) {
+    if (signal.aborted || isAbortOrTimeoutError(err)) {
+      throw new Error(activeAttemptSkipReason());
+    }
+    throw new Error(`The assessment service could not be reached at ${base}.`);
+  }
+  let parsed: { ok?: boolean; assessment?: PythonAssessment; message?: string };
+  try {
+    parsed = JSON.parse(raw) as { ok?: boolean; assessment?: PythonAssessment; message?: string };
+  } catch {
+    throw new Error(`Invalid Python assess JSON: ${raw.slice(0, 500)}`);
+  }
+  if (!parsed.ok || !parsed.assessment) {
+    throw new Error(parsed.message || "assessment failed");
+  }
+  return parsed.assessment;
+}
+
+async function runAssessCli(payload: {
+  text: string;
+  record: Record<string, unknown>;
+  modelId?: string;
+  catalogCandidates: unknown[];
+  hints: unknown;
+}): Promise<PythonAssessment> {
+  const extractLimitMs = getActiveAttemptLimitMs() ?? (await getJobMaxRuntimeMs());
+  return new Promise((resolve, reject) => {
+    const py = pythonCommand();
+    const child = spawn(py, ["-m", "app.extraction.cli"], {
+      cwd: pythonRoot,
+      env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (c: string) => {
+      stdout += c;
+    });
+    child.stdin.write(
+      JSON.stringify({
+        op: "assess_risk",
+        text: payload.text,
+        record: payload.record,
+        catalogCandidates: payload.catalogCandidates,
+        hints: payload.hints ?? {},
+        ...(payload.modelId?.trim() ? { modelId: payload.modelId.trim() } : {}),
+      }),
+    );
+    child.stdin.end();
+    const jobSignal = signalWithJobTimeout(extractLimitMs);
+    const onAbort = () => {
+      child.kill("SIGTERM");
+      reject(new Error(activeAttemptSkipReason()));
+    };
+    if (jobSignal.aborted) {
+      onAbort();
+      return;
+    }
+    jobSignal.addEventListener("abort", onAbort, { once: true });
+    child.on("error", (err) => {
+      jobSignal.removeEventListener("abort", onAbort);
+      reject(new Error(`Failed to start Python (${py}): ${err.message}`));
+    });
+    child.on("close", () => {
+      jobSignal.removeEventListener("abort", onAbort);
+      try {
+        const parsed = JSON.parse(stdout.trim()) as {
+          ok?: boolean;
+          assessment?: PythonAssessment;
+          message?: string;
+        };
+        if (!parsed.ok || !parsed.assessment) {
+          reject(new Error(parsed.message || "assessment failed"));
+          return;
+        }
+        resolve(parsed.assessment);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}
+
+/** Worker assessor call. Same source cache point as extraction, nine checks. */
+export async function pythonAssessRisk(payload: {
+  text: string;
+  record: Record<string, unknown>;
+  modelId?: string;
+  catalogCandidates?: unknown[];
+  hints?: unknown;
+}): Promise<PythonAssessment> {
+  const body = {
+    text: payload.text,
+    record: payload.record,
+    catalogCandidates: payload.catalogCandidates ?? [],
+    hints: payload.hints ?? {},
+    ...(payload.modelId?.trim() ? { modelId: payload.modelId.trim() } : {}),
+  };
+  if (useCliBridge()) return runAssessCli(body);
+  return runAssessHttp(body);
 }

@@ -1,3 +1,4 @@
+import { groundingSortValue } from "./assessmentDisplay";
 import type { RiskDetail } from "./riskData";
 
 export function riskMatchesFilters(
@@ -50,11 +51,7 @@ export function sortRiskRows(
   if (order === "oldest") {
     copy.sort((a, b) => createdAtMs(a) - createdAtMs(b));
   } else if (order === "score") {
-    copy.sort(
-      (a, b) =>
-        Number.parseFloat(b.qualityScore) -
-        Number.parseFloat(a.qualityScore),
-    );
+    copy.sort((a, b) => groundingSortValue(b) - groundingSortValue(a));
   } else if (order === "severity") {
     // Highest severity first; unscored rows sink to the bottom.
     copy.sort(

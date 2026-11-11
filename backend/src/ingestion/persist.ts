@@ -272,6 +272,7 @@ export async function persistArticleWithJob(
         jobType: "ingest",
         source: input.source,
         tries: 1,
+        finishedAt: new Date(),
       })
       .returning({
         id: jobs.id,

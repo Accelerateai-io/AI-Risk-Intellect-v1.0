@@ -30,6 +30,34 @@ from app.extraction.extract_utils import (
 from app.llm.model_config import set_model
 
 
+def _assess_cli(req: dict) -> None:
+    from app.llm.bedrock_llm import get_bedrock_client
+    from app.verification.llm_verifier import run_verifier
+
+    text = req.get("text") or ""
+    record = req.get("record") or {}
+    if not text.strip() or not isinstance(record, dict):
+        json.dump(
+            {"ok": False, "error": "EmptyAssessment", "message": "record and text are required"},
+            sys.stdout,
+        )
+        return
+    model_id = str(req.get("modelId") or req.get("model_id") or "").strip()
+    if model_id:
+        set_model(model_id)
+    client = get_bedrock_client()
+    assessment = run_verifier(
+        record,
+        text,
+        generate_text=client.generate_text,
+        model_id=model_id or None,
+        cache_source=client._cache_enabled(),
+        catalog_candidates=req.get("catalogCandidates") or [],
+        hints=req.get("hints") or {},
+    )
+    json.dump({"ok": True, "assessment": assessment}, sys.stdout)
+
+
 def main() -> int:
     try:
         req = json.load(sys.stdin)
@@ -38,6 +66,9 @@ def main() -> int:
         return 1
 
     op = req.get("op")
+    if op == "assess_risk":
+        _assess_cli(req)
+        return 0
     if op != "extract_risk":
         json.dump(
             {"ok": False, "error": "BadOp", "message": f"unknown op: {op}"},

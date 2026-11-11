@@ -35,14 +35,35 @@ def _resp(text: str, model_tokens=(100, 20), cache_read=0) -> dict:
     }
 
 
+def _to_stream(resp: dict) -> dict:
+    """Render a unary _resp() dict as a converse_stream event reply."""
+    content = resp["output"]["message"]["content"]
+    text = "".join(
+        b.get("text", "") for b in content if isinstance(b.get("text"), str)
+    )
+    events: list[dict] = [{"messageStart": {"role": "assistant"}}]
+    if text:
+        events.append(
+            {"contentBlockDelta": {"delta": {"text": text}, "contentBlockIndex": 0}}
+        )
+    events.append({"messageStop": {"stopReason": resp.get("stopReason", "end_turn")}})
+    events.append({"metadata": {"usage": resp.get("usage", {})}})
+    return {"stream": events}
+
+
 class FakeRuntime:
-    """Scripted bedrock-runtime client: a list of outcomes per model id."""
+    """Scripted bedrock-runtime client: a list of outcomes per model id.
+
+    The adapter streams by default (B-2), so converse_stream pops the same
+    scripted outcomes as converse and renders them as a streamed reply;
+    exceptions are raised as-is from whichever entry point the adapter uses.
+    """
 
     def __init__(self, script: dict[str, list]):
         self.script = {k: list(v) for k, v in script.items()}
         self.calls: list[dict] = []
 
-    def converse(self, **kwargs):
+    def _next(self, kwargs: dict):
         self.calls.append(kwargs)
         outcomes = self.script.get(kwargs["modelId"])
         if not outcomes:
@@ -51,6 +72,12 @@ class FakeRuntime:
         if isinstance(outcome, Exception):
             raise outcome
         return outcome
+
+    def converse(self, **kwargs):
+        return self._next(kwargs)
+
+    def converse_stream(self, **kwargs):
+        return _to_stream(self._next(kwargs))
 
     def invoke_model(self, **kwargs):  # pragma: no cover - must not be used
         raise AssertionError("invoke_model must not be called on the Converse path")

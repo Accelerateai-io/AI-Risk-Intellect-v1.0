@@ -227,7 +227,7 @@ export async function retryJob(
     const [row] = await db
       .update(jobs)
       .set({
-        ...(alreadyQueued ? {} : { status: "pending" as const }),
+        ...(alreadyQueued ? {} : { status: "pending" as const, finishedAt: null }),
         errorMessage: null,
         updatedAt: new Date(),
         ...modelFields,
@@ -334,7 +334,7 @@ export async function executeJobById(
   } | undefined;
 
   const setPending = {
-    ...(keepRunning ? {} : { status: "pending" as const }),
+    ...(keepRunning ? {} : { status: "pending" as const, finishedAt: null }),
     errorMessage: null,
     updatedAt: new Date(),
   };

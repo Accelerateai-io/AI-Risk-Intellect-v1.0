@@ -1366,6 +1366,7 @@ export async function disableBatchRun(id: number): Promise<{
     .set({
       status: "skipped",
       errorMessage: BATCH_DISABLED_JOB_REASON,
+      finishedAt: now,
       updatedAt: now,
     })
     .where(
@@ -1430,6 +1431,7 @@ export async function enableBatchRun(id: number): Promise<{
     .set({
       status: "pending",
       errorMessage: null,
+      finishedAt: null,
       updatedAt: now,
     })
     .where(

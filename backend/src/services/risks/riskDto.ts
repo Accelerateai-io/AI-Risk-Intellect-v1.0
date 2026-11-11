@@ -51,8 +51,6 @@ export type CatalogRiskMatchDto = {
   domainMatchPercent: number;
   descriptionMatchPercent: number;
   matchSummary: string;
-  /** Established matches are catalog mappings. Suggestions are weaker candidates. */
-  matchStrength?: "established" | "suggestion";
 };
 
 export type VerifierCheckDto = {
@@ -60,6 +58,37 @@ export type VerifierCheckDto = {
   pass: boolean | null;
   reason: string;
 };
+
+/** Read-only facts-v2 assessment. Distinct from the quality-score confidence chip. */
+export type AssessmentCheckDto = {
+  name: string;
+  pass: boolean | null;
+  reason: string;
+  quote: string;
+};
+
+export type FactsV2AssessmentDto = {
+  pipelineVersion: string;
+  groundingScore: number | null;
+  confidence: string | null;
+  decisionReason: string | null;
+  publicationStatus: string | null;
+  checks: AssessmentCheckDto[];
+};
+
+export const FACTS_V2_PIPELINE_VERSION = "2026.11.facts-v2";
+
+const FACTS_V2_CHECK_ORDER = [
+  "claim_is_demonstrated",
+  "mitigations_reflected",
+  "not_attributed_to_proposed_method",
+  "severity_within_evidence",
+  "evidence_type_consistent",
+  "rationale_supported",
+  "domain_correct",
+  "primary_secondary_correct",
+  "catalog_match",
+] as const;
 
 /** Evidence-discipline fields (BUG-01/02/03) and verifier verdict (BUG-06). */
 export type EvidenceDisciplineDto = {
@@ -71,10 +100,6 @@ export type EvidenceDisciplineDto = {
   proposedMitigation: string | null;
   mitigationsInSource: string[];
   reviewReasons: string[];
-  publication: {
-    decision: "publish" | "hold" | null;
-    status: string | null;
-  };
   verifier: {
     ran: boolean;
     passed: boolean | null;
@@ -172,6 +197,8 @@ export type RiskDto = {
     breakdown: EvidenceBreakdownItem[];
   };
   evidenceDiscipline: EvidenceDisciplineDto;
+  /** Present only for pipeline_version 2026.11.facts-v2. Null on v1 rows. */
+  assessment: FactsV2AssessmentDto | null;
 };
 
 type ExtractionMeta = {
@@ -184,12 +211,16 @@ type ExtractionMeta = {
 
 type ExtractionJson = {
   _meta?: ExtractionMeta;
+  pipeline_version?: unknown;
+  verifier_checks?: unknown;
+  grounding_score?: unknown;
+  confidence?: unknown;
+  decision_reason?: unknown;
+  publication_status?: unknown;
   risk?: Record<string, unknown>;
   risk_scoring?: Record<string, unknown>;
   analysis?: Record<string, unknown>;
   review_status?: string;
-  publication_status?: string;
-  publication_decision?: string;
   review_classification?: string;
   review_feedback?: string;
   reviewed_at?: string;
@@ -283,14 +314,14 @@ function narrative(v: unknown, fallback = ""): string {
   return normalizeNarrativeText(raw);
 }
 
-function primaryKeyFromLabel(primary: string): string {
+export function primaryKeyFromLabel(primary: string): string {
   const l = primary.toLowerCase();
   if (l.includes("operational")) return "operational";
   if (l.includes("business")) return "business";
   return "technical";
 }
 
-function tagKeyFromDomain(domain: string): string {
+export function tagKeyFromDomain(domain: string): string {
   const d = domain.toLowerCase();
   if (d.includes("discrimination") || d.includes("toxicity")) return "bias";
   if (d.includes("privacy") || d.includes("security")) return "privacy";
@@ -396,16 +427,33 @@ function stringList(v: unknown): string[] {
   return single ? [single] : [];
 }
 
+/** Facts-v2 assessment fields for the detail page. Does not change publication. */
+export function mapFactsV2Assessment(ext: ExtractionJson): FactsV2AssessmentDto | null {
+  if (str(ext.pipeline_version) !== FACTS_V2_PIPELINE_VERSION) return null;
+  const raw = (ext.verifier_checks ?? {}) as Record<string, unknown>;
+  return {
+    pipelineVersion: FACTS_V2_PIPELINE_VERSION,
+    groundingScore: numOrNull(ext.grounding_score),
+    confidence: strOrNull(ext.confidence),
+    decisionReason: strOrNull(ext.decision_reason),
+    publicationStatus: strOrNull(ext.publication_status),
+    checks: FACTS_V2_CHECK_ORDER.map((name) => {
+      const entry = (raw[name] ?? {}) as Record<string, unknown>;
+      return {
+        name,
+        pass: boolOrNull(entry.pass),
+        reason: str(entry.reason),
+        quote: str(entry.quote),
+      };
+    }),
+  };
+}
+
 const VERIFIER_CHECK_ORDER = [
   "claim_is_demonstrated",
   "mitigations_reflected",
   "not_attributed_to_proposed_method",
   "severity_within_evidence",
-  "evidence_labels_match",
-  "classification_consistent",
-  "simulation_scope_respected",
-  "sensitive_claims_supported",
-  "scope_within_source",
 ];
 
 /** Evidence fields the reviewer must see to judge Patterns 1, 3 and 6. */
@@ -449,13 +497,6 @@ export function mapEvidenceDiscipline(ext: ExtractionJson): EvidenceDisciplineDt
     proposedMitigation: strOrNull(risk.proposed_mitigation),
     mitigationsInSource: stringList(risk.mitigations_in_source),
     reviewReasons: stringList(meta.verification?.review_reasons),
-    publication: {
-      decision:
-        ext.publication_decision === "publish" || ext.publication_decision === "hold"
-          ? ext.publication_decision
-          : null,
-      status: strOrNull(ext.publication_status),
-    },
     verifier,
     extraction: {
       mode: strOrNull(extractionRaw.mode),
@@ -627,5 +668,6 @@ export function mapRiskRowToDto(
       breakdown: evidenceBreakdown,
     },
     evidenceDiscipline: mapEvidenceDiscipline(ext),
+    assessment: mapFactsV2Assessment(ext),
   };
 }

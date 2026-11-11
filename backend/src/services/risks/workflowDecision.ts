@@ -1,0 +1,494 @@
+/**
+ * Workflow v2 decision for facts-only extractions.
+ *
+ * The extractor stamps two equivalent markers. Either one identifies a
+ * facts-v2 record:
+ *   - extraction_json.pipeline_version === "2026.11.facts-v2"
+ *   - extraction_json._meta.extraction_contract === "facts_v2"
+ *
+ * Older rows have neither, and this module does not change how they publish.
+ */
+
+import { alignSecondaryClassification } from "./classificationAlignment.js";
+import { applySafetyClaimGuard } from "./safetyClaimGuard.js";
+
+export const FACTS_V2_PIPELINE_VERSION = "2026.11.facts-v2";
+export const FACTS_V2_EXTRACTION_CONTRACT = "facts_v2";
+
+export const GROUNDING_MIN = 0.6;
+export const CATALOG_SUGGEST_BELOW = 60;
+
+export const ASSESSMENT_CHECKS = [
+  "claim_is_demonstrated",
+  "mitigations_reflected",
+  "not_attributed_to_proposed_method",
+  "severity_within_evidence",
+  "evidence_type_consistent",
+  "rationale_supported",
+  "domain_correct",
+  "primary_secondary_correct",
+  "catalog_match",
+] as const;
+
+/** Failures of these checks are notes. They do not hold a facts-v2 record. */
+export const NON_HOLDING_CHECKS = [
+  "mitigations_reflected",
+  "severity_within_evidence",
+  "evidence_type_consistent",
+  "rationale_supported",
+  "domain_correct",
+  "primary_secondary_correct",
+] as const;
+
+export const DECISION_REASON_CODES = [
+  "FETCH_FAIL",
+  "NOT_AI",
+  "MERGED",
+  "CLAIM_UNSUPPORTED",
+  "REPAIRED",
+  "REPAIR_FAILED",
+  "SAFETY_HOLD",
+  "CATALOG_SUGGESTED",
+  "PUBLISHED_LABELLED",
+  "VERIFIED",
+] as const;
+
+export type DecisionReasonCode = (typeof DECISION_REASON_CODES)[number];
+
+export type WorkflowDecision = {
+  reason: DecisionReasonCode;
+  /** publish stores a risk row; hold stores a risk row off the published list; skip stores no risk row. */
+  publication: "publish" | "hold" | "skip";
+  /** Set only when a secondary clause must be dropped and the assessor run again. */
+  reassess?: { dropClause: string };
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  catalogMatchStatus: "established" | "suggested" | "none";
+  notes: string[];
+};
+
+export type AssessmentCheck = {
+  pass?: boolean | null;
+  quote?: string;
+  reason?: string;
+  corrected?: string;
+  corrected_primary?: string;
+  corrected_secondary?: string;
+  best_id?: string;
+  verdict?: string;
+  percent?: number | null;
+};
+
+export type RiskAssessment = {
+  ran?: boolean;
+  parsed?: boolean;
+  checks?: Partial<Record<(typeof ASSESSMENT_CHECKS)[number], AssessmentCheck>>;
+  grounding_score?: number | null;
+  quoted_support?: string[];
+  safety_claim?: string | null;
+  repair?: { drop_clause?: string; reason?: string } | null;
+};
+
+export type EvidenceEntry = { article_id: number; url: string };
+
+export function isFactsV2Extraction(extractionJson: unknown): boolean {
+  const ext = (extractionJson ?? {}) as {
+    pipeline_version?: unknown;
+    _meta?: { extraction_contract?: unknown };
+  };
+  if (ext.pipeline_version === FACTS_V2_PIPELINE_VERSION) return true;
+  return ext._meta?.extraction_contract === FACTS_V2_EXTRACTION_CONTRACT;
+}
+
+function checkOf(
+  assessment: RiskAssessment | null | undefined,
+  name: (typeof ASSESSMENT_CHECKS)[number],
+): AssessmentCheck {
+  return assessment?.checks?.[name] ?? {};
+}
+
+function passes(
+  assessment: RiskAssessment | null | undefined,
+  name: (typeof ASSESSMENT_CHECKS)[number],
+): boolean {
+  return checkOf(assessment, name).pass === true;
+}
+
+function catalogPercent(assessment: RiskAssessment | null | undefined): number | null {
+  const raw = checkOf(assessment, "catalog_match").percent;
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+}
+
+function catalogStatus(
+  assessment: RiskAssessment | null | undefined,
+): WorkflowDecision["catalogMatchStatus"] {
+  const match = checkOf(assessment, "catalog_match");
+  const percent = catalogPercent(assessment);
+  if (!match.best_id && percent == null) return "none";
+  if (percent == null || percent < CATALOG_SUGGEST_BELOW) return "suggested";
+  return "established";
+}
+
+function nonHoldingNotes(assessment: RiskAssessment | null | undefined): string[] {
+  const notes: string[] = [];
+  for (const name of NON_HOLDING_CHECKS) {
+    const entry = checkOf(assessment, name);
+    if (entry.pass === false) {
+      const detail = (entry.reason || entry.corrected || "").trim();
+      notes.push(detail ? `${name}: ${detail}` : `${name} failed`);
+    }
+  }
+  return notes;
+}
+
+function confidenceFor(
+  assessment: RiskAssessment | null | undefined,
+  reason: DecisionReasonCode,
+  evidenceType: string | null,
+): WorkflowDecision["confidence"] {
+  if (
+    reason === "REPAIRED" ||
+    reason === "REPAIR_FAILED" ||
+    reason === "CLAIM_UNSUPPORTED" ||
+    reason === "SAFETY_HOLD"
+  ) {
+    return "LOW";
+  }
+  if (reason === "CATALOG_SUGGESTED" || reason === "PUBLISHED_LABELLED") {
+    return "MEDIUM";
+  }
+  if (reason !== "VERIFIED") return "LOW";
+  const allPass = ASSESSMENT_CHECKS.every((name) => {
+    if (name === "catalog_match") return catalogStatus(assessment) === "established";
+    return passes(assessment, name);
+  });
+  if (allPass && evidenceType === "demonstrated") return "HIGH";
+  return "MEDIUM";
+}
+
+/**
+ * Ordered workflow-v2 rules. The first match wins.
+ * A repair proposal is not a final reason: the caller drops the clause,
+ * reassesses once, and calls again with `repaired: true`.
+ */
+export function decideWorkflow(input: {
+  stage?: "fetch_fail" | "not_ai" | "duplicate" | "extracted";
+  forceReprocess?: boolean;
+  assessment?: RiskAssessment | null;
+  evidenceType?: string | null;
+  repaired?: boolean;
+}): WorkflowDecision {
+  const stage = input.stage ?? "extracted";
+  const finish = (
+    reason: DecisionReasonCode,
+    publication: WorkflowDecision["publication"],
+    notes: string[] = [],
+  ): WorkflowDecision => ({
+    reason,
+    publication,
+    confidence: confidenceFor(input.assessment, reason, input.evidenceType ?? null),
+    catalogMatchStatus: catalogStatus(input.assessment),
+    notes,
+  });
+
+  if (stage === "fetch_fail") return finish("FETCH_FAIL", "skip");
+  if (stage === "not_ai") return finish("NOT_AI", "skip");
+  if (stage === "duplicate" && !input.forceReprocess) return finish("MERGED", "skip");
+
+  const assessment = input.assessment ?? null;
+  const grounding = assessment?.grounding_score;
+  const groundingFail =
+    typeof grounding !== "number" || grounding < GROUNDING_MIN;
+  const mainClaimFail =
+    !passes(assessment, "claim_is_demonstrated") ||
+    !passes(assessment, "not_attributed_to_proposed_method");
+  if (mainClaimFail || groundingFail || assessment?.parsed === false || assessment?.ran === false) {
+    return finish(
+      input.repaired ? "REPAIR_FAILED" : "CLAIM_UNSUPPORTED",
+      "hold",
+      nonHoldingNotes(assessment),
+    );
+  }
+
+  const dropClause = assessment?.repair?.drop_clause?.trim() ?? "";
+  if (!input.repaired && dropClause) {
+    return {
+      ...finish("REPAIRED", "publish"),
+      reassess: { dropClause },
+    };
+  }
+
+  if (assessment?.safety_claim === "real_world") {
+    return finish("SAFETY_HOLD", "hold", nonHoldingNotes(assessment));
+  }
+
+  if (input.repaired) {
+    return finish("REPAIRED", "publish", nonHoldingNotes(assessment));
+  }
+
+  const match = checkOf(assessment, "catalog_match");
+  const percent = catalogPercent(assessment);
+  if (!match.best_id || percent == null || percent < CATALOG_SUGGEST_BELOW) {
+    return finish("CATALOG_SUGGESTED", "publish", nonHoldingNotes(assessment));
+  }
+
+  const evidenceType = (input.evidenceType ?? "").trim();
+  if (
+    evidenceType === "hypothesized" ||
+    evidenceType === "mitigation_target" ||
+    assessment?.safety_claim === "research_only"
+  ) {
+    return finish("PUBLISHED_LABELLED", "publish", nonHoldingNotes(assessment));
+  }
+
+  return finish("VERIFIED", "publish", nonHoldingNotes(assessment));
+}
+
+function replaceClause(value: unknown, clause: string): { next: unknown; removed: boolean } {
+  if (typeof value !== "string" || !value.includes(clause)) {
+    return { next: value, removed: false };
+  }
+  const next = value
+    .replace(clause, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.;])/g, "$1")
+    .trim();
+  return { next, removed: next !== value };
+}
+
+/** Drop a secondary clause. Returns whether the stored text actually changed. */
+export function dropSecondaryClause(
+  extractionJson: Record<string, unknown>,
+  clause: string,
+): { extractionJson: Record<string, unknown>; removed: boolean } {
+  const copy = JSON.parse(JSON.stringify(extractionJson)) as Record<string, unknown>;
+  const needle = clause.trim();
+  if (!needle) return { extractionJson: copy, removed: false };
+  let removed = false;
+  const risk = (copy.risk ?? {}) as Record<string, unknown>;
+  for (const field of ["description", "secondary_risks", "stated_implication"]) {
+    const replaced = replaceClause(risk[field], needle);
+    risk[field] = replaced.next;
+    removed = removed || replaced.removed;
+  }
+  const scoring = (copy.risk_scoring ?? {}) as Record<string, unknown>;
+  for (const field of ["likelihood_reasoning", "impact_reasoning"]) {
+    const replaced = replaceClause(scoring[field], needle);
+    scoring[field] = replaced.next;
+    removed = removed || replaced.removed;
+  }
+  copy.risk = risk;
+  copy.risk_scoring = scoring;
+  return { extractionJson: copy, removed };
+}
+
+export function applyAssessorCorrections(
+  extractionJson: Record<string, unknown>,
+  assessment: RiskAssessment | null | undefined,
+  sourceText = "",
+): void {
+  const risk = (extractionJson.risk ?? {}) as Record<string, unknown>;
+  const domain = checkOf(assessment, "domain_correct").corrected?.trim();
+  if (domain) risk.domains = domain;
+  const primary = checkOf(assessment, "primary_secondary_correct").corrected_primary?.trim();
+  const secondary = checkOf(assessment, "primary_secondary_correct").corrected_secondary?.trim();
+  if (primary) risk.primary_risk = primary;
+  if (secondary) risk.secondary_risks = secondary;
+
+  const aligned = alignSecondaryClassification(risk, sourceText);
+  if (aligned) {
+    risk.primary_risk = aligned.primary;
+    risk.secondary_risks = aligned.secondary;
+    if (assessment) {
+      const checks = assessment.checks ?? {};
+      checks.primary_secondary_correct = {
+        ...checkOf(assessment, "primary_secondary_correct"),
+        pass: false,
+        corrected_primary: aligned.primary,
+        corrected_secondary: aligned.secondary,
+        reason: aligned.reason,
+      };
+      assessment.checks = checks;
+    }
+  }
+  extractionJson.risk = risk;
+}
+
+function storedChecks(
+  assessment: RiskAssessment | null | undefined,
+): Record<string, AssessmentCheck> {
+  const checks: Record<string, AssessmentCheck> = {};
+  for (const name of ASSESSMENT_CHECKS) {
+    const entry = checkOf(assessment, name);
+    checks[name] = {
+      pass: entry.pass ?? null,
+      ...(entry.quote ? { quote: entry.quote } : {}),
+      ...(entry.reason ? { reason: entry.reason } : {}),
+      ...(entry.corrected ? { corrected: entry.corrected } : {}),
+      ...(entry.corrected_primary ? { corrected_primary: entry.corrected_primary } : {}),
+      ...(entry.corrected_secondary
+        ? { corrected_secondary: entry.corrected_secondary }
+        : {}),
+      ...(entry.best_id ? { best_id: entry.best_id } : {}),
+      ...(entry.verdict ? { verdict: entry.verdict } : {}),
+      ...(entry.percent != null ? { percent: entry.percent } : {}),
+    };
+  }
+  return checks;
+}
+
+export function applyDecisionToExtraction(
+  extractionJson: Record<string, unknown>,
+  decision: WorkflowDecision,
+  assessment: RiskAssessment | null | undefined,
+  sourceText = "",
+): void {
+  applyAssessorCorrections(extractionJson, assessment, sourceText);
+  const published = decision.publication === "publish";
+  extractionJson.pipeline_version = FACTS_V2_PIPELINE_VERSION;
+  extractionJson.decision_reason = decision.reason;
+  extractionJson.publication_status = published ? "published" : "held";
+  extractionJson.publication_decision = published ? "publish" : "hold";
+  extractionJson.review_status = published ? "approved" : "pending";
+  extractionJson.published_automatically = published;
+  extractionJson.confidence = decision.confidence;
+  extractionJson.catalog_match_status = decision.catalogMatchStatus;
+  extractionJson.verifier_checks = storedChecks(assessment);
+  extractionJson.grounding_score = assessment?.grounding_score ?? null;
+  extractionJson.quoted_support = assessment?.quoted_support ?? [];
+  extractionJson.safety_claim = assessment?.safety_claim ?? null;
+  extractionJson.check_notes = decision.notes;
+  if (!published) {
+    extractionJson.review_reason = decision.notes.length
+      ? `${decision.reason}. ${decision.notes.join(" ")}`
+      : decision.reason;
+  } else if (decision.notes.length) {
+    extractionJson.review_reason = decision.notes.join(" ");
+  }
+  const scoring = (extractionJson.risk_scoring ?? {}) as {
+    likelihood?: unknown;
+    impact?: unknown;
+  };
+  const likelihood = Number(scoring.likelihood);
+  const impact = Number(scoring.impact);
+  if (
+    Number.isInteger(likelihood) &&
+    Number.isInteger(impact) &&
+    likelihood >= 1 &&
+    impact >= 1
+  ) {
+    extractionJson.risk_scoring = {
+      ...scoring,
+      severity_score: likelihood * impact,
+    };
+  }
+}
+
+export type AssessRequest = {
+  sourceText: string;
+  record: Record<string, unknown>;
+  catalogCandidates: unknown[];
+  hints: unknown;
+};
+
+/**
+ * One assessor call, or two when the first result asks for a secondary-clause
+ * repair. REPAIRED is stored only when the second call clears the hold rules.
+ * REPAIR_FAILED keeps the clause removed and does not publish.
+ */
+export async function runFactsV2AssessmentCycle(input: {
+  extractionJson: Record<string, unknown>;
+  sourceText: string;
+  catalogCandidates: unknown[];
+  hints: unknown;
+  assess: (request: AssessRequest) => Promise<RiskAssessment>;
+}): Promise<{ assessCalls: number; decision: WorkflowDecision }> {
+  const requestFor = (extractionJson: Record<string, unknown>): AssessRequest => ({
+    sourceText: input.sourceText,
+    record: extractionJson,
+    catalogCandidates: input.catalogCandidates,
+    hints: input.hints,
+  });
+
+  let extractionJson = input.extractionJson;
+  let assessCalls = 0;
+  const evidenceType = String(
+    ((extractionJson.risk ?? {}) as { evidence_type?: unknown }).evidence_type ?? "",
+  );
+
+  let assessment = applySafetyClaimGuard(
+    extractionJson,
+    input.sourceText,
+    await input.assess(requestFor(extractionJson)),
+  );
+  assessCalls += 1;
+  let decision = decideWorkflow({
+    stage: "extracted",
+    assessment,
+    evidenceType,
+  });
+
+  if (decision.reassess) {
+    const dropped = dropSecondaryClause(extractionJson, decision.reassess.dropClause);
+    if (!dropped.removed) {
+      decision = {
+        ...decideWorkflow({
+          stage: "extracted",
+          assessment: { ...assessment, ran: false },
+          evidenceType,
+          repaired: true,
+        }),
+        notes: ["repair clause was not found in the record"],
+      };
+    } else {
+      Object.keys(extractionJson).forEach((key) => {
+        delete extractionJson[key];
+      });
+      Object.assign(extractionJson, dropped.extractionJson);
+      assessment = applySafetyClaimGuard(
+        extractionJson,
+        input.sourceText,
+        await input.assess(requestFor(extractionJson)),
+      );
+      assessCalls += 1;
+      decision = decideWorkflow({
+        stage: "extracted",
+        assessment,
+        evidenceType: String(
+          ((extractionJson.risk ?? {}) as { evidence_type?: unknown }).evidence_type ??
+            evidenceType,
+        ),
+        repaired: true,
+      });
+    }
+  }
+
+  applyDecisionToExtraction(extractionJson, decision, assessment, input.sourceText);
+  return { assessCalls, decision };
+}
+
+/** Keep prior evidence entries, append one new pair, and ignore an exact duplicate. */
+export function appendEvidenceEntry(
+  existing: unknown,
+  entry: EvidenceEntry,
+): EvidenceEntry[] {
+  const kept: EvidenceEntry[] = [];
+  const seen = new Set<string>();
+  const add = (articleId: unknown, url: unknown) => {
+    const id = Number(articleId);
+    const href = String(url ?? "").trim();
+    if (!Number.isInteger(id) || !href) return;
+    const key = `${id}|${href}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    kept.push({ article_id: id, url: href });
+  };
+  if (Array.isArray(existing)) {
+    for (const item of existing) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as { article_id?: unknown; url?: unknown };
+      add(row.article_id, row.url);
+    }
+  }
+  add(entry.article_id, entry.url);
+  return kept;
+}

@@ -3,7 +3,10 @@ import { requireAuth } from "../middleware/auth.middleware.js";
 import { validate } from "../middleware/validate.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { enqueueUrlHandler } from "../controllers/admin/admin.controller.js";
-import { enqueueJobUrlHandler } from "../controllers/admin/manualJobEnqueue.controller.js";
+import {
+  enqueueJobUrlHandler,
+  enqueueJobUrlsBulkHandler,
+} from "../controllers/admin/manualJobEnqueue.controller.js";
 import {
   archiveIngestLinkHandler,
   exportIngestLinkItemsHandler,
@@ -27,6 +30,7 @@ import {
 } from "../controllers/admin/services.controller.js";
 import {
   enqueueJobUrlSchema,
+  enqueueJobUrlsBulkSchema,
   enqueueUrlSchema,
   ingestLinkIdSchema,
   listReportUploadItemsQuerySchema,
@@ -245,6 +249,13 @@ adminRouter.post(
   requireAuth,
   validate(enqueueJobUrlSchema),
   asyncHandler(enqueueJobUrlHandler),
+);
+
+adminRouter.post(
+  "/jobs/enqueue/bulk",
+  requireAuth,
+  validate(enqueueJobUrlsBulkSchema),
+  asyncHandler(enqueueJobUrlsBulkHandler),
 );
 
 adminRouter.post(

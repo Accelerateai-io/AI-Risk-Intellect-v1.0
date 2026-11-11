@@ -321,24 +321,29 @@
   min-height: min-content;
 }
 
-.riskDetail__classification--rating {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.riskDetail__classification--evidence {
+.riskDetail__evidenceBento {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
 }
 
-.riskDetail__classification--evidence .riskDetail__classCard--wide {
+.riskDetail__evidenceBento > .riskDetail__classCard--span1 {
+  grid-column: span 1;
+}
+
+.riskDetail__evidenceBento > .riskDetail__classCard--span2 {
   grid-column: span 2;
 }
 
-.riskDetail__classification--evidence .riskDetail__classCard--span3 {
+.riskDetail__evidenceBento > .riskDetail__classCard--span3 {
   grid-column: span 3;
 }
 
-.riskDetail__classification--evidence .riskDetail__classCard--full {
-  grid-column: 1 / -1;
+.riskDetail__evidenceBento > .riskDetail__classCard--span4 {
+  grid-column: span 4;
+}
+
+.riskDetail__classification--rating {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .riskDetail__classification--rating .riskDetail__classCard {
@@ -606,9 +611,13 @@ html.app-theme-dark .riskDetail--page {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .riskDetail__classification--evidence .riskDetail__classCard--wide,
-  .riskDetail__classification--evidence .riskDetail__classCard--span3,
-  .riskDetail__classification--evidence .riskDetail__classCard--full {
+  .riskDetail__evidenceBento {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .riskDetail__evidenceBento > .riskDetail__classCard--span2,
+  .riskDetail__evidenceBento > .riskDetail__classCard--span3,
+  .riskDetail__evidenceBento > .riskDetail__classCard--span4 {
     grid-column: 1 / -1;
   }
 
@@ -632,10 +641,15 @@ html.app-theme-dark .riskDetail--page {
     grid-template-columns: 1fr;
   }
 
-  .riskDetail__classification--evidence .riskDetail__classCard--wide,
-  .riskDetail__classification--evidence .riskDetail__classCard--span3,
-  .riskDetail__classification--evidence .riskDetail__classCard--full {
-    grid-column: auto;
+  .riskDetail__evidenceBento {
+    grid-template-columns: 1fr;
+  }
+
+  .riskDetail__evidenceBento > .riskDetail__classCard--span1,
+  .riskDetail__evidenceBento > .riskDetail__classCard--span2,
+  .riskDetail__evidenceBento > .riskDetail__classCard--span3,
+  .riskDetail__evidenceBento > .riskDetail__classCard--span4 {
+    grid-column: 1 / -1;
   }
 }
 

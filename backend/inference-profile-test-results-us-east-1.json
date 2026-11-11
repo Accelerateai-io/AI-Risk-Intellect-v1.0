@@ -1,7 +1,7 @@
 {
   "region": "us-east-1",
-  "updatedAt": "2026-11-05T11:00:58.111Z",
-  "count": 10,
+  "updatedAt": "2026-11-11T10:50:53.195Z",
+  "count": 13,
   "results": [
     {
       "profileName": "US Amazon Nova 2 Lite",
@@ -300,21 +300,64 @@
       }
     },
     {
+      "profileName": "Global Anthropic Claude Haiku 5.5",
+      "profileType": "SYSTEM_DEFINED",
+      "inferenceProfileId": "global.anthropic.claude-haiku-5-5",
+      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/global.anthropic.claude-haiku-5-5",
+      "foundationModelId": "anthropic.claude-haiku-5-5",
+      "prompt": "Hi",
+      "testedAt": "2026-11-11T09:48:49.262Z",
+      "tests": [
+        {
+          "status": "not working",
+          "identifierType": "inferenceProfileId",
+          "value": "global.anthropic.claude-haiku-5-5",
+          "prompt": "Hi",
+          "latencyMs": 1991,
+          "error": "Model is not enabled in your AWS account.",
+          "errorName": "AccessDeniedException"
+        },
+        {
+          "status": "not working",
+          "identifierType": "inferenceProfileArn",
+          "value": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/global.anthropic.claude-haiku-5-5",
+          "prompt": "Hi",
+          "latencyMs": 899,
+          "error": "Model is not enabled in your AWS account.",
+          "errorName": "AccessDeniedException"
+        },
+        {
+          "status": "not working",
+          "identifierType": "model",
+          "value": "anthropic.claude-haiku-5-5",
+          "prompt": "Hi",
+          "latencyMs": 873,
+          "error": "Model is not enabled in your AWS account.",
+          "errorName": "AccessDeniedException"
+        }
+      ],
+      "overallStatus": "not working",
+      "summary": {
+        "working": 0,
+        "notWorking": 3
+      }
+    },
+    {
       "profileName": "US DeepSeek-R1",
       "profileType": "SYSTEM_DEFINED",
       "inferenceProfileId": "us.deepseek.r1-v1:0",
       "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/us.deepseek.r1-v1:0",
       "foundationModelId": "deepseek.r1-v1:0",
       "prompt": "Hi",
-      "testedAt": "2026-11-05T11:00:58.110Z",
+      "testedAt": "2026-11-11T09:49:06.909Z",
       "tests": [
         {
           "status": "working",
           "identifierType": "inferenceProfileId",
           "value": "us.deepseek.r1-v1:0",
           "prompt": "Hi",
-          "reply": "Hello! How can I assist you today?",
-          "latencyMs": 2120,
+          "reply": "Hello! How can I assist you today? 😊",
+          "latencyMs": 1478,
           "stopReason": "end_turn"
         }
       ],
@@ -323,7 +366,80 @@
         "identifierType": "inferenceProfileId",
         "value": "us.deepseek.r1-v1:0"
       },
-      "workingReply": "Hello! How can I assist you today?",
+      "workingReply": "Hello! How can I assist you today? 😊",
+      "summary": {
+        "working": 1,
+        "notWorking": 0
+      }
+    },
+    {
+      "profileName": "Global Anthropic Claude Sonnet 5.5",
+      "profileType": "SYSTEM_DEFINED",
+      "inferenceProfileId": "global.anthropic.claude-sonnet-5-5",
+      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/global.anthropic.claude-sonnet-5-5",
+      "foundationModelId": "anthropic.claude-sonnet-5-5",
+      "prompt": "Hi",
+      "testedAt": "2026-11-11T10:46:38.870Z",
+      "tests": [
+        {
+          "status": "not working",
+          "identifierType": "inferenceProfileId",
+          "value": "global.anthropic.claude-sonnet-5-5",
+          "prompt": "Hi",
+          "latencyMs": 939,
+          "error": "Model is not enabled in your AWS account.",
+          "errorName": "AccessDeniedException"
+        },
+        {
+          "status": "not working",
+          "identifierType": "inferenceProfileArn",
+          "value": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/global.anthropic.claude-sonnet-5-5",
+          "prompt": "Hi",
+          "latencyMs": 959,
+          "error": "Model is not enabled in your AWS account.",
+          "errorName": "AccessDeniedException"
+        },
+        {
+          "status": "not working",
+          "identifierType": "model",
+          "value": "anthropic.claude-sonnet-5-5",
+          "prompt": "Hi",
+          "latencyMs": 886,
+          "error": "Model is not enabled in your AWS account.",
+          "errorName": "AccessDeniedException"
+        }
+      ],
+      "overallStatus": "not working",
+      "summary": {
+        "working": 0,
+        "notWorking": 3
+      }
+    },
+    {
+      "profileName": "Global Claude Sonnet 4.5",
+      "profileType": "SYSTEM_DEFINED",
+      "inferenceProfileId": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:983911888509:inference-profile/global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+      "foundationModelId": "anthropic.claude-sonnet-4-5-20250929-v1:0",
+      "prompt": "Hi",
+      "testedAt": "2026-11-11T10:50:53.195Z",
+      "tests": [
+        {
+          "status": "working",
+          "identifierType": "inferenceProfileId",
+          "value": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+          "prompt": "Hi",
+          "reply": "Hello! How can I help you today?",
+          "latencyMs": 2279,
+          "stopReason": "end_turn"
+        }
+      ],
+      "overallStatus": "working",
+      "workingTarget": {
+        "identifierType": "inferenceProfileId",
+        "value": "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+      },
+      "workingReply": "Hello! How can I help you today?",
       "summary": {
         "working": 1,
         "notWorking": 0

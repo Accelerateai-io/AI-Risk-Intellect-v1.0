@@ -8,6 +8,7 @@
  */
 
 import { isDomainInTaxonomy } from "./riskCatalogMatch.service.js";
+import { isFactsV2Extraction } from "./workflowDecision.js";
 import {
   DOMAIN_REVIEW_REASON,
   DUPLICATE_RISK_REVIEW_REASON,
@@ -43,6 +44,12 @@ export function publicationHolds(input: {
   domains: string | null;
 }): string[] {
   const ext = input.extractionJson;
+  if (isFactsV2Extraction(ext)) {
+    if (!ext.decision_reason) return ["Workflow decision has not been recorded."];
+    if (ext.publication_status === "published") return [];
+    const reason = String(ext.decision_reason ?? "").trim();
+    return reason ? [reason] : ["Workflow decision held this record."];
+  }
   const holds: string[] = [];
   const push = (reason: string) => {
     const text = reason.trim();

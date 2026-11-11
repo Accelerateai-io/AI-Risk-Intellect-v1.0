@@ -12,6 +12,9 @@ from .filters import (
 )
 from .language_detect import require_detected_language
 
+# Titles fall back to "Untitled", never the raw URL (titles / B-5).
+UNTITLED_TITLE = "Untitled"
+
 
 def prepare_pdf_ingest(
     pdf_bytes: bytes,
@@ -38,7 +41,7 @@ def prepare_pdf_ingest(
 
     language = require_detected_language(text)
     details: dict[str, Any] = {"language": language}
-    return {"text": text, "title": title or url, "details": details}
+    return {"text": text, "title": title or UNTITLED_TITLE, "details": details}
 
 
 def prepare_html_ingest(
@@ -75,7 +78,7 @@ def prepare_html_ingest(
 
     language = require_detected_language(text)
     details: dict[str, Any] = {"language": language}
-    return {"text": text, "title": title or url, "details": details}
+    return {"text": text, "title": title or UNTITLED_TITLE, "details": details}
 
 
 def prepare_raw_ingest(
@@ -101,7 +104,7 @@ def prepare_raw_ingest(
 
     language = require_detected_language(text)
     details: dict[str, Any] = {"language": language}
-    return {"text": text, "title": title or url, "details": details}
+    return {"text": text, "title": title or UNTITLED_TITLE, "details": details}
 
 
 # Full pipeline stubs when persist is implemented in Python later.

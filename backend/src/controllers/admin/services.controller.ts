@@ -119,10 +119,15 @@ export async function stopWorkerHandler(
 }
 
 export async function getLlmModelHandler(
-  _req: Request,
+  req: Request,
   res: Response,
 ): Promise<void> {
+  // Always send the model list body. A 304 has no body, and the page calls this
+  // API on another origin, so the browser reports that empty 304 as a network error.
+  delete req.headers["if-none-match"];
+  delete req.headers["if-modified-since"];
   const config = await getLlmModelConfigAsync();
+  res.setHeader("Cache-Control", "no-store");
   res.status(200).json({ ok: true, ...config });
 }
 

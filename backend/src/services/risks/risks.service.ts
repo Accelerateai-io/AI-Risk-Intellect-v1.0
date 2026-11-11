@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { articles } from "../../schema/articles/articles.js";
 import { risks } from "../../schema/risks/risks.js";
@@ -20,7 +20,17 @@ import {
 } from "./riskDto.js";
 import { needsHumanReview } from "./riskQuality.js";
 import { resolveRiskUuid } from "./riskResolve.js";
-import { fetchGlobalRiskDisplayIdMap } from "./riskSequence.js";
+import {
+  fetchGlobalRiskDisplayIdMap,
+  fetchRiskDisplayIdsFor,
+} from "./riskSequence.js";
+import {
+  finalizeRiskPage,
+  riskRowMatchesFilters,
+  toLightRecord,
+  type RiskLightRecord,
+  type RiskListParams,
+} from "./riskListQuery.js";
 
 export type RiskListMetrics = {
   total: number;
@@ -118,60 +128,182 @@ function countByPrimaryKey(rows: RiskDto[]): Pick<
   return { technical, operational, business };
 }
 
-export async function listRisks(): Promise<{
+/** Columns needed to build a RiskDto; shared by the scan and the page fetch. */
+const riskListColumns = {
+  id: risks.id,
+  articleId: risks.articleId,
+  riskTitle: risks.riskTitle,
+  domains: risks.domains,
+  primaryRisk: risks.primaryRisk,
+  secondaryRisk: risks.secondaryRisk,
+  sector: risks.sector,
+  industry: risks.industry,
+  intent: risks.intent,
+  qualityScore: risks.qualityScore,
+  likelihood: risks.likelihood,
+  impact: risks.impact,
+  severityScore: risks.severityScore,
+  severityBand: risks.severityBand,
+  aiProductName: risks.aiProductName,
+  aiProductVendor: risks.aiProductVendor,
+  extractionJson: risks.extractionJson,
+  modelName: risks.modelName,
+  sourceFlag: risks.sourceFlag,
+  createdAt: risks.createdAt,
+  articleTitle: articles.title,
+  articleUrl: articles.url,
+} as const;
+
+/** Rows scanned per batch. One batch (not the whole table) is in memory at a time. */
+const RISK_SCAN_BATCH = 500;
+
+/**
+ * Candidate WHERE pushed into SQL: everything except explicitly-rejected rows
+ * and rows a newer force-reprocess record points at via supersedes_id (B-3).
+ * This is an exact, safe superset of the visible set, so paging over candidates
+ * never drops a visible row. The fuzzy remainder of `isRiskVisibleInMainList`
+ * is applied per-batch in JS because it cannot be expressed in SQL.
+ */
+const RISK_LIST_CANDIDATE_WHERE = sql`lower(coalesce(trim(${risks.extractionJson} ->> 'review_status'), '')) <> 'rejected' AND ${risks.id} NOT IN (SELECT supersedes_id FROM risks WHERE supersedes_id IS NOT NULL)`;
+
+export type RiskListResult = {
   risks: RiskDto[];
   metrics: RiskListMetrics;
-}> {
-  const rows = await db
-    .select({
-      id: risks.id,
-      articleId: risks.articleId,
-      riskTitle: risks.riskTitle,
-      domains: risks.domains,
-      primaryRisk: risks.primaryRisk,
-      secondaryRisk: risks.secondaryRisk,
-      sector: risks.sector,
-      industry: risks.industry,
-      intent: risks.intent,
-      qualityScore: risks.qualityScore,
-      likelihood: risks.likelihood,
-      impact: risks.impact,
-      severityScore: risks.severityScore,
-      severityBand: risks.severityBand,
-      aiProductName: risks.aiProductName,
-      aiProductVendor: risks.aiProductVendor,
-      extractionJson: risks.extractionJson,
-      modelName: risks.modelName,
-      sourceFlag: risks.sourceFlag,
-      createdAt: risks.createdAt,
-      articleTitle: articles.title,
-      articleUrl: articles.url,
-    })
-    .from(risks)
-    .innerJoin(articles, eq(risks.articleId, articles.id))
-    .orderBy(desc(risks.createdAt));
+  total: number;
+  hasMore: boolean;
+  metricsIncluded: boolean;
+};
 
-  const visibleRows = rows.filter((row) =>
+function rowPassesList(
+  row: {
+    domains: string | null;
+    qualityScore: number | null;
+    extractionJson: unknown;
+  } & Parameters<typeof riskRowMatchesFilters>[0],
+  params: RiskListParams,
+): boolean {
+  return (
     isRiskVisibleInMainList({
       domains: row.domains,
       qualityScore: row.qualityScore,
       extractionJson: row.extractionJson,
-    }),
+    }) && riskRowMatchesFilters(row, params)
   );
+}
 
-  const displayIdByRiskId = await fetchGlobalRiskDisplayIdMap();
-  const mapped = visibleRows.map((row) =>
-    mapRiskRowToDto(row, displayIdByRiskId.get(row.id) ?? "R-?"),
-  );
-  const counts = countByPrimaryKey(mapped);
+/**
+ * Paginated Risks list (B-7). Scans candidate rows in bounded SQL batches
+ * and returns only one page of mapped DTOs.
+ */
+export async function listRisks(
+  params: RiskListParams,
+): Promise<RiskListResult> {
+  const orderByCreated =
+    params.order === "oldest" ? asc(risks.createdAt) : desc(risks.createdAt);
+
+  const fullScan =
+    params.includeMetrics ||
+    params.order === "score" ||
+    params.order === "severity";
+  const earlyTarget = params.offset + params.limit + 1;
+
+  const collected: RiskLightRecord[] = [];
+  let scanOffset = 0;
+  for (;;) {
+    const batch = await db
+      .select(riskListColumns)
+      .from(risks)
+      .innerJoin(articles, eq(risks.articleId, articles.id))
+      .where(RISK_LIST_CANDIDATE_WHERE)
+      .orderBy(orderByCreated, desc(risks.id))
+      .limit(RISK_SCAN_BATCH)
+      .offset(scanOffset);
+    if (batch.length === 0) break;
+    for (const row of batch) {
+      if (rowPassesList(row, params)) collected.push(toLightRecord(row));
+    }
+    scanOffset += batch.length;
+    if (batch.length < RISK_SCAN_BATCH) break;
+    if (!fullScan && collected.length >= earlyTarget) break;
+  }
+
+  let pageRecords: RiskLightRecord[];
+  let total: number;
+  let hasMore: boolean;
+  let metrics: RiskListMetrics;
+
+  if (fullScan) {
+    const res = finalizeRiskPage(collected, params);
+    pageRecords = res.pageRecords;
+    total = res.total;
+    hasMore = res.hasMore;
+    metrics = res.metrics;
+  } else {
+    pageRecords =
+      params.limit > 0
+        ? collected.slice(params.offset, params.offset + params.limit)
+        : [];
+    hasMore = collected.length > params.offset + params.limit;
+    total = params.offset + pageRecords.length + (hasMore ? 1 : 0);
+    metrics = { total, technical: 0, operational: 0, business: 0 };
+  }
+
+  const pageIds = pageRecords.map((r) => r.id);
+  let mapped: RiskDto[] = [];
+  if (pageIds.length > 0) {
+    const fullRows = await db
+      .select(riskListColumns)
+      .from(risks)
+      .innerJoin(articles, eq(risks.articleId, articles.id))
+      .where(inArray(risks.id, pageIds));
+    const byId = new Map(fullRows.map((row) => [row.id, row]));
+    const displayIds = await fetchRiskDisplayIdsFor(pageIds);
+    mapped = pageRecords
+      .map((rec) => byId.get(rec.id))
+      .filter((row): row is NonNullable<typeof row> => row != null)
+      .map((row) => mapRiskRowToDto(row, displayIds.get(row.id) ?? "R-?"));
+  }
 
   return {
     risks: mapped,
-    metrics: {
-      total: mapped.length,
-      ...counts,
-    },
+    metrics,
+    total,
+    hasMore,
+    metricsIncluded: params.includeMetrics,
   };
+}
+
+/**
+ * AI-Q compatibility (B-7): yield every visible risk DTO, one batch at a time,
+ * so external API-key integrations keep receiving the full list.
+ */
+export async function* iterateVisibleRiskDtos(): AsyncGenerator<RiskDto> {
+  const displayIdByRiskId = await fetchGlobalRiskDisplayIdMap();
+  let scanOffset = 0;
+  for (;;) {
+    const batch = await db
+      .select(riskListColumns)
+      .from(risks)
+      .innerJoin(articles, eq(risks.articleId, articles.id))
+      .where(RISK_LIST_CANDIDATE_WHERE)
+      .orderBy(desc(risks.createdAt), desc(risks.id))
+      .limit(RISK_SCAN_BATCH)
+      .offset(scanOffset);
+    if (batch.length === 0) break;
+    for (const row of batch) {
+      if (
+        isRiskVisibleInMainList({
+          domains: row.domains,
+          qualityScore: row.qualityScore,
+          extractionJson: row.extractionJson,
+        })
+      ) {
+        yield mapRiskRowToDto(row, displayIdByRiskId.get(row.id) ?? "R-?");
+      }
+    }
+    scanOffset += batch.length;
+    if (batch.length < RISK_SCAN_BATCH) break;
+  }
 }
 
 export async function getRiskById(riskId: string): Promise<RiskDto> {

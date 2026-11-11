@@ -44,6 +44,7 @@ from app.extraction.extract_utils import (
 from app.llm.model_config import get_model_config, set_model
 from app.llm.model_invoke import invoke_bedrock_model, test_bedrock_model
 from app.ingestion.errors import SkipIngest
+from app.ingestion.filters import has_no_ai_signal
 from app.etl.file_access import read_allowed_etl_file
 from app.etl.pipeline import prepare_etl_import
 from app.ingestion.pipeline import (
@@ -106,6 +107,69 @@ class EtlImportBody(BaseModel):
 
 def _error_payload(error: str, message: str) -> dict[str, object]:
     return {"ok": False, "error": error, "message": message}
+
+
+def _ai_relevance_gate_enabled() -> bool:
+    """Conservative zero-AI-signal gate (B-4). On by default; disable with 0."""
+    return os.getenv("AI_RELEVANCE_GATE", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+def _ai_relevance_llm_precheck_enabled() -> bool:
+    """Optional LLM relevance pre-check (B-4). Off by default; enable with 1."""
+    return os.getenv("AI_RELEVANCE_LLM_PRECHECK", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _llm_says_ai_relevant(text: str, title: str, url: str) -> bool:
+    """Ask the configured model whether the page is about an AI risk.
+
+    Fail-open: any error (or a non-"NO" answer) is treated as relevant so the
+    pre-check can only *confirm* a skip the deterministic gate already proposed,
+    never drop content on its own.
+    """
+    try:
+        from app.llm.bedrock_llm import get_bedrock_client
+
+        client = get_bedrock_client()
+        prompt = (
+            "Answer with a single word, YES or NO. Is the following web page "
+            "primarily about artificial intelligence, machine learning, or an "
+            "AI system / model (its risks, safety, or failures)?\n\n"
+            f"TITLE: {title}\nURL: {url}\n\nCONTENT:\n{(text or '')[:4000]}"
+        )
+        answer, _model, _usage = client.generate_text(
+            "You are a precise binary classifier.",
+            [{"text": prompt}],
+            max_tokens=4,
+            temperature=0.0,
+        )
+        return not answer.strip().upper().startswith("NO")
+    except Exception as exc:  # pragma: no cover - fail-open
+        logging.getLogger("airisk").warning(
+            "AI relevance pre-check failed (%s); assuming relevant", exc
+        )
+        return True
+
+
+def _no_ai_risk_payload() -> dict[str, object]:
+    return _json_safe(
+        {
+            "ok": False,
+            "error": "NoAiRisk",
+            "message": "content has no AI-relevant risk",
+            "source_flag": "no_ai_risk",
+            "metrics": {"word_count": 0, "tokens_generated": 0, "duration_ms": 1},
+        }
+    )
 
 
 def _json_safe(value: object) -> object:
@@ -239,10 +303,57 @@ def etl_import(body: EtlImportBody) -> dict[str, object]:
         return _error_payload(type(exc).__name__, str(exc))
 
 
+class AssessRiskBody(BaseModel):
+    text: str = ""
+    record: dict = Field(default_factory=dict)
+    modelId: str | None = None
+    catalogCandidates: list = Field(default_factory=list)
+    hints: dict = Field(default_factory=dict)
+
+
+@app.post("/extract/assess")
+def assess_risk(body: AssessRiskBody) -> dict[str, object]:
+    """Nine-check assessor. The worker calls this after facts-only extraction."""
+    if not (body.text or "").strip() or not isinstance(body.record, dict):
+        return _error_payload("EmptyAssessment", "record and text are required")
+    try:
+        if body.modelId and body.modelId.strip():
+            set_model(body.modelId.strip())
+        from app.llm.bedrock_llm import get_bedrock_client
+        from app.verification.llm_verifier import run_verifier
+
+        client = get_bedrock_client()
+        assessment = run_verifier(
+            body.record,
+            body.text,
+            generate_text=client.generate_text,
+            model_id=(body.modelId or "").strip() or None,
+            cache_source=client._cache_enabled(),
+            catalog_candidates=body.catalogCandidates,
+            hints=body.hints,
+        )
+        return _json_safe({"ok": True, "assessment": assessment})
+    except Exception as exc:
+        return _error_payload(type(exc).__name__, str(exc))
+
+
 @app.post("/extract/risk")
 def extract_risk(body: ExtractRiskBody) -> dict[str, object]:
     if not (body.text or "").strip():
         return _error_payload("EmptyText", "no text to extract")
+
+    # B-4: skip pages with no AI-relevant risk so no junk risks row is created.
+    # The deterministic gate fires only when the content carries zero AI signal
+    # at all; the optional LLM pre-check (behind AI_RELEVANCE_LLM_PRECHECK) can
+    # confirm the skip but never drops content on its own (it is fail-open).
+    if _ai_relevance_gate_enabled() and has_no_ai_signal(
+        body.text, title=body.title or "", url=body.url or ""
+    ):
+        if not (
+            _ai_relevance_llm_precheck_enabled()
+            and _llm_says_ai_relevant(body.text, body.title or "", body.url or "")
+        ):
+            return _no_ai_risk_payload()
 
     try:
         if body.modelId and body.modelId.strip():

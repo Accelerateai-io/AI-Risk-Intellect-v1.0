@@ -6,6 +6,7 @@ import {
   BookOpen,
   Brain,
   Building2,
+  ClipboardCheck,
   ClipboardList,
   Clock,
   Database,
@@ -45,7 +46,14 @@ import {
   type RiskDetail,
 } from "./riskData";
 import type { RiskEditDraft } from "./riskEditDraft";
-import type { EvidenceDisciplineInfo } from "./riskData";
+import type { EvidenceDisciplineInfo, FactsV2AssessmentInfo } from "./riskData";
+import {
+  assessmentCheckLabel,
+  displayGroundingScore,
+  formatGroundingScore,
+  formatStoredToken,
+  verifierCardMode,
+} from "./assessmentDisplay";
 import { FieldEditDialog, type FieldEditSpec } from "./FieldEditDialog";
 import "./riskDetailDialog.css";
 
@@ -440,11 +448,6 @@ const VERIFIER_CHECK_LABELS: Record<string, string> = {
   mitigations_reflected: "Mitigations reflected",
   not_attributed_to_proposed_method: "Not attributed to the proposed method",
   severity_within_evidence: "Severity within evidence",
-  evidence_labels_match: "Evidence labels match the source",
-  classification_consistent: "Classification matches the explanation",
-  simulation_scope_respected: "Simulation stays simulation",
-  sensitive_claims_supported: "Healthcare and physical safety are supported",
-  scope_within_source: "Claim stays within the tested task",
 };
 
 function labelValue(value: string | null | undefined): string {
@@ -490,23 +493,137 @@ function fillBentoRow(spans: BentoSpan[]): BentoSpan[] {
   return placed;
 }
 
-function spanLayout(span: BentoSpan): "compact" | "wide" | "span3" | "full" {
-  if (span >= 4) return "full";
-  if (span === 3) return "span3";
-  if (span === 2) return "wide";
-  return "compact";
-}
-
 /** Evidence fields (BUG-01/02/03) and the verifier verdict (BUG-06). */
 const EvidenceDisciplineSection = memo(function EvidenceDisciplineSection({
   baseId,
   info,
+  assessment,
 }: {
   baseId: string;
   info: EvidenceDisciplineInfo;
+  assessment?: FactsV2AssessmentInfo | null;
 }) {
   const verifier = info.verifier;
   const extraction = info.extraction;
+  const verifierMode = verifierCardMode(assessment, verifier);
+  const verifierText =
+    verifierMode === "verdict" && verifier
+      ? [
+          verifier.passed ? "Passed" : "Flagged",
+          ...verifier.checks.map((c) => `${c.name} ${c.reason}`),
+          ...verifier.unsupportedClaims,
+        ].join(" ")
+      : verifierMode === "did-not-run"
+        ? "Did not run"
+        : "Not run";
+  const evidenceCards: {
+    title: string;
+    icon: LucideIcon;
+    text: string;
+    items: number;
+    body: React.ReactNode;
+  }[] = [
+    {
+      title: "Evidence type",
+      icon: FileText,
+      text: `${labelValue(info.evidenceType)} ${info.sourceType ? labelValue(info.sourceType) : ""}`,
+      items: 0,
+      body: (
+        <>
+          <span>{labelValue(info.evidenceType)}</span>
+          {info.sourceType ? (
+            <p className="riskDetail__ratingReasoning">Source: {labelValue(info.sourceType)}</p>
+          ) : null}
+        </>
+      ),
+    },
+    {
+      title: "Paper stance",
+      icon: BookOpen,
+      text: `${labelValue(info.paperStance)} ${info.proposedMitigation ?? ""}`,
+      items: 0,
+      body: (
+        <>
+          <span>{labelValue(info.paperStance)}</span>
+          {info.proposedMitigation ? (
+            <p className="riskDetail__ratingReasoning">Proposes: {info.proposedMitigation}</p>
+          ) : null}
+        </>
+      ),
+    },
+    {
+      title: "Demonstrated finding",
+      icon: BarChart3,
+      text: info.demonstratedFinding ?? "",
+      items: 0,
+      body: <span>{info.demonstratedFinding ?? "—"}</span>,
+    },
+    {
+      title: "Stated implication",
+      icon: Quote,
+      text: info.statedImplication ?? "",
+      items: 0,
+      body: <span>{info.statedImplication ?? "—"}</span>,
+    },
+    {
+      title: "Mitigations in source",
+      icon: ShieldCheck,
+      text: info.mitigationsInSource.join(" "),
+      items: info.mitigationsInSource.length,
+      body: info.mitigationsInSource.length ? (
+        <ul className="riskDetail__plainList">
+          {info.mitigationsInSource.map((m, i) => (
+            <li key={`${i}-${m}`}>{m}</li>
+          ))}
+        </ul>
+      ) : (
+        <span>—</span>
+      ),
+    },
+    ...(verifierMode === "hidden"
+      ? []
+      : [
+    {
+      title: "Verifier",
+      icon: Eye,
+      text: verifierText,
+      items: verifier?.checks.length ?? 0,
+      body: verifierMode === "absent" ? (
+        <span>Not run</span>
+      ) : verifierMode === "did-not-run" ? (
+        <span>Did not run</span>
+      ) : verifier ? (
+        <>
+          <span>
+            {verifier.passed ? "Passed" : "Flagged"}
+            {verifier.groundingScore != null
+              ? ` · grounding ${verifier.groundingScore.toFixed(2)}`
+              : ""}
+          </span>
+          <ul className="riskDetail__plainList">
+            {verifier.checks.map((c) => (
+              <li key={c.name}>
+                {c.pass === false ? "✗" : c.pass === true ? "✓" : "?"}{" "}
+                {VERIFIER_CHECK_LABELS[c.name] ?? c.name}
+                {c.pass === false && c.reason ? `: ${c.reason}` : ""}
+              </li>
+            ))}
+          </ul>
+          {verifier.unsupportedClaims.length ? (
+            <p className="riskDetail__ratingReasoning">
+              Unsupported: {verifier.unsupportedClaims.join("; ")}
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <span>Not run</span>
+      ),
+    },
+  ]),
+  ];
+  const spans = fillBentoRow(
+    evidenceCards.map((card) => contentSpan(card.text, card.items)),
+  );
   const extractionText = extraction.mode
     ? [
         extraction.mode === "whole" ? "whole document, one call" : `chunked (${extraction.chunks ?? "?"} chunks)`,
@@ -519,30 +636,6 @@ const EvidenceDisciplineSection = memo(function EvidenceDisciplineSection({
         .filter(Boolean)
         .join(" · ")
     : "";
-  const publicationLabel =
-    info.publication?.status === "published"
-      ? "Published automatically"
-      : info.publication?.status === "held"
-        ? "Held for review"
-        : "Not decided";
-  const mitigations = info.mitigationsInSource ?? [];
-  const verifierSummary = !verifier
-    ? "Not run"
-    : !verifier.ran
-      ? "Did not run"
-      : verifier.checks.map((check) => `${check.name} ${check.reason}`).join(" ");
-  const spans = fillBentoRow([
-    contentSpan(labelValue(info.evidenceType)),
-    contentSpan(labelValue(info.sourceType)),
-    contentSpan(labelValue(info.paperStance)),
-    contentSpan(publicationLabel),
-    contentSpan(info.demonstratedFinding ?? ""),
-    contentSpan(info.statedImplication ?? ""),
-    contentSpan(info.proposedMitigation ?? ""),
-    contentSpan(mitigations.join(" "), mitigations.length),
-    contentSpan(verifierSummary, verifier?.checks.length ?? 0),
-  ]);
-  const layoutAt = (index: number) => spanLayout(spans[index] ?? 4);
 
   return (
     <section
@@ -553,73 +646,17 @@ const EvidenceDisciplineSection = memo(function EvidenceDisciplineSection({
         <SearchCheck size={16} strokeWidth={2} aria-hidden />
         Evidence Discipline
       </h3>
-      <dl className="riskDetail__classification riskDetail__classification--evidence">
-        <DetailInfoCard title="Evidence type" icon={FileText} layout={layoutAt(0)}>
-          <span>{labelValue(info.evidenceType)}</span>
-        </DetailInfoCard>
-        <DetailInfoCard title="Source type" icon={FileText} layout={layoutAt(1)}>
-          <span>{labelValue(info.sourceType)}</span>
-        </DetailInfoCard>
-        <DetailInfoCard title="Paper stance" icon={BookOpen} layout={layoutAt(2)}>
-          <span>{labelValue(info.paperStance)}</span>
-        </DetailInfoCard>
-        <DetailInfoCard title="Publication" icon={SearchCheck} layout={layoutAt(3)}>
-          <span>{publicationLabel}</span>
-        </DetailInfoCard>
-        <DetailInfoCard title="Demonstrated finding" icon={BarChart3} layout={layoutAt(4)}>
-          <span>{info.demonstratedFinding ?? "—"}</span>
-        </DetailInfoCard>
-        <DetailInfoCard title="Stated implication" icon={Quote} layout={layoutAt(5)}>
-          <span>{info.statedImplication ?? "—"}</span>
-        </DetailInfoCard>
-        <DetailInfoCard title="Proposed mitigation" icon={ShieldCheck} layout={layoutAt(6)}>
-          <span>{info.proposedMitigation ?? "—"}</span>
-        </DetailInfoCard>
-        <DetailInfoCard title="Mitigations in source" icon={ShieldCheck} layout={layoutAt(7)}>
-          {mitigations.length ? (
-            <ul className="riskDetail__plainList">
-              {mitigations.map((m, i) => (
-                <li key={`${i}-${m}`}>{m}</li>
-              ))}
-            </ul>
-          ) : (
-            <span>—</span>
-          )}
-        </DetailInfoCard>
-        <DetailInfoCard
-          title="Verifier"
-          icon={Eye}
-          layout={layoutAt(8)}
-        >
-          {!verifier ? (
-            <span>Not run</span>
-          ) : !verifier.ran ? (
-            <span>Did not run</span>
-          ) : (
-            <>
-              <span>
-                {verifier.passed ? "Passed" : "Flagged"}
-                {verifier.groundingScore != null
-                  ? ` · grounding ${verifier.groundingScore.toFixed(2)}`
-                  : ""}
-              </span>
-              <ul className="riskDetail__plainList">
-                {verifier.checks.map((c) => (
-                  <li key={c.name}>
-                    {c.pass === false ? "✗" : c.pass === true ? "✓" : "?"}{" "}
-                    {VERIFIER_CHECK_LABELS[c.name] ?? c.name}
-                    {c.pass === false && c.reason ? `: ${c.reason}` : ""}
-                  </li>
-                ))}
-              </ul>
-              {verifier.unsupportedClaims.length ? (
-                <p className="riskDetail__ratingReasoning">
-                  Unsupported: {verifier.unsupportedClaims.join("; ")}
-                </p>
-              ) : null}
-            </>
-          )}
-        </DetailInfoCard>
+      <dl className="riskDetail__classification riskDetail__evidenceBento">
+        {evidenceCards.map((card, index) => (
+          <DetailInfoCard
+            key={card.title}
+            title={card.title}
+            icon={card.icon}
+            span={spans[index]}
+          >
+            {card.body}
+          </DetailInfoCard>
+        ))}
       </dl>
       {extractionText ? (
         <p className="riskDetail__ratingReasoning">Extraction: {extractionText}</p>
@@ -674,7 +711,7 @@ const DetailInfoCard = memo(function DetailInfoCard({
   headerHref,
   headerActionLabel,
   onEdit,
-  layout,
+  span,
 }: {
   title: string;
   value?: string;
@@ -684,7 +721,7 @@ const DetailInfoCard = memo(function DetailInfoCard({
   headerHref?: string;
   headerActionLabel?: string;
   onEdit?: () => void;
-  layout?: "compact" | "wide" | "span3" | "full";
+  span?: BentoSpan;
 }) {
   const body = children ?? value ?? "—";
   const openHref = headerHref?.trim();
@@ -703,7 +740,7 @@ const DetailInfoCard = memo(function DetailInfoCard({
 
   return (
     <div
-      className={`riskDetail__classCard${Icon ? "" : " riskDetail__classCard--noIcon"}${showHeaderAction ? " riskDetail__classCard--withAction" : ""}${onEdit ? " riskDetail__classCard--editable" : ""}${layout && layout !== "compact" ? ` riskDetail__classCard--${layout}` : ""}`}
+      className={`riskDetail__classCard${Icon ? "" : " riskDetail__classCard--noIcon"}${showHeaderAction ? " riskDetail__classCard--withAction" : ""}${onEdit ? " riskDetail__classCard--editable" : ""}${span ? ` riskDetail__classCard--span${span}` : ""}`}
     >
       {showHeaderAction ? (
         <div className="riskDetail__classCardHeadRow">
@@ -761,10 +798,6 @@ const CatalogMatchCard = memo(function CatalogMatchCard({ match }: { match: Cata
     <li className="riskDetail__catalogMatch">
       <div className="riskDetail__catalogMatchHead">
         <span className="riskDetail__riskIdPill">{match.riskId}</span>
-        {match.matchStrength === "suggestion" ||
-        match.matchSummary.trim().toLowerCase().startsWith("suggestion:") ? (
-          <span className="riskDetail__riskIdPill">Suggestion</span>
-        ) : null}
         <CatalogMatchScores
           accuracyPercent={match.accuracyPercent}
           domainMatchPercent={match.domainMatchPercent}
@@ -780,6 +813,56 @@ const CatalogMatchCard = memo(function CatalogMatchCard({ match }: { match: Cata
       <p className="riskDetail__catalogMatchDescription">{match.description}</p>
       <p className="riskDetail__catalogMatchSummary">{match.matchSummary}</p>
     </li>
+  );
+});
+
+const AssessmentSection = memo(function AssessmentSection({
+  baseId,
+  assessment,
+}: {
+  baseId: string;
+  assessment: FactsV2AssessmentInfo;
+}) {
+  return (
+    <section
+      className="riskDetail__section riskDetail__cardSection"
+      aria-labelledby={`${baseId}-assessment`}
+    >
+      <h3 id={`${baseId}-assessment`} className="riskDetail__sectionTitle">
+        <ClipboardCheck size={16} strokeWidth={2} aria-hidden />
+        Assessment
+      </h3>
+      <dl className="riskDetail__classification">
+        <DetailInfoCard title="Grounding score" icon={SearchCheck}>
+          <span>{formatGroundingScore(assessment.groundingScore)}</span>
+        </DetailInfoCard>
+        <DetailInfoCard title="Decision confidence" icon={Sparkles}>
+          <span>{formatStoredToken(assessment.confidence)}</span>
+        </DetailInfoCard>
+        <DetailInfoCard title="Publication status" icon={Flag}>
+          <span>{formatStoredToken(assessment.publicationStatus)}</span>
+        </DetailInfoCard>
+        <DetailInfoCard title="Decision reason" icon={ClipboardList}>
+          <span>{formatStoredToken(assessment.decisionReason)}</span>
+        </DetailInfoCard>
+      </dl>
+      <dl className="riskDetail__classification riskDetail__evidenceBento">
+        <DetailInfoCard title="Assessment checks" icon={ShieldCheck} span={4}>
+          <ul className="riskDetail__plainList">
+            {assessment.checks.map((check) => (
+              <li key={check.name}>
+                {check.pass === false ? "✗" : check.pass === true ? "✓" : "?"}{" "}
+                {assessmentCheckLabel(check.name)}
+                {check.reason ? `: ${check.reason}` : ""}
+                {check.quote ? (
+                  <p className="riskDetail__ratingReasoning">“{check.quote}”</p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </DetailInfoCard>
+      </dl>
+    </section>
   );
 });
 
@@ -959,9 +1042,17 @@ export const RiskDetailView = memo(function RiskDetailView({
                       value={risk.ingestedAt}
                       icon={Clock}
                     />
+                    {/*
                     <DetailInfoCard
                       title="Quality score"
                       value={risk.qualityScore}
+                      icon={Gauge}
+                      ddClassName="riskDetail__classCardValue--qualityScore"
+                    />
+                    */}
+                    <DetailInfoCard
+                      title="Grounding score"
+                      value={displayGroundingScore(risk)}
                       icon={Gauge}
                       ddClassName="riskDetail__classCardValue--qualityScore"
                     />
@@ -1080,7 +1171,11 @@ export const RiskDetailView = memo(function RiskDetailView({
                 <EvidenceDisciplineSection
                   baseId={baseId}
                   info={risk.evidenceDiscipline}
+                  assessment={risk.assessment}
                 />
+              ) : null}
+              {risk.assessment ? (
+                <AssessmentSection baseId={baseId} assessment={risk.assessment} />
               ) : null}
 
               <section
