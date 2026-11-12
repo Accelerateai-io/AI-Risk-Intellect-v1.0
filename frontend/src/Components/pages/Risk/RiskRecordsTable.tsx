@@ -12,7 +12,7 @@ import {
   type RiskDetail,
 } from "./riskData";
 import { displayGroundingScore } from "./assessmentDisplay";
-import { getHumanReviewMoveDetails } from "./humanReviewHelpers";
+import { getHumanReviewMoveDetails, wasMovedFromReview } from "./humanReviewHelpers";
 import { RiskMoveInfoDialog } from "./RiskMoveInfoDialog";
 
 interface RiskRecordsTableProps {
@@ -42,7 +42,7 @@ const RiskRecordRow = memo(function RiskRecordRow({
   onOpenMoveInfo: (row: RiskDetail) => void;
 }) {
   const navigate = useNavigate();
-  const showMoveInfo = row.humanReview?.status === "approved";
+  const showMoveInfo = wasMovedFromReview(row.humanReview);
 
   return (
     <tr>

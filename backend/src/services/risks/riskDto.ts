@@ -427,6 +427,47 @@ function stringList(v: unknown): string[] {
   return single ? [single] : [];
 }
 
+function namedCatalogEntry(
+  entry: Record<string, unknown>,
+  ext: ExtractionJson,
+): string {
+  const bestId = str(entry.best_id);
+  const matches = parseCatalogMatchesFromExtraction(ext) ?? [];
+  const match = matches.find((item) => item.riskId === bestId) ?? matches[0] ?? null;
+  const title = match?.title?.trim() ?? "";
+  const id = bestId || match?.riskId?.trim() || "";
+  if (title && id) return `${id}, “${title}”`;
+  if (title) return `“${title}”`;
+  return id;
+}
+
+/** Why a failed catalog check is shown as a suggestion. No score is included. */
+export function catalogSuggestionExplanation(
+  entry: Record<string, unknown>,
+  ext: ExtractionJson,
+): string {
+  const verdict = str(entry.verdict).toLowerCase();
+  const named = namedCatalogEntry(entry, ext);
+  if (verdict === "topical only") {
+    return named
+      ? `The closest catalog entry, ${named}, only shares the topic. It does not describe the same risk, so the catalog match is shown as a suggestion.`
+      : "The closest catalog entry only shares the topic. It does not describe the same risk, so the catalog match is shown as a suggestion.";
+  }
+  if (verdict === "related") {
+    return named
+      ? `The closest catalog entry, ${named}, describes a related mechanism, so the catalog match is shown as a suggestion.`
+      : "The closest catalog entry describes a related mechanism, so the catalog match is shown as a suggestion.";
+  }
+  if (verdict === "same mechanism") {
+    return named
+      ? `The catalog entry ${named} was not confirmed as this risk, so the catalog match is shown as a suggestion.`
+      : "The catalog entry was not confirmed as this risk, so the catalog match is shown as a suggestion.";
+  }
+  return named
+    ? `The closest catalog entry, ${named}, does not describe this risk, so the catalog match is shown as a suggestion.`
+    : "No catalog entry describes this risk, so the catalog match is shown as a suggestion.";
+}
+
 /** Facts-v2 assessment fields for the detail page. Does not change publication. */
 export function mapFactsV2Assessment(ext: ExtractionJson): FactsV2AssessmentDto | null {
   if (str(ext.pipeline_version) !== FACTS_V2_PIPELINE_VERSION) return null;
@@ -439,10 +480,15 @@ export function mapFactsV2Assessment(ext: ExtractionJson): FactsV2AssessmentDto 
     publicationStatus: strOrNull(ext.publication_status),
     checks: FACTS_V2_CHECK_ORDER.map((name) => {
       const entry = (raw[name] ?? {}) as Record<string, unknown>;
+      const pass = boolOrNull(entry.pass);
+      const reason =
+        name === "catalog_match" && pass !== true
+          ? catalogSuggestionExplanation(entry, ext)
+          : str(entry.reason);
       return {
         name,
-        pass: boolOrNull(entry.pass),
-        reason: str(entry.reason),
+        pass,
+        reason,
         quote: str(entry.quote),
       };
     }),

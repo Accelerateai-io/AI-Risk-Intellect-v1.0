@@ -55,5 +55,14 @@ export function printModelFulfillmentToTerminal(
   label: string,
   fulfillment: ModelFulfillmentResponse,
 ): void {
+  if (fulfillment.status === "error") {
+    const modelId = String(
+      fulfillment.outputContexts[0]?.parameters?.model_id ?? "",
+    ).trim();
+    const who = modelId ? ` (${modelId})` : "";
+    console.log(
+      `[${label}] Not working${who}: ${fulfillment.fulfillmentText}`,
+    );
+  }
   console.log(`\n[${label}]\n${JSON.stringify(fulfillment, null, 2)}\n`);
 }

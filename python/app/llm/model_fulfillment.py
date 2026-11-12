@@ -52,4 +52,11 @@ def build_model_fulfillment_response(
 
 
 def print_model_fulfillment_to_terminal(label: str, fulfillment: dict[str, Any]) -> None:
+    if fulfillment.get("status") == "error":
+        contexts = fulfillment.get("outputContexts") or []
+        parameters = (contexts[0].get("parameters") if contexts else {}) or {}
+        model_id = str(parameters.get("model_id") or "").strip()
+        who = f" ({model_id})" if model_id else ""
+        reason = fulfillment.get("fulfillmentText") or "Model test failed."
+        print(f"[{label}] Not working{who}: {reason}")
     print(f"\n[{label}]\n{json.dumps(fulfillment, indent=2)}\n")

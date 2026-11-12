@@ -3,8 +3,11 @@ import { test } from "node:test";
 import {
   FACTS_V2_CHECK_LABELS,
   assessmentCheckLabel,
+  assessmentCheckPassDescription,
+  assessmentCheckReason,
   displayGroundingScore,
   formatGroundingScore,
+  formatPublicationStatus,
   formatStoredToken,
   groundingSortValue,
   verifierCardMode,
@@ -34,8 +37,29 @@ test("facts-v2 detail hides the old verifier card and keeps nine check labels", 
   assert.equal(formatStoredToken(assessment.confidence), "MEDIUM");
   assert.equal(formatStoredToken(assessment.decisionReason), "CATALOG_SUGGESTED");
   assert.equal(formatStoredToken(assessment.publicationStatus), "published");
+  assert.equal(formatPublicationStatus(assessment.publicationStatus), "Published");
+  assert.equal(formatPublicationStatus("held"), "Held");
   assert.equal(assessment.checks[0].quote, "models leaked training text");
   assert.equal(assessment.checks.find((check) => check.name === "catalog_match")?.reason, "below 60 percent");
+  for (const name of Object.keys(FACTS_V2_CHECK_LABELS)) {
+    const description = assessmentCheckPassDescription(name);
+    assert.ok(description.length > 20);
+    assert.equal(description.includes("%"), false);
+  }
+  assert.equal(
+    assessmentCheckPassDescription("claim_is_demonstrated"),
+    "The source reports this risk as a measured result or a real incident.",
+  );
+  assert.equal(
+    assessmentCheckReason(assessment.checks[0]),
+    "The source reports this risk as a measured result or a real incident.",
+  );
+  assert.equal(
+    assessmentCheckReason(
+      assessment.checks.find((check) => check.name === "catalog_match")!,
+    ),
+    "No catalog entry describes this same risk.",
+  );
 });
 
 test("displayed score is grounding, not the quality score", () => {

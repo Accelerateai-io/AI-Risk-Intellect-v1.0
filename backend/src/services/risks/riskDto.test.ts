@@ -164,5 +164,38 @@ test("facts-v2 detail mapping exposes the nine checks without changing quality c
     quote: "",
   });
   assert.equal(assessment.checks[8].name, "catalog_match");
+  assert.equal(
+    assessment.checks[8].reason,
+    "No catalog entry describes this risk, so the catalog match is shown as a suggestion.",
+  );
   assert.equal(mapFactsV2Assessment({ pipeline_version: "2026.10" }), null);
+});
+
+test("catalog check explains a topical suggestion without a score", () => {
+  const assessment = mapFactsV2Assessment({
+    pipeline_version: "2026.11.facts-v2",
+    verifier_checks: {
+      catalog_match: {
+        pass: false,
+        best_id: "RISK-1242",
+        verdict: "topical only",
+        percent: 33,
+        reason: "below 60 percent",
+      },
+    },
+    catalog_matches: [
+      {
+        riskId: "RISK-1242",
+        title: "Value Alignment Risks in Generative AI Systems",
+        description: "Prompt wording can miss the user's intent.",
+        domain: "AI System Safety, Failures, and Limitations",
+        accuracyPercent: 33,
+      },
+    ],
+  });
+  assert.equal(
+    assessment?.checks.find((check) => check.name === "catalog_match")?.reason,
+    "The closest catalog entry, RISK-1242, “Value Alignment Risks in Generative AI Systems”, only shares the topic. It does not describe the same risk, so the catalog match is shown as a suggestion.",
+  );
+  assert.equal(assessment?.checks.find((check) => check.name === "catalog_match")?.reason.includes("33"), false);
 });

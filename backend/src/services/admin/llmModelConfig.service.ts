@@ -432,15 +432,30 @@ export async function invokeLlmModel(input: {
   };
 }
 
+function failModelTest(
+  modelId: string,
+  reason: string,
+): LlmModelValidationResult {
+  const fulfillmentResponse = buildModelFulfillmentResponse({
+    success: false,
+    text: reason,
+    modelId,
+  });
+  printModelFulfillmentToTerminal("LLM model test", fulfillmentResponse);
+  return {
+    success: false,
+    message: reason,
+    ...(modelId ? { modelId } : {}),
+    fulfillmentResponse,
+  };
+}
+
 export async function validateLlmModel(
   modelId: string,
 ): Promise<LlmModelValidationResult> {
   const trimmed = modelId.trim();
   if (!trimmed) {
-    return {
-      success: false,
-      message: "This model is not supported",
-    };
+    return failModelTest(trimmed, "No model was selected.");
   }
 
   if (inferenceProfilesEnabled()) {
@@ -456,19 +471,18 @@ export async function validateLlmModel(
     activeBackend() === "bedrock" &&
     !isBedrockModel(trimmed)
   ) {
-    return {
-      success: false,
-      message: "This model is not supported",
-    };
+    return failModelTest(
+      trimmed,
+      "This model is not in the model list, so Controls cannot test it.",
+    );
   }
 
   try {
     envUpdatesForModel(trimmed);
-  } catch {
-    return {
-      success: false,
-      message: "This model is not supported",
-    };
+  } catch (err) {
+    const reason =
+      err instanceof Error ? err.message : "This model is not supported for inference.";
+    return failModelTest(trimmed, reason);
   }
 
   const backend = catalogOption?.backend ?? (isBedrockModel(trimmed) ? "bedrock" : activeBackend());

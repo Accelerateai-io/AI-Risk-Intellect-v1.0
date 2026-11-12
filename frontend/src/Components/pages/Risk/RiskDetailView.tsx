@@ -17,6 +17,7 @@ import {
   Gauge,
   Globe,
   Hash,
+  Info,
   Layers,
   ExternalLink,
   Link2,
@@ -49,8 +50,10 @@ import type { RiskEditDraft } from "./riskEditDraft";
 import type { EvidenceDisciplineInfo, FactsV2AssessmentInfo } from "./riskData";
 import {
   assessmentCheckLabel,
+  assessmentCheckPassDescription,
   displayGroundingScore,
   formatGroundingScore,
+  formatPublicationStatus,
   formatStoredToken,
   verifierCardMode,
 } from "./assessmentDisplay";
@@ -659,7 +662,13 @@ const EvidenceDisciplineSection = memo(function EvidenceDisciplineSection({
         ))}
       </dl>
       {extractionText ? (
-        <p className="riskDetail__ratingReasoning">Extraction: {extractionText}</p>
+        <p className="riskDetail__infoNote" role="note">
+          <Info size={14} strokeWidth={2} aria-hidden />
+          <span>
+            <span className="riskDetail__infoNoteLabel">Extraction. </span>
+            {extractionText}
+          </span>
+        </p>
       ) : null}
     </section>
   );
@@ -840,7 +849,7 @@ const AssessmentSection = memo(function AssessmentSection({
           <span>{formatStoredToken(assessment.confidence)}</span>
         </DetailInfoCard>
         <DetailInfoCard title="Publication status" icon={Flag}>
-          <span>{formatStoredToken(assessment.publicationStatus)}</span>
+          <span>{formatPublicationStatus(assessment.publicationStatus)}</span>
         </DetailInfoCard>
         <DetailInfoCard title="Decision reason" icon={ClipboardList}>
           <span>{formatStoredToken(assessment.decisionReason)}</span>
@@ -848,14 +857,26 @@ const AssessmentSection = memo(function AssessmentSection({
       </dl>
       <dl className="riskDetail__classification riskDetail__evidenceBento">
         <DetailInfoCard title="Assessment checks" icon={ShieldCheck} span={4}>
-          <ul className="riskDetail__plainList">
-            {assessment.checks.map((check) => (
-              <li key={check.name}>
-                {check.pass === false ? "✗" : check.pass === true ? "✓" : "?"}{" "}
-                {assessmentCheckLabel(check.name)}
-                {check.reason ? `: ${check.reason}` : ""}
+          <ul className="riskDetail__plainList riskDetail__checkList">
+            {assessment.checks.map((check, index) => (
+              <li key={check.name} className="riskDetail__checkItem">
+                <p className="riskDetail__checkTitle">
+                  {check.pass === false ? "✗" : check.pass === true ? "✓" : "?"}{" "}
+                  Check {index + 1}. {assessmentCheckLabel(check.name)}
+                </p>
+                {check.pass === true ? (
+                  <p className="riskDetail__checkReason">
+                    <span className="riskDetail__checkReasonLabel">Reason: </span>
+                    {assessmentCheckPassDescription(check.name)}
+                  </p>
+                ) : check.reason ? (
+                  <p className="riskDetail__checkReason">
+                    <span className="riskDetail__checkReasonLabel">Reason: </span>
+                    {check.reason}
+                  </p>
+                ) : null}
                 {check.quote ? (
-                  <p className="riskDetail__ratingReasoning">“{check.quote}”</p>
+                  <p className="riskDetail__checkReason">“{check.quote}”</p>
                 ) : null}
               </li>
             ))}

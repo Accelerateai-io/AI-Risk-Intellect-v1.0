@@ -29,6 +29,20 @@ def _bedrock_region() -> str:
     )
 
 
+def _unsupported_reason(model_id: str) -> str:
+    trimmed = (model_id or "").strip()
+    if not trimmed:
+        return "No model was selected."
+    catalog = _get_catalog_model(trimmed)
+    if not catalog:
+        return "This model is not in the model list, so Controls cannot test it."
+    outputs = {str(m).upper() for m in catalog.get("outputModalities") or []}
+    inputs = {str(m).upper() for m in catalog.get("inputModalities") or []}
+    if "TEXT" not in inputs or "TEXT" not in outputs:
+        return "This model does not accept and return text. Controls can only test text models."
+    return "This model is not supported for inference."
+
+
 def _is_text_generation_model(model_id: str) -> bool:
     catalog = _get_catalog_model(model_id)
     if not catalog:
@@ -137,14 +151,14 @@ def _finalize_result(
 def test_bedrock_model(model_id: str) -> dict[str, Any]:
     trimmed = (model_id or "").strip()
     if not trimmed:
-        result = {"success": False, "message": "This model is not supported"}
+        result = {"success": False, "message": _unsupported_reason(trimmed)}
         return _finalize_result(
             label="LLM model test",
             result=result,
             fulfillment_text=result["message"],
         )
     if not _is_text_generation_model(trimmed):
-        result = {"success": False, "message": "This model is not supported"}
+        result = {"success": False, "message": _unsupported_reason(trimmed)}
         return _finalize_result(
             label="LLM model test",
             result={**result, "modelId": trimmed},
@@ -219,7 +233,7 @@ def invoke_bedrock_model(
     trimmed = (model_id or "").strip()
     prompt_text = (prompt or "").strip()
     if not trimmed:
-        result = {"success": False, "message": "This model is not supported"}
+        result = {"success": False, "message": _unsupported_reason(trimmed)}
         return _finalize_result(
             label="LLM model invoke",
             result=result,
@@ -233,7 +247,7 @@ def invoke_bedrock_model(
             fulfillment_text=result["message"],
         )
     if not _is_text_generation_model(trimmed):
-        result = {"success": False, "message": "This model is not supported"}
+        result = {"success": False, "message": _unsupported_reason(trimmed)}
         return _finalize_result(
             label="LLM model invoke",
             result={**result, "modelId": trimmed},

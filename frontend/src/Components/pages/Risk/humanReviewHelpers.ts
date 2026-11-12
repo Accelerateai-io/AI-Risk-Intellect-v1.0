@@ -71,10 +71,16 @@ export type HumanReviewMoveDetails = {
   feedback: string | null;
 };
 
+export function wasMovedFromReview(
+  review: HumanReviewInfo | undefined,
+): boolean {
+  return review?.status === "approved" && Boolean(review.reviewedBy?.trim());
+}
+
 export function getHumanReviewMoveDetails(
   review: HumanReviewInfo | undefined,
 ): HumanReviewMoveDetails | null {
-  if (review?.status !== "approved") return null;
+  if (review?.status !== "approved" || !review.reviewedBy?.trim()) return null;
 
   const reviewer = review.reviewedBy?.trim()
     ? capitalizeDisplayName(review.reviewedBy)

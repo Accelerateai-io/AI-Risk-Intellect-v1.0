@@ -36,6 +36,33 @@ function bedrockRegion(): string {
   );
 }
 
+function textModelRejectionReason(modelId: string): string {
+  const catalog = getCatalogModel(modelId);
+  if (!catalog) {
+    return "This model is not in the model list, so Controls cannot test it.";
+  }
+  const outputs = catalog.outputModalities.map((item) => item.toUpperCase());
+  const inputs = catalog.inputModalities.map((item) => item.toUpperCase());
+  if (!inputs.includes("TEXT") || !outputs.includes("TEXT")) {
+    return "This model does not accept and return text. Controls can only test text models.";
+  }
+  return "This model is not supported for inference.";
+}
+
+function loggedModelFailure(
+  label: string,
+  modelId: string,
+  reason: string,
+): ModelFulfillmentResponse {
+  const fulfillmentResponse = buildModelFulfillmentResponse({
+    success: false,
+    text: reason,
+    modelId,
+  });
+  printModelFulfillmentToTerminal(label, fulfillmentResponse);
+  return fulfillmentResponse;
+}
+
 function isTextGenerationModel(modelId: string): boolean {
   const catalog = getCatalogModel(modelId);
   if (catalog) {
@@ -104,11 +131,16 @@ export function profileTestToValidationResult(
   const working = profileTest.workingTarget;
   const success = profileTest.overallStatus === "working";
 
+  const failureReason =
+    profileTest.tests
+      .map((item) => item.error?.trim())
+      .filter((item): item is string => Boolean(item))
+      .join(" ") || "No working identifier found for this inference profile.";
   const fulfillmentResponse = buildModelFulfillmentResponse({
     success,
     text: success
       ? (profileTest.workingReply ?? "Model works")
-      : "No working identifier found for this inference profile.",
+      : failureReason,
     modelId: profileId,
     invokeModelId: working?.value,
     prompt: profileTest.prompt,
@@ -120,7 +152,7 @@ export function profileTestToValidationResult(
     success,
     message: success
       ? `Model works via ${working?.identifierType ?? "profile"}`
-      : "No working identifier found for this inference profile.",
+      : failureReason,
     modelId: profileId,
     invokeModelId: working?.value,
     response: profileTest.workingReply,
@@ -304,11 +336,22 @@ export async function invokeBedrockModelTest(modelId: string): Promise<{
 }> {
   const trimmed = modelId.trim();
   if (!trimmed) {
-    return { success: false, message: "This model is not supported" };
+    const reason = "No model was selected.";
+    return {
+      success: false,
+      message: reason,
+      fulfillmentResponse: loggedModelFailure("LLM model test", trimmed, reason),
+    };
   }
 
   if (!isTextGenerationModel(trimmed)) {
-    return { success: false, message: "This model is not supported" };
+    const reason = textModelRejectionReason(trimmed);
+    return {
+      success: false,
+      message: reason,
+      modelId: trimmed,
+      fulfillmentResponse: loggedModelFailure("LLM model test", trimmed, reason),
+    };
   }
 
   const invokeId = resolveInvokeModelId(trimmed);

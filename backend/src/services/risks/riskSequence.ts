@@ -1,7 +1,27 @@
 import { db } from "../../db/index.js";
 import { risks } from "../../schema/risks/risks.js";
-import { inArray, sql } from "drizzle-orm";
+import { inArray, sql, type SQL } from "drizzle-orm";
 import { formatRiskDisplayId } from "./riskDisplayId.js";
+
+/**
+ * 1-based ingest order: created_at, then id.
+ * Outer columns must stay table-qualified. A bare "created_at" inside this
+ * subquery binds to `earlier`, the predicate becomes true for every row, and
+ * every risk receives the same sequence (the table count).
+ */
+export function riskIngestSequenceSql(): SQL<number> {
+  const outerCreatedAt = sql.raw(`"risks"."created_at"`);
+  const outerId = sql.raw(`"risks"."id"`);
+  return sql<number>`(
+    SELECT count(*)::int
+    FROM risks AS earlier
+    WHERE earlier.created_at < ${outerCreatedAt}
+       OR (
+         earlier.created_at = ${outerCreatedAt}
+         AND earlier.id <= ${outerId}
+       )
+  )`;
+}
 
 export type RiskOrderRow = {
   id: string;
@@ -54,15 +74,7 @@ export async function fetchRiskDisplayIdsFor(
   const rows = await db
     .select({
       id: risks.id,
-      seq: sql<number>`(
-        SELECT count(*)::int
-        FROM risks AS earlier
-        WHERE earlier.created_at < ${risks.createdAt}
-           OR (
-             earlier.created_at = ${risks.createdAt}
-             AND earlier.id <= ${risks.id}
-           )
-      )`,
+      seq: riskIngestSequenceSql(),
     })
     .from(risks)
     .where(inArray(risks.id, ids));
