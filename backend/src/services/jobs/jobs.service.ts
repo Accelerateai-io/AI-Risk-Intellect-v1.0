@@ -12,6 +12,7 @@ import {
   averageProcessingSeconds,
   completedJobProcessingMs,
 } from "./jobProcessingTime.js";
+import { jobSkipReasonCode } from "../../ingestion/filters.js";
 import { getDoNotExecuteBlocks } from "./urlExecutionBlocks.service.js";
 
 export type JobListItem = {
@@ -23,6 +24,8 @@ export type JobListItem = {
   source: string;
   tries: number;
   errorMessage: string | null;
+  /** FETCH_FAIL, NOT_AI, or MERGED when the job was skipped. Null otherwise. */
+  skipReasonCode: string | null;
   startedAt: Date | null;
   finishedAt: Date | null;
   createdAt: Date;
@@ -255,6 +258,7 @@ type JobListQueryRow = {
   source: string;
   tries: number;
   errorMessage: string | null;
+  skipReasonCode: string | null;
   startedAt: Date | null;
   finishedAt: Date | null;
   createdAt: Date;
@@ -286,6 +290,7 @@ async function loadJobListRows(query: ListJobsQuery): Promise<{
           source: jobs.source,
           tries: jobs.tries,
           errorMessage: jobs.errorMessage,
+          skipReasonCode: jobs.skipReasonCode,
           startedAt: jobs.startedAt,
           finishedAt: jobs.finishedAt,
           createdAt: jobs.createdAt,
@@ -346,6 +351,7 @@ async function loadJobListRows(query: ListJobsQuery): Promise<{
     return {
       rows: rows.map((row) => ({
         ...row,
+        skipReasonCode: null,
         finishedAt: null,
         batchRunId: null,
         jobModelName: null,
@@ -437,6 +443,9 @@ export async function listJobs(query: ListJobsQuery = DEFAULT_LIST_JOBS_QUERY): 
       source: row.source,
       tries: row.tries,
       errorMessage: row.errorMessage,
+      skipReasonCode:
+        row.skipReasonCode?.trim() ||
+        (row.status === "skipped" ? jobSkipReasonCode(row.errorMessage) : null),
       startedAt: row.startedAt,
       finishedAt: row.finishedAt,
       createdAt: row.createdAt,

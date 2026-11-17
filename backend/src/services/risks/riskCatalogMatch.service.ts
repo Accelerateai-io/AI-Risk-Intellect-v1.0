@@ -41,6 +41,8 @@ export type CatalogRiskMatch = {
   evidenceMatchPercent?: number;
   taxonomyMatchPercent?: number;
   judgeVerdict?: "match" | "no_match";
+  /** Judge band score, 0–100. The workflow 60 line reads this for a match. */
+  judgePercent?: number;
   judgeReasoning?: string;
 };
 
@@ -100,6 +102,8 @@ function mapRawToCatalogMatch(item: Record<string, unknown>): CatalogRiskMatch |
   if (verdict === "match" || verdict === "no_match") {
     match.judgeVerdict = verdict;
   }
+  const judgePercent = optionalNum(item.judgePercent ?? item.judge_percent);
+  if (judgePercent != null) match.judgePercent = judgePercent;
   const reasoning = str(item.judgeReasoning ?? item.judge_reasoning);
   if (reasoning) match.judgeReasoning = reasoning;
 

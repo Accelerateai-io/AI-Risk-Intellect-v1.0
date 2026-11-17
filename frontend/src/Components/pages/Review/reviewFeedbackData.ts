@@ -118,6 +118,7 @@ export function filterReviewFeedbackSamples(
       item.primaryRisk,
       item.feedback,
       item.reviewedBy,
+      item.articleUrl,
     ]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(q));

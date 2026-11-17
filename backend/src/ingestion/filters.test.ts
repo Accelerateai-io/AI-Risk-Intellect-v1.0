@@ -132,6 +132,8 @@ describe("jobSkipReasonCode (B-4)", () => {
       "Could not reach the site — connection failed",
       "The site did not respond in time (connection timed out).",
       "Cannot resolve hostname (DNS lookup failed).",
+      "html text too small",
+      "Fetch failed: the site returned an error or access-denied response (HTTP 403)",
     ]) {
       assert.equal(jobSkipReasonCode(reason), "FETCH_FAIL", reason);
     }

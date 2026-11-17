@@ -1,6 +1,6 @@
 {
   "region": "us-east-1",
-  "fetchedAt": "2026-11-12T09:18:23.346Z",
+  "fetchedAt": "2026-11-16T12:00:03.403Z",
   "count": 103,
   "profiles": [
     {
@@ -124,7 +124,7 @@
       "type": "SYSTEM_DEFINED",
       "description": "Routes requests to Anthropic Claude Haiku 5.5 globally across all supported AWS Regions.",
       "createdAt": "2026-10-06T23:50:14.449Z",
-      "updatedAt": "2026-10-07T17:31:44.583Z",
+      "updatedAt": "2026-11-16T04:09:35.027Z",
       "profileType": "SYSTEM_DEFINED",
       "modelId": "global.anthropic.claude-haiku-5-5",
       "foundationModelId": "anthropic.claude-haiku-5-5"

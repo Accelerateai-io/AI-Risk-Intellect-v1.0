@@ -33,6 +33,7 @@ export function riskMatchesFilters(
     row.riskScoring?.impactLabel ?? "",
     row.product?.name ?? "",
     row.product?.vendor ?? "",
+    row.articleUrl ?? "",
   ]
     .join(" ")
     .toLowerCase();

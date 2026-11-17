@@ -16,7 +16,7 @@ const HARM_SENTENCE =
   /\b(?:patients?|clinical|physical|bodily|surgical|healthcare)\b[\s\S]{0,80}\b(?:harm(?:ed|s|ful)?|injur(?:e|es|y|ies|ed)|deaths?|killed|unsafe)\b|\b(?:harm(?:ed|s|ful)?|injur(?:e|es|y|ies|ed)|deaths?|killed)\b[\s\S]{0,80}\b(?:patients?|clinical|physical|bodily)\b|operational harm to healthcare|incorrect prioritization[\s\S]{0,80}\b(?:patients?|surgical|clinical|hospital)\b|misdiagnos\w*|inappropriate treatment|\bpatient safety\b|loss of life|bodily harm|physical injury|physical-safety harm/i;
 
 const NOT_A_HARM_CLAIM =
-  /\b(?:is an inference|not shown|not reported|not demonstrated|not established|does not (?:show|report|demonstrate)|no (?:patient|clinical|physical) harm|not a (?:deployed|real-world) incident)\b|\bharm\w*\s+(?:was|is|were|are)\s+not\b|\bnot\b[\s\S]{0,40}\b(?:harm|injury|death|misdiagnos)/i;
+  /\b(?:is an inference|not shown|not reported|not demonstrated|not established|does not (?:show|report|demonstrate)|no (?:patient|clinical|physical) harm|not a (?:deployed|real-world) incident)\b|\bharm\w*\s+(?:was|is|were|are)\s+not\b|\bnot\b[\s\S]{0,40}\b(?:harm|injury|death|misdiagnos)|\bno reported\b[\s\S]{0,80}\b(?:patient safety|physical harm|clinical harm|deployment harm|harm)\b|\b(?:no|without)\b[\s\S]{0,40}\bpatient safety consequences\b/i;
 
 const METRIC_ONLY =
   /\b(?:auc|f1|accuracy|precision|recall|confusion matrix)\b/i;

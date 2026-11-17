@@ -91,7 +91,7 @@ export function RiskListFilters({
           id={filterId("search")}
           type="search"
           className="riskPage__searchInput"
-          placeholder="Search ID, title, domain, sector…"
+          placeholder="Search ID, title, domain, sector, URL…"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           autoComplete="off"

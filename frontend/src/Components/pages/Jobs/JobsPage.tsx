@@ -78,6 +78,7 @@ type JobRow = {
   finishedAt: string;
   riskFetchedAt: string;
   errorMessage: string;
+  skipReasonCode: string;
   doNotExecute: boolean;
   assignedModelName: string;
   assignedModelLabel: string;
@@ -771,14 +772,22 @@ function JobSlowReasonIcon({
   );
 }
 
+const SKIP_REASON_LABEL: Record<string, string> = {
+  FETCH_FAIL: "FETCH_FAIL — the page could not be read.",
+  NOT_AI: "NOT_AI — the page has no AI risk.",
+  MERGED: "MERGED — this URL was attached to an existing risk.",
+};
+
 function JobErrorInfoIcon({
   jobId,
   status,
   message,
+  skipReasonCode,
 }: {
   jobId: number;
   status: string;
   message: string;
+  skipReasonCode: string;
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -846,6 +855,11 @@ function JobErrorInfoIcon({
               <p className="jobsPage__errorInfoMeta">
                 Job #{jobId} · {status}
               </p>
+              {skipReasonCode ? (
+                <p className="jobsPage__errorInfoBody">
+                  {SKIP_REASON_LABEL[skipReasonCode] ?? skipReasonCode}
+                </p>
+              ) : null}
               <p className="jobsPage__errorInfoBody">{body}</p>
             </div>,
             document.body,
@@ -950,6 +964,7 @@ function normalizeJobsFromApi(raw: unknown, timeoutMinutes = 5): {
       source?: string;
       tries?: number;
       errorMessage?: string | null;
+      skipReasonCode?: string | null;
       createdAt?: string;
       startedAt?: string | null;
       updatedAt?: string;
@@ -998,6 +1013,7 @@ function normalizeJobsFromApi(raw: unknown, timeoutMinutes = 5): {
       riskFetchedAt: j.riskFetchedAt ?? "",
       executed: "—",
       errorMessage: (j.errorMessage ?? "").trim(),
+      skipReasonCode: (j.skipReasonCode ?? "").trim(),
       doNotExecute: Boolean(j.doNotExecute),
       assignedModelName: (j.assignedModelName ?? j.modelName ?? "").trim(),
       assignedModelLabel: (
@@ -2223,6 +2239,7 @@ export function JobsPage() {
                           jobId={row.id}
                           status={row.status}
                           message={row.errorMessage}
+                          skipReasonCode={row.skipReasonCode}
                         />
                       </td>
                       <td className="jobsPage__td jobsPage__td--muted">

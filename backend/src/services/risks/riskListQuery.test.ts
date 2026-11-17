@@ -34,6 +34,7 @@ function filterRow(overrides: Partial<RiskFilterRow> = {}): RiskFilterRow {
     industry: "Government",
     riskTitle: "Hallucination in government SLMs",
     articleTitle: "Making AI operational",
+    articleUrl: "https://arxiv.org/abs/2602.13473",
     aiProductName: null,
     aiProductVendor: null,
     qualityScore: 95,
@@ -170,6 +171,10 @@ test("riskRowMatchesFilters applies primaryKey, tag and search", () => {
   );
   assert.equal(
     riskRowMatchesFilters(row, { primaryKey: null, tag: null, search: "GOVERNMENT" }),
+    true,
+  );
+  assert.equal(
+    riskRowMatchesFilters(row, { primaryKey: null, tag: null, search: "2602.13473" }),
     true,
   );
   assert.equal(

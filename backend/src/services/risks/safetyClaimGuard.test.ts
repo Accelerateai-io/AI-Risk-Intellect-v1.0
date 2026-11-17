@@ -89,6 +89,28 @@ test("a differently worded clinical consequence is also real_world", () => {
   assert.equal(claim, "real_world");
 });
 
+test("a denial of patient-safety consequences stays unheld", () => {
+  const claim = resolveSafetyClaim(
+    record(
+      "The demonstrated impact is measurable performance degradation across benchmark metrics in a research setting, with no reported deployment harm or patient safety consequences.",
+    ),
+    "Removing the constraint degraded benchmark metrics. No clinical incident is reported.",
+    "real_world",
+  );
+  assert.equal(claim, "none");
+});
+
+test("a denial of physical harm in a simulation stays unheld", () => {
+  const claim = resolveSafetyClaim(
+    record(
+      "The measured effect is a 28.5% task failure rate in simulation with no reported physical harm, equipment damage, or deployment consequences beyond task incompletion.",
+    ),
+    "The topology-guided variant achieved a 71.5% success rate over 200 simulations.",
+    "real_world",
+  );
+  assert.equal(claim, "none");
+});
+
 test("a healthcare accuracy study with no patient-harm sentence stays unheld", () => {
   const claim = resolveSafetyClaim(
     record("The external-split AUC fell from 0.91 to 0.84 on the chest X-ray benchmark.", {
@@ -185,6 +207,106 @@ test("the safety hold survives a repair proposal and failed benefit-based checks
   assert.equal(result.decision.publication, "hold");
   assert.equal(extraction.safety_claim, "real_world");
   assert.match(String((extraction.risk_scoring as { impact_reasoning: string }).impact_reasoning), /operational harm/);
+});
+
+test("an observed may-statement is held as an unsupported claim", async () => {
+  const extraction = record("The paper reports a measured drop on the benchmark.", {
+    risk: {
+      demonstrated_finding:
+        "The authors observed that models may generate unsupported details in their rationales during time series classification.",
+      description:
+        "The authors observed that models may generate unsupported details in their rationales.",
+      evidence_type: "mitigation_target",
+    },
+  });
+  const result = await runFactsV2AssessmentCycle({
+    extractionJson: extraction,
+    sourceText:
+      "Vision-language models may generate unsupported details, so the method discards some rationales before they enter the knowledge bank.",
+    catalogCandidates: [],
+    hints: {},
+    assess: async () =>
+      assessment({
+        checks: checks({
+          catalog_match: { pass: true, best_id: "RISK-1", verdict: "same mechanism", percent: 85 },
+        }),
+      }),
+  });
+  assert.equal(result.decision.reason, "CLAIM_UNSUPPORTED");
+  assert.equal(result.decision.publication, "hold");
+});
+
+test("a measured observation that the source states as fact is not held for wording", async () => {
+  const extraction = record("Accuracy fell by three points on the held-out set.", {
+    risk: {
+      demonstrated_finding: "The authors observed that accuracy fell by three points on the held-out set.",
+    },
+  });
+  const result = await runFactsV2AssessmentCycle({
+    extractionJson: extraction,
+    sourceText: "The authors observed that accuracy fell by three points on the held-out set.",
+    catalogCandidates: [],
+    hints: {},
+    assess: async () => assessment(),
+  });
+  assert.equal(result.decision.reason, "VERIFIED");
+});
+
+test("a demonstrated wording of a source may-warning is held", async () => {
+  const extraction = record("Benchmark performance changed.", {
+    risk: {
+      demonstrated_finding:
+        "The paper demonstrates through experiments that VLMs can generate unsupported details in rationales and that spurious rules can accumulate.",
+      evidence_type: "mitigation_target",
+    },
+  });
+  const result = await runFactsV2AssessmentCycle({
+    extractionJson: extraction,
+    sourceText:
+      "This is crucial because models may generate unsupported details in their rationales. The method discards some of them.",
+    catalogCandidates: [],
+    hints: {},
+    assess: async () =>
+      assessment({
+        checks: checks({
+          catalog_match: { pass: true, best_id: "RISK-1", verdict: "same mechanism", percent: 65 },
+        }),
+      }),
+  });
+  assert.equal(result.decision.reason, "CLAIM_UNSUPPORTED");
+  assert.equal(result.decision.publication, "hold");
+});
+
+test("an ablation that denies reported harm publishes as a mitigation target", async () => {
+  const extraction = record(
+    "The demonstrated impact is measurable performance degradation across benchmark metrics in a research setting, with no reported deployment harm or patient safety consequences.",
+    {
+      risk: {
+        demonstrated_finding:
+          "The ablation study shows that removing Domain-Informed Subspace Initialization causes substantial performance degradation across all five benchmarks.",
+        evidence_type: "demonstrated",
+      },
+    },
+  );
+  const result = await runFactsV2AssessmentCycle({
+    extractionJson: extraction,
+    sourceText: "Removing the initialization degraded benchmark metrics. No clinical incident is reported.",
+    catalogCandidates: [],
+    hints: {},
+    assess: async () =>
+      assessment({
+        safety_claim: "real_world",
+        checks: checks({
+          catalog_match: { pass: true, best_id: "RISK-1148", verdict: "related", percent: 65 },
+        }),
+      }),
+  });
+  assert.equal(result.decision.reason, "PUBLISHED_LABELLED");
+  assert.equal(result.decision.publication, "publish");
+  assert.equal(
+    (extraction.risk as { evidence_type?: string }).evidence_type,
+    "mitigation_target",
+  );
 });
 
 test("failed severity and rationale checks do not hold when there is no safety claim", () => {

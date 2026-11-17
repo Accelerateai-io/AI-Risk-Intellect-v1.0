@@ -382,6 +382,12 @@ export type PageFetchOutcome =
   | { ok: true; page: PageContent }
   | { ok: false; reason: string };
 
+/** Keep a refusal status on the skip message so a later job can show it. */
+function withHttpStatus(reason: string, status: number): string {
+  if (status < 400 || /\bHTTP \d{3}\b/.test(reason)) return reason;
+  return `${reason} (HTTP ${status})`;
+}
+
 /**
  * Fetch page bytes for ingestion pipeline (no soft-404 / AI filter here).
  */
@@ -448,11 +454,12 @@ export async function fetchPageContentDetailed(
       });
       const tooSmall = extractedText.trim().length < MIN_FETCH_BODY_CHARS;
       if (botBlock || tooSmall) {
-        lastBlockReason = botBlock
+        const reason = botBlock
           ? botBlock
           : html.trim()
             ? FETCH_FAILED_SKIP_MESSAGE
             : "empty response body";
+        lastBlockReason = withHttpStatus(reason, getRes.status);
         continue; // one retry with a browser user agent
       }
 

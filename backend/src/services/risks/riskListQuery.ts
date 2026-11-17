@@ -51,6 +51,7 @@ export type RiskFilterRow = {
   industry: string | null;
   riskTitle: string | null;
   articleTitle: string | null;
+  articleUrl: string | null;
   aiProductName: string | null;
   aiProductVendor: string | null;
   qualityScore: number | null;
@@ -167,6 +168,7 @@ function searchHaystack(row: RiskFilterRow): string {
     row.sector,
     row.industry,
     row.articleTitle,
+    row.articleUrl,
     row.aiProductName,
     row.aiProductVendor,
   ]

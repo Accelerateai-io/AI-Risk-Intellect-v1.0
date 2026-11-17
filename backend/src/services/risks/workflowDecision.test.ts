@@ -65,6 +65,28 @@ function record(): Record<string, unknown> {
   };
 }
 
+test("a judged catalog score replaces the verifier percent", async () => {
+  const result = await runFactsV2AssessmentCycle({
+    extractionJson: record(),
+    sourceText: "The benchmark measured a three percent drop.",
+    catalogCandidates: [{ id: "RISK-1148", percent: 72, judgeVerdict: "match" }],
+    hints: {},
+    assess: async () =>
+      assessment({
+        checks: checks({
+          catalog_match: {
+            pass: false,
+            best_id: "RISK-750",
+            verdict: "topical only",
+            percent: 32,
+          },
+        }),
+      }),
+  });
+  assert.equal(result.decision.reason, "VERIFIED");
+  assert.equal(result.decision.catalogMatchStatus, "established");
+});
+
 test("facts-v2 markers are the pipeline version and the extraction contract", () => {
   assert.equal(
     isFactsV2Extraction({ pipeline_version: "2026.11.facts-v2" }),

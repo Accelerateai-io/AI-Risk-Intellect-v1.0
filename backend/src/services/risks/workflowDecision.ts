@@ -9,6 +9,7 @@
  * Older rows have neither, and this module does not change how they publish.
  */
 
+import { applyClaimSupportGuard, applyLimitedEvidenceLabel } from "./claimSupportGuard.js";
 import { alignSecondaryClassification } from "./classificationAlignment.js";
 import { applySafetyClaimGuard } from "./safetyClaimGuard.js";
 
@@ -97,6 +98,41 @@ export function isFactsV2Extraction(extractionJson: unknown): boolean {
   };
   if (ext.pipeline_version === FACTS_V2_PIPELINE_VERSION) return true;
   return ext._meta?.extraction_contract === FACTS_V2_EXTRACTION_CONTRACT;
+}
+
+function judgedCatalogCheck(candidates: unknown[]): AssessmentCheck | null {
+  let best: { id: string; percent: number } | null = null;
+  for (const item of candidates) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as { id?: unknown; percent?: unknown; judgeVerdict?: unknown };
+    if (row.judgeVerdict !== "match" && row.judgeVerdict !== "no_match") continue;
+    const id = typeof row.id === "string" ? row.id.trim() : "";
+    const percent = typeof row.percent === "number" ? row.percent : Number(row.percent);
+    if (!id || !Number.isFinite(percent)) continue;
+    if (!best || percent > best.percent) best = { id, percent: Math.round(percent) };
+  }
+  if (!best) return null;
+  const verdict =
+    best.percent >= 60 ? "same mechanism" : best.percent >= 40 ? "related" : "topical only";
+  return {
+    pass: best.percent >= CATALOG_SUGGEST_BELOW,
+    best_id: best.id,
+    verdict,
+    percent: best.percent,
+    reason: "catalog judge score",
+  };
+}
+
+function applyJudgedCatalogMatch(
+  assessment: RiskAssessment,
+  candidates: unknown[],
+): RiskAssessment {
+  const check = judgedCatalogCheck(candidates);
+  if (!check) return assessment;
+  return {
+    ...assessment,
+    checks: { ...assessment.checks, catalog_match: check },
+  };
 }
 
 function checkOf(
@@ -410,21 +446,28 @@ export async function runFactsV2AssessmentCycle(input: {
   });
 
   let extractionJson = input.extractionJson;
+  applyLimitedEvidenceLabel(extractionJson);
   let assessCalls = 0;
-  const evidenceType = String(
-    ((extractionJson.risk ?? {}) as { evidence_type?: unknown }).evidence_type ?? "",
-  );
+  const evidenceTypeOf = () =>
+    String(((extractionJson.risk ?? {}) as { evidence_type?: unknown }).evidence_type ?? "");
 
-  let assessment = applySafetyClaimGuard(
-    extractionJson,
-    input.sourceText,
-    await input.assess(requestFor(extractionJson)),
+  let assessment = applyJudgedCatalogMatch(
+    applyClaimSupportGuard(
+      extractionJson,
+      input.sourceText,
+      applySafetyClaimGuard(
+        extractionJson,
+        input.sourceText,
+        await input.assess(requestFor(extractionJson)),
+      ),
+    ),
+    input.catalogCandidates,
   );
   assessCalls += 1;
   let decision = decideWorkflow({
     stage: "extracted",
     assessment,
-    evidenceType,
+    evidenceType: evidenceTypeOf(),
   });
 
   if (decision.reassess) {
@@ -434,7 +477,7 @@ export async function runFactsV2AssessmentCycle(input: {
         ...decideWorkflow({
           stage: "extracted",
           assessment: { ...assessment, ran: false },
-          evidenceType,
+          evidenceType: evidenceTypeOf(),
           repaired: true,
         }),
         notes: ["repair clause was not found in the record"],
@@ -444,19 +487,24 @@ export async function runFactsV2AssessmentCycle(input: {
         delete extractionJson[key];
       });
       Object.assign(extractionJson, dropped.extractionJson);
-      assessment = applySafetyClaimGuard(
-        extractionJson,
-        input.sourceText,
-        await input.assess(requestFor(extractionJson)),
+      applyLimitedEvidenceLabel(extractionJson);
+      assessment = applyJudgedCatalogMatch(
+        applyClaimSupportGuard(
+          extractionJson,
+          input.sourceText,
+          applySafetyClaimGuard(
+            extractionJson,
+            input.sourceText,
+            await input.assess(requestFor(extractionJson)),
+          ),
+        ),
+        input.catalogCandidates,
       );
       assessCalls += 1;
       decision = decideWorkflow({
         stage: "extracted",
         assessment,
-        evidenceType: String(
-          ((extractionJson.risk ?? {}) as { evidence_type?: unknown }).evidence_type ??
-            evidenceType,
-        ),
+        evidenceType: evidenceTypeOf(),
         repaired: true,
       });
     }

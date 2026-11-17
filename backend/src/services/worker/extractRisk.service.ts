@@ -21,6 +21,7 @@ import {
   upsertRiskEmbedding,
 } from "../risks/riskEmbedding.service.js";
 import {
+  decisionCatalogPercent,
   isJudgeEnabled,
   judgeAndApplyVerdicts,
 } from "../risks/riskMatchJudge.service.js";
@@ -248,7 +249,7 @@ async function buildPersistedExtraction(input: {
 
   const factsV2 = isFactsV2Extraction(input.result.object);
 
-  if (!factsV2 && isJudgeEnabled() && catalogMatches.length > 0) {
+  if (isJudgeEnabled() && catalogMatches.length > 0) {
     catalogMatches = await judgeAndApplyVerdicts(catalogMatches, {
       title: riskTitle,
       description: description || riskTitle,
@@ -430,7 +431,8 @@ async function buildPersistedExtraction(input: {
       id: match.riskId,
       title: match.title,
       description: match.description,
-      percent: match.accuracyPercent,
+      percent: decisionCatalogPercent(match),
+      judgeVerdict: match.judgeVerdict,
     })),
     semanticDuplicate,
   };

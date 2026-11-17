@@ -25,7 +25,7 @@ export const JUDGE_MODEL_ID =
 const MAX_CANDIDATES = 5;
 const MAX_OUTPUT_TOKENS = 1200;
 
-/** Blend: judge opinion dominates but the heuristic anchors the score. */
+/** Blend kept on the catalog card. A confirmed match uses the judge percent for the 60 line. */
 const JUDGE_BLEND_WEIGHT = 0.6;
 /** A judged non-match can never present above this. */
 const NO_MATCH_CAP_PERCENT = 35;
@@ -261,9 +261,23 @@ export function applyJudgeVerdicts(
         accuracyPercent: blended,
         heuristicPercent: heuristic,
         judgeVerdict: verdict.isMatch ? "match" : "no_match",
+        judgePercent: verdict.adjustedPercent,
       };
       if (verdict.reasoning) updated.judgeReasoning = verdict.reasoning;
       return updated;
     })
     .sort((a, b) => b.accuracyPercent - a.accuracyPercent);
+}
+
+/**
+ * Percent the facts-v2 60 line should read.
+ * A confirmed match uses the judge band. The blended card score can sit under
+ * 60 when the retrieval heuristic is weak, even though the judge placed the
+ * pair in the same-mechanism band.
+ */
+export function decisionCatalogPercent(match: CatalogRiskMatch): number {
+  if (match.judgeVerdict === "match" && typeof match.judgePercent === "number") {
+    return match.judgePercent;
+  }
+  return match.accuracyPercent;
 }

@@ -222,7 +222,7 @@ const NOT_AI_REASON_RE =
 // than N minutes without finishing") — that is a timeout outcome, not a fetch
 // failure, so it classifies as neither code.
 const FETCH_FAIL_REASON_RE =
-  /blocked automated access|paywall|subscription wall|fetch failed|access-denied|access denied|forbidden|returned an error|could not (?:fetch|reach)|did not respond|connection (?:timed out|refused|was reset)|cannot resolve hostname|ssl\/tls|\bHTTP \d{3}\b|not found|page not found/i;
+  /blocked automated access|paywall|subscription wall|fetch failed|access-denied|access denied|forbidden|returned an error|could not (?:fetch|reach)|did not respond|connection (?:timed out|refused|was reset)|cannot resolve hostname|ssl\/tls|\bHTTP \d{3}\b|not found|page not found|html text too small|pdf text too small|raw text too small|too little text|empty html|empty response body/i;
 
 /**
  * Classify a human skip reason into a stable outcome code, or null when the

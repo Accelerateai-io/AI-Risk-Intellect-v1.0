@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { CatalogRiskMatch } from "./riskCatalogMatch.service.js";
 import {
   applyJudgeVerdicts,
+  decisionCatalogPercent,
   isJudgeEnabled,
   judgeAndApplyVerdicts,
   parseVerdicts,
@@ -87,8 +88,27 @@ describe("applyJudgeVerdicts", () => {
     );
     assert.equal(result[0].accuracyPercent, Math.round(0.4 * 50 + 0.6 * 90));
     assert.equal(result[0].heuristicPercent, 50);
+    assert.equal(result[0].judgePercent, 90);
     assert.equal(result[0].judgeVerdict, "match");
     assert.equal(result[0].judgeReasoning, "r");
+  });
+
+  it("uses the judge percent for a confirmed match even when the blend is under 60", () => {
+    const [row] = applyJudgeVerdicts(
+      [match({ riskId: "RISK-1148", accuracyPercent: 30, heuristicPercent: 30 })],
+      [{ riskId: "RISK-1148", isMatch: true, adjustedPercent: 78, reasoning: "same mechanism" }],
+    );
+    assert.equal(row.accuracyPercent, 59);
+    assert.equal(decisionCatalogPercent(row), 78);
+  });
+
+  it("keeps a non-match on the capped blend", () => {
+    const [row] = applyJudgeVerdicts(
+      [match({ riskId: "RISK-331", accuracyPercent: 28, heuristicPercent: 28 })],
+      [{ riskId: "RISK-331", isMatch: false, adjustedPercent: 70, reasoning: "topic only" }],
+    );
+    assert.ok(row.accuracyPercent <= 35);
+    assert.equal(decisionCatalogPercent(row), row.accuracyPercent);
   });
 
   it("caps non-matches at 35", () => {

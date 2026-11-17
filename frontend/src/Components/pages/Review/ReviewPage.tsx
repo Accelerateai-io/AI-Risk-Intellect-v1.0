@@ -678,7 +678,8 @@ export function ReviewPage() {
     [buildQueueSearch, navigate],
   );
 
-  const searchPlaceholder = tab === "queue" ? "Search review queue…" : "Search feedback samples…";
+  const searchPlaceholder =
+    tab === "queue" ? "Search review queue or URL…" : "Search feedback or URL…";
   const searchAriaLabel = tab === "queue" ? "Search review queue" : "Search feedback samples";
   const hasQueueFilters = tab === "queue" && (whyFilter !== "all" || Boolean(reviewSearch.trim()) || assignee !== "all");
 
