@@ -33,11 +33,6 @@ export async function ingestHtml(
     throw new SkipIngest("empty html");
   }
 
-  const excludedBeforeExtract = getExcludedNonAiTopicSkipReason({ url, title });
-  if (excludedBeforeExtract) {
-    throw new SkipIngest(excludedBeforeExtract);
-  }
-
   const botBlockBeforeExtract = detectBotBlockPage(html);
   if (botBlockBeforeExtract) {
     throw new SkipIngest(botBlockBeforeExtract);
@@ -88,11 +83,6 @@ export async function ingestPdf(
   const title = options.title ?? "";
   const source = options.source ?? "manual";
 
-  const excludedBeforeExtract = getExcludedNonAiTopicSkipReason({ url, title });
-  if (excludedBeforeExtract) {
-    throw new SkipIngest(excludedBeforeExtract);
-  }
-
   const result = await pythonIngestPdf(pdfBytes, {
     url,
     title,
@@ -116,11 +106,6 @@ export async function ingestRawText(
   const url = options.url ?? "";
   const title = options.title ?? "";
   const source = options.source ?? "manual";
-
-  const excludedBeforeExtract = getExcludedNonAiTopicSkipReason({ url, title });
-  if (excludedBeforeExtract) {
-    throw new SkipIngest(excludedBeforeExtract);
-  }
 
   const result = await pythonIngestRaw(raw, { url, title });
 

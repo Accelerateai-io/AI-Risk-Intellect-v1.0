@@ -7,9 +7,11 @@ import {
   activeAttemptSkipReason,
   getActiveAttemptLimitMs,
   getJobMaxRuntimeMs,
+  getJobRunSignal,
   isAbortOrTimeoutError,
   signalWithJobTimeout,
 } from "../services/jobs/jobTimeout.service.js";
+import { shouldRetryEmptyTransport } from "../services/risks/processingFailure.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../../..");
@@ -247,8 +249,17 @@ async function runExtractHttp(payload: {
       signal,
     );
   } catch (err) {
-    if (signal.aborted || isAbortOrTimeoutError(err)) {
+    // Only the job interval may be described as "took more than N minutes".
+    // A model read timeout is a different failure and keeps its own message.
+    if (getJobRunSignal()?.aborted) {
       throw new Error(activeAttemptSkipReason());
+    }
+    if (isAbortOrTimeoutError(err)) {
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        detail.trim() ||
+          "The model request timed out before the job execution limit.",
+      );
     }
     throw new Error(
       `The extraction service could not be reached at ${base}.`,
@@ -342,6 +353,8 @@ async function runExtractCli(payload: {
   });
 }
 
+const EMPTY_TRANSPORT_ATTEMPTS = 3;
+
 export async function pythonExtractRisk(payload: {
   text: string;
   title?: string;
@@ -354,10 +367,23 @@ export async function pythonExtractRisk(payload: {
     url: payload.url ?? "",
     ...(payload.modelId?.trim() ? { modelId: payload.modelId.trim() } : {}),
   };
-  if (useCliBridge()) {
-    return runExtractCli(body);
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < EMPTY_TRANSPORT_ATTEMPTS; attempt++) {
+    try {
+      return useCliBridge()
+        ? await runExtractCli(body)
+        : await runExtractHttp(body);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (
+        !shouldRetryEmptyTransport(lastError.message) ||
+        attempt === EMPTY_TRANSPORT_ATTEMPTS - 1
+      ) {
+        throw lastError;
+      }
+    }
   }
-  return runExtractHttp(body);
+  throw lastError ?? new Error("Model returned an empty response");
 }
 
 export type PythonAssessment = {

@@ -90,6 +90,14 @@ const FAILED_CHECK_DESCRIPTIONS: Record<string, string> = {
   catalog_match: "No catalog entry describes this same risk.",
 };
 
+function bareCheckResult(reason: string): boolean {
+  const text = reason.trim();
+  if (!text) return true;
+  if (/^(failed|check failed|catalog judge score)$/i.test(text)) return true;
+  if (/^[\d.\s%]+$/.test(text)) return true;
+  return /^(below|under|over|above)\s+\d+(\.\d+)?\s*percent$/i.test(text);
+}
+
 export function assessmentCheckReason(check: {
   name: string;
   pass: boolean | null;
@@ -97,12 +105,13 @@ export function assessmentCheckReason(check: {
 }): string {
   if (check.pass === true) return assessmentCheckPassDescription(check.name);
   const stored = check.reason.trim();
-  const storedIsScore = /\d|percent|%/i.test(stored);
-  if (check.pass === false && stored && !storedIsScore) return stored;
-  if (check.pass === false) {
-    return FAILED_CHECK_DESCRIPTIONS[check.name] ?? "This check failed.";
-  }
-  return "This check did not run.";
+  const fallback =
+    check.pass === false
+      ? (FAILED_CHECK_DESCRIPTIONS[check.name] ?? "This check failed.")
+      : "This check did not run, so there is no verdict to trace.";
+  if (!bareCheckResult(stored)) return stored;
+  if (stored) return `${fallback} Recorded result: ${stored}.`;
+  return fallback;
 }
 
 export function formatGroundingScore(score: number | null | undefined): string {

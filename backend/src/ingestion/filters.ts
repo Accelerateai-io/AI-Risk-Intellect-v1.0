@@ -267,12 +267,18 @@ function topicBlob(parts: {
     .trim();
 }
 
-/** Return skip reason when sports/travel/recipes/etc. appear without enough AI context. */
+/**
+ * Return a skip reason when the article body is about sports, travel, recipes,
+ * and similar topics without enough AI context.
+ * A URL or title alone is not enough: the body has to be read first, so an AI
+ * article is not dropped because its address or headline mentions those words.
+ */
 export function getExcludedNonAiTopicSkipReason(parts: {
   url?: string;
   title?: string;
   text?: string;
 }): string | null {
+  if (!parts.text?.trim()) return null;
   const blob = topicBlob(parts);
   if (!blob) return null;
 

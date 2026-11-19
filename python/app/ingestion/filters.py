@@ -215,7 +215,14 @@ def excluded_non_ai_topic_skip_reason(
     title: str = "",
     text: str = "",
 ) -> str | None:
-    """Return skip reason when sports/travel/recipes/etc. appear without enough AI context."""
+    """Skip sports/travel/recipes only after the article body has been read.
+
+    A URL or title alone must not classify the page as NOT_AI. An AI article
+    whose headline or path mentions those topics stays in the pipeline until
+    its content is available.
+    """
+    if not (text or "").strip():
+        return None
     blob = _topic_blob(url=url, title=title, text=text)
     if not blob:
         return None

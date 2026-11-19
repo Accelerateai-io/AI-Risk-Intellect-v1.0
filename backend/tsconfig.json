@@ -27,6 +27,7 @@
     "src/services/workflow/**",
     "src/utils/ssrfProtection.ts",
     "src/validators/analyze.validator.ts",
-    "src/scripts/goldenSetRun.ts"
+    "src/scripts/goldenSetRun.ts",
+    "src/scripts/updateClientSheetFromDb.ts"
   ]
 }

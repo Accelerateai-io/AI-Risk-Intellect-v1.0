@@ -124,6 +124,14 @@ def _extract_text(response: dict[str, Any]) -> str:
         text = block.get("text")
         if isinstance(text, str) and text.strip():
             return text.strip()
+        reasoning = block.get("reasoningContent") or block.get("reasoning_content") or {}
+        if isinstance(reasoning, dict):
+            inner = reasoning.get("text")
+            if not isinstance(inner, str):
+                nested = reasoning.get("reasoningText") or {}
+                inner = nested.get("text") if isinstance(nested, dict) else ""
+            if isinstance(inner, str) and inner.strip():
+                return inner.strip()
     return ""
 
 

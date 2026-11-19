@@ -31,6 +31,7 @@ import {
   type RiskLightRecord,
   type RiskListParams,
 } from "./riskListQuery.js";
+import { isRetiredRisk, RETIRED_PUBLICATION_STATUS } from "./riskRetirement.js";
 
 export type RiskListMetrics = {
   total: number;
@@ -52,6 +53,7 @@ function reviewStatusFromExtraction(extractionJson: unknown): string {
 
 /** True when a risk belongs on the main Risks list (high quality or reviewer-approved). */
 export function isRiskVisibleInMainList(input: RiskListRowInput): boolean {
+  if (isRetiredRisk(input.extractionJson)) return false;
   const reviewStatus = reviewStatusFromExtraction(input.extractionJson);
   if (reviewStatus === "approved") return true;
   if (reviewStatus === "rejected") return false;
@@ -75,6 +77,7 @@ export function isRiskVisibleInMainList(input: RiskListRowInput): boolean {
 
 /** True when a risk still needs human review (shown in Review Queue). */
 export function isRiskInReviewQueue(input: RiskListRowInput): boolean {
+  if (isRetiredRisk(input.extractionJson)) return false;
   const reviewStatus = reviewStatusFromExtraction(input.extractionJson);
   if (
     reviewStatus === "approved" ||
@@ -158,13 +161,15 @@ const riskListColumns = {
 const RISK_SCAN_BATCH = 500;
 
 /**
- * Candidate WHERE pushed into SQL: everything except explicitly-rejected rows
- * and rows a newer force-reprocess record points at via supersedes_id (B-3).
- * This is an exact, safe superset of the visible set, so paging over candidates
- * never drops a visible row. The fuzzy remainder of `isRiskVisibleInMainList`
- * is applied per-batch in JS because it cannot be expressed in SQL.
+ * Candidate WHERE pushed into SQL: everything except explicitly-rejected rows,
+ * rows a newer force-reprocess record points at via supersedes_id (B-3), and
+ * rows retired by a later reprocess. Retired rows stay in the table for audit
+ * and are still loaded by id. This is an exact, safe superset of the visible
+ * set, so paging over candidates never drops a visible row. The fuzzy remainder
+ * of `isRiskVisibleInMainList` is applied per-batch in JS because it cannot be
+ * expressed in SQL.
  */
-const RISK_LIST_CANDIDATE_WHERE = sql`lower(coalesce(trim(${risks.extractionJson} ->> 'review_status'), '')) <> 'rejected' AND ${risks.id} NOT IN (SELECT supersedes_id FROM risks WHERE supersedes_id IS NOT NULL)`;
+const RISK_LIST_CANDIDATE_WHERE = sql`lower(coalesce(trim(${risks.extractionJson} ->> 'review_status'), '')) <> 'rejected' AND lower(coalesce(trim(${risks.extractionJson} ->> 'publication_status'), '')) <> ${RETIRED_PUBLICATION_STATUS} AND ${risks.id} NOT IN (SELECT supersedes_id FROM risks WHERE supersedes_id IS NOT NULL)`;
 
 export type RiskListResult = {
   risks: RiskDto[];
@@ -423,6 +428,7 @@ export type ReviewQueueFilter = {
 function reviewQueueWhere(filter: ReviewQueueFilter) {
   const conditions = [
     sql`lower(coalesce(trim(${risks.extractionJson} ->> 'review_status'), '')) not in ('approved', 'rejected', 'classified')`,
+    sql`lower(coalesce(trim(${risks.extractionJson} ->> 'publication_status'), '')) <> ${RETIRED_PUBLICATION_STATUS}`,
   ];
 
   if (filter.assignedTo === "unassigned") {

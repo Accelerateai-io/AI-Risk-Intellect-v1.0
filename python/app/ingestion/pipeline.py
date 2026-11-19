@@ -25,9 +25,6 @@ def prepare_pdf_ingest(
 ) -> dict[str, Any]:
     """Same checks as ingest_pdf without DB persist (for Node bridge)."""
     del skip_ai_check  # keyword gate removed; LLM risk extraction filters content
-    exclude_reason = excluded_non_ai_topic_skip_reason(url=url, title=title)
-    if exclude_reason:
-        raise SkipIngest(exclude_reason)
 
     text = extract_from_pdf(pdf_bytes)
     if len(text.strip()) < 500:
@@ -54,10 +51,6 @@ def prepare_html_ingest(
     """Extract article text from HTML (trafilatura) for the Node worker."""
     del skip_ai_check  # keyword gate removed; LLM risk extraction filters content
     from .extract_text import extract_from_html
-
-    exclude_reason = excluded_non_ai_topic_skip_reason(url=url, title=title)
-    if exclude_reason:
-        raise SkipIngest(exclude_reason)
 
     block_reason = detect_bot_block_page(html)
     if block_reason:
@@ -88,10 +81,6 @@ def prepare_raw_ingest(
     title: str = "",
 ) -> dict[str, Any]:
     """Same checks as ingest_raw_text without DB persist (for Node bridge)."""
-    exclude_reason = excluded_non_ai_topic_skip_reason(url=url, title=title)
-    if exclude_reason:
-        raise SkipIngest(exclude_reason)
-
     text = extract_from_raw(raw)
     if len(text.strip()) < 200:
         raise SkipIngest("raw text too small")

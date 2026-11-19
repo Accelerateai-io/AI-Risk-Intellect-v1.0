@@ -89,6 +89,40 @@ def test_streaming_is_default_but_can_be_disabled(monkeypatch):
 # --- B-2 review follow-up: tenacity owns retries + per-call time budget -------
 
 
+def test_reasoning_only_reply_is_not_treated_as_empty():
+    from app.llm.bedrock_llm import _converse_text, is_empty_model_text
+
+    reply = {
+        "output": {
+            "message": {
+                "content": [
+                    {
+                        "reasoningContent": {
+                            "reasoningText": {"text": '{"risk_title": "unsafe tool use"}'}
+                        }
+                    }
+                ]
+            }
+        }
+    }
+    text = _converse_text(reply)
+    assert "unsafe tool use" in text
+    assert is_empty_model_text(text) is False
+
+
+def test_empty_model_text_and_timeouts_are_retryable():
+    from botocore.exceptions import ReadTimeoutError
+
+    from app.llm.bedrock_llm import _is_retryable_bedrock_error, is_empty_model_text
+
+    assert is_empty_model_text("") is True
+    assert is_empty_model_text("   ") is True
+    assert is_empty_model_text('{"risk": {}}') is False
+    timeout = ReadTimeoutError(endpoint_url="https://bedrock.amazonaws.com")
+    assert _is_retryable_bedrock_error(timeout) is True
+    assert _is_retryable_bedrock_error(ValueError("Model returned an empty response")) is False
+
+
 def test_botocore_retries_disabled_so_tenacity_owns_them():
     """max_attempts=1 => botocore does no retrying; tenacity is the only retrier."""
     cfg = bedrock_runtime_config()
@@ -96,7 +130,7 @@ def test_botocore_retries_disabled_so_tenacity_owns_them():
 
 
 def test_per_call_budget_stays_under_the_job_limit(monkeypatch):
-    """The per-call budget (and one read) must finish before the 120s job limit."""
+    """The per-call budget (and one read) must finish before the job limit."""
     monkeypatch.delenv("BEDROCK_CALL_BUDGET_S", raising=False)
     monkeypatch.delenv("BEDROCK_READ_TIMEOUT_S", raising=False)
     budget = bedrock_call_budget_seconds()

@@ -1,13 +1,24 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { authFetch } from "./authFetch";
+import { isReviewSource, type ReviewNavState } from "./reviewNav";
 import {
   PENDING_REVIEW_COUNT_CHANGED,
   notifyPendingReviewCountChanged,
 } from "./reviewQueueEvents";
 
-const POLL_INTERVAL_MS = 60_000;
+function isReviewPath(pathname: string): boolean {
+  return pathname === "/review" || pathname.startsWith("/review/");
+}
 
 export function usePendingReviewCount(): number {
+  const location = useLocation();
+  const onReview =
+    isReviewPath(location.pathname) ||
+    isReviewSource({
+      searchParams: new URLSearchParams(location.search),
+      state: location.state as ReviewNavState | null,
+    });
   const [pendingCount, setPendingCount] = useState(0);
 
   const loadCount = useCallback(async () => {
@@ -33,21 +44,20 @@ export function usePendingReviewCount(): number {
 
   useEffect(() => {
     void loadCount();
+  }, [loadCount]);
 
+  useEffect(() => {
+    if (!onReview) return;
+
+    void loadCount();
     const onChanged = () => {
       void loadCount();
     };
-
     window.addEventListener(PENDING_REVIEW_COUNT_CHANGED, onChanged);
-    const pollTimer = window.setInterval(() => {
-      void loadCount();
-    }, POLL_INTERVAL_MS);
-
     return () => {
       window.removeEventListener(PENDING_REVIEW_COUNT_CHANGED, onChanged);
-      window.clearInterval(pollTimer);
     };
-  }, [loadCount]);
+  }, [loadCount, onReview]);
 
   return pendingCount;
 }

@@ -10,6 +10,7 @@
  */
 
 import { applyClaimSupportGuard, applyLimitedEvidenceLabel } from "./claimSupportGuard.js";
+import { failedCheckExplanation, failedCheckNote } from "./checkExplanation.js";
 import { alignSecondaryClassification } from "./classificationAlignment.js";
 import { applySafetyClaimGuard } from "./safetyClaimGuard.js";
 
@@ -34,6 +35,7 @@ export const ASSESSMENT_CHECKS = [
 /** Failures of these checks are notes. They do not hold a facts-v2 record. */
 export const NON_HOLDING_CHECKS = [
   "mitigations_reflected",
+  "not_attributed_to_proposed_method",
   "severity_within_evidence",
   "evidence_type_consistent",
   "rationale_supported",
@@ -164,14 +166,56 @@ function catalogStatus(
   return "established";
 }
 
+const HOLDING_CHECKS = ["claim_is_demonstrated"] as const;
+
+const UNEVIDENCED_CLAIM_REASON =
+  /^(The source does not show this risk as a measured result or a real incident\.|This check did not run, so there is no verdict to trace\.)/;
+
+/**
+ * A claim failure holds the record only when the assessor supplied a quote
+ * or a reason of its own. A blank failure is not evidence that the finding
+ * is unsupported.
+ */
+function evidencedClaimFailure(entry: AssessmentCheck): boolean {
+  if (entry.pass !== false) return false;
+  if (entry.quote?.trim()) return true;
+  const reason = entry.reason?.trim() ?? "";
+  if (!reason) return false;
+  return !UNEVIDENCED_CLAIM_REASON.test(reason);
+}
+
 function nonHoldingNotes(assessment: RiskAssessment | null | undefined): string[] {
   const notes: string[] = [];
   for (const name of NON_HOLDING_CHECKS) {
     const entry = checkOf(assessment, name);
-    if (entry.pass === false) {
-      const detail = (entry.reason || entry.corrected || "").trim();
-      notes.push(detail ? `${name}: ${detail}` : `${name} failed`);
+    if (entry.pass === false) notes.push(failedCheckNote(name, entry));
+  }
+  const claim = checkOf(assessment, "claim_is_demonstrated");
+  if (claim.pass === false && !evidencedClaimFailure(claim)) {
+    notes.push(failedCheckNote("claim_is_demonstrated", claim));
+  }
+  return notes;
+}
+
+/** Every check that failed or never ran, with a traceable sentence. */
+export function failedAssessmentNotes(
+  assessment: RiskAssessment | null | undefined,
+): string[] {
+  const notes: string[] = [];
+  for (const name of ASSESSMENT_CHECKS) {
+    const entry = checkOf(assessment, name);
+    const holding = (HOLDING_CHECKS as readonly string[]).includes(name);
+    if (entry.pass === false || (entry.pass !== true && holding)) {
+      notes.push(failedCheckNote(name, entry));
     }
+  }
+  const score = assessment?.grounding_score;
+  if (typeof score !== "number" || score < GROUNDING_MIN) {
+    notes.push(
+      typeof score === "number"
+        ? `Grounding: score ${score.toFixed(2)} is below ${GROUNDING_MIN.toFixed(2)}, so the claim is not strongly traced to the source.`
+        : "Grounding: no score was recorded, so the claim cannot be traced to the source.",
+    );
   }
   return notes;
 }
@@ -234,9 +278,7 @@ export function decideWorkflow(input: {
   const grounding = assessment?.grounding_score;
   const groundingFail =
     typeof grounding !== "number" || grounding < GROUNDING_MIN;
-  const mainClaimFail =
-    !passes(assessment, "claim_is_demonstrated") ||
-    !passes(assessment, "not_attributed_to_proposed_method");
+  const mainClaimFail = evidencedClaimFailure(checkOf(assessment, "claim_is_demonstrated"));
   if (mainClaimFail || groundingFail || assessment?.parsed === false || assessment?.ran === false) {
     return finish(
       input.repaired ? "REPAIR_FAILED" : "CLAIM_UNSUPPORTED",
@@ -355,10 +397,14 @@ function storedChecks(
   const checks: Record<string, AssessmentCheck> = {};
   for (const name of ASSESSMENT_CHECKS) {
     const entry = checkOf(assessment, name);
+    const reason =
+      entry.pass === true
+        ? entry.reason?.trim() || undefined
+        : failedCheckExplanation(name, entry);
     checks[name] = {
       pass: entry.pass ?? null,
       ...(entry.quote ? { quote: entry.quote } : {}),
-      ...(entry.reason ? { reason: entry.reason } : {}),
+      ...(reason ? { reason } : {}),
       ...(entry.corrected ? { corrected: entry.corrected } : {}),
       ...(entry.corrected_primary ? { corrected_primary: entry.corrected_primary } : {}),
       ...(entry.corrected_secondary
@@ -393,12 +439,13 @@ export function applyDecisionToExtraction(
   extractionJson.quoted_support = assessment?.quoted_support ?? [];
   extractionJson.safety_claim = assessment?.safety_claim ?? null;
   extractionJson.check_notes = decision.notes;
+  const failedNotes = failedAssessmentNotes(assessment);
   if (!published) {
-    extractionJson.review_reason = decision.notes.length
-      ? `${decision.reason}. ${decision.notes.join(" ")}`
+    extractionJson.review_reason = failedNotes.length
+      ? `${decision.reason}. ${failedNotes.join(" ")}`
       : decision.reason;
-  } else if (decision.notes.length) {
-    extractionJson.review_reason = decision.notes.join(" ");
+  } else if (failedNotes.length) {
+    extractionJson.review_reason = failedNotes.join(" ");
   }
   const scoring = (extractionJson.risk_scoring ?? {}) as {
     likelihood?: unknown;

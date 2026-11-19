@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { articles } from "../../schema/articles/articles.js";
 import { risks } from "../../schema/risks/risks.js";
@@ -67,6 +67,12 @@ import {
 } from "../risks/workflowDecision.js";
 import { pythonAssessRisk } from "../../extraction/pythonBridge.js";
 import { withUsModelPrefix } from "../../utils/bedrockModelId.js";
+import { retireExtractionForReprocess } from "../risks/riskRetirement.js";
+import {
+  isExecutionIntervalAbort,
+  isProcessingFailureMessage,
+} from "../risks/processingFailure.js";
+import { persistProcessingFailureRisk } from "../risks/processingFailure.service.js";
 
 export type ExtractRiskResult =
   | { outcome: "done"; riskId: string; created: boolean; modelName: string }
@@ -127,6 +133,52 @@ export function normalizeModelKey(modelName: string | null | undefined): string 
 
 function displayModelName(modelName: string): string {
   return withUsModelPrefix(modelName);
+}
+
+/** Latest risk for an article, used as the supersedes link on reprocess. */
+async function latestRiskIdForArticle(articleId: number): Promise<string | null> {
+  const [row] = await db
+    .select({ id: risks.id })
+    .from(risks)
+    .where(eq(risks.articleId, articleId))
+    .orderBy(desc(risks.createdAt), desc(risks.id))
+    .limit(1);
+  return row?.id ?? null;
+}
+
+/**
+ * Take every earlier risk for this article off the published register.
+ * Rows are updated, not deleted, so audit history remains.
+ */
+async function retirePriorArticleRisks(
+  articleId: number,
+  successorRiskId: string,
+): Promise<string[]> {
+  const prior = await db
+    .select({
+      id: risks.id,
+      extractionJson: risks.extractionJson,
+    })
+    .from(risks)
+    .where(and(eq(risks.articleId, articleId), ne(risks.id, successorRiskId)));
+
+  const retiredAt = new Date().toISOString();
+  const retiredIds: string[] = [];
+  for (const row of prior) {
+    await db
+      .update(risks)
+      .set({
+        extractionJson: retireExtractionForReprocess(
+          row.extractionJson,
+          successorRiskId,
+          retiredAt,
+        ),
+        updatedAt: new Date(),
+      })
+      .where(eq(risks.id, row.id));
+    retiredIds.push(row.id);
+  }
+  return retiredIds;
 }
 
 async function findExistingRiskForArticleModel(
@@ -648,9 +700,9 @@ export async function extractRiskForArticle(
       forceReextract: options?.forceReextract,
     });
 
-    // Force-reprocess (B-3): insert a NEW risk row linked to the one it
-    // supersedes. The old row is never updated or deleted, so re-running an
-    // article from scratch keeps a full audit trail.
+    // Force-reprocess (B-3): insert a NEW risk row linked to the latest prior
+    // risk. Every earlier row stays for audit, but its publication status is
+    // retired so only this new record can remain published.
     if (writeMode === "reprocess-new") {
       const persisted = await buildPersistedExtraction({
         articleId,
@@ -662,14 +714,18 @@ export async function extractRiskForArticle(
       });
       await assessFactsV2(persisted, text, resolvedModel);
 
+      const supersededId =
+        (await latestRiskIdForArticle(article.id)) ?? existing?.id ?? null;
       const [newRow] = await db
         .insert(risks)
         .values({
           articleId: article.id,
           ...toRiskInsertValues(persisted),
-          ...(existing ? { supersedesId: existing.id } : {}),
+          ...(supersededId ? { supersedesId: supersededId } : {}),
         })
         .returning({ id: risks.id });
+
+      const retiredIds = await retirePriorArticleRisks(article.id, newRow!.id);
 
       await persistRiskEmbedding(newRow!.id, persisted);
       await persistTranslatedArticleTitle(
@@ -688,7 +744,7 @@ export async function extractRiskForArticle(
 
       noteRiskSaved(newRow!.id);
       console.log(
-        `[batch-worker] force-reprocess url=${article.url} articleId=${articleId} newRisk=${newRow!.id} supersedes=${existing?.id ?? "none"}`,
+        `[batch-worker] force-reprocess url=${article.url} articleId=${articleId} newRisk=${newRow!.id} supersedes=${supersededId ?? "none"} retired=${retiredIds.join(",") || "none"}`,
       );
       return {
         outcome: "done",
@@ -827,13 +883,24 @@ export async function extractRiskForArticle(
 
     await assessFactsV2(persisted, text, resolvedModel);
 
+    const supersededId = options?.forceReprocess
+      ? await latestRiskIdForArticle(article.id)
+      : null;
     const [row] = await db
       .insert(risks)
       .values({
         articleId: article.id,
         ...toRiskInsertValues(persisted),
+        ...(supersededId ? { supersedesId: supersededId } : {}),
       })
       .returning({ id: risks.id });
+
+    if (options?.forceReprocess) {
+      const retiredIds = await retirePriorArticleRisks(article.id, row!.id);
+      console.log(
+        `[batch-worker] force-reprocess url=${article.url} articleId=${articleId} newRisk=${row!.id} supersedes=${supersededId ?? "none"} retired=${retiredIds.join(",") || "none"}`,
+      );
+    }
 
     await persistRiskEmbedding(row!.id, persisted);
 
@@ -868,10 +935,25 @@ export async function extractRiskForArticle(
       );
       return { outcome: "skipped", reason: err.message };
     }
-    if (err instanceof StubExtractionError) {
-      // StubExtractionError means Python responded; the LLM path ran but returned
-      // a fallback object (Bedrock/JSON failure, etc.). Do not append dev-setup hints.
-      return { outcome: "skipped", reason: err.message };
+    const message = err instanceof Error ? err.message : String(err);
+    if (isExecutionIntervalAbort(message)) throw err;
+    if (
+      err instanceof StubExtractionError ||
+      isProcessingFailureMessage(message)
+    ) {
+      const riskId = await persistProcessingFailureRisk(articleId, message);
+      if (riskId) {
+        noteRiskSaved(riskId);
+        console.log(
+          `[batch-worker] processing failed url=${article.url} articleId=${articleId} heldRisk=${riskId} reason=${message}`,
+        );
+        return {
+          outcome: "done",
+          riskId,
+          created: true,
+          modelName: "unknown",
+        };
+      }
     }
     throw err;
   }

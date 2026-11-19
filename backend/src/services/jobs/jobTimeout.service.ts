@@ -11,10 +11,11 @@ import {
   cachedJobMaxRuntimeMs,
   cachedJobTimeoutSkipReason,
   currentJobTimeoutSkipReason,
+  getJobExecutionMinutes,
   getJobMaxRuntimeMs,
   jobTimeoutSkipReason,
 } from "./jobRuntimeSettings.service.js";
-import { MAX_EXECUTION_MINUTES } from "./executionRetryLimits.js";
+import { persistProcessingFailureRisk } from "../risks/processingFailure.service.js";
 
 /** Default skip window. Live runs use the Controls execution-time setting. */
 export const JOB_MAX_RUNTIME_MS = 5 * 60 * 1000;
@@ -163,13 +164,14 @@ export async function skipJobIfStillRunning(
   return true;
 }
 
-/** Mark other running jobs older than the Controls limit as skipped. */
+/** Mark other running jobs older than the configured execution limit as skipped. */
 export async function skipStaleRunningJobs(): Promise<number> {
   try {
-    const reason = jobTimeoutSkipReason(MAX_EXECUTION_MINUTES);
+    const limitMinutes = await getJobExecutionMinutes();
+    const reason = jobTimeoutSkipReason(limitMinutes);
     const runningTooLong = and(
       eq(jobs.status, "running"),
-      sql`COALESCE(${jobs.startedAt}, ${jobs.updatedAt}) < NOW() - make_interval(mins => ${MAX_EXECUTION_MINUTES})`,
+      sql`COALESCE(${jobs.startedAt}, ${jobs.updatedAt}) < NOW() - make_interval(mins => ${limitMinutes})`,
       activeAttemptJobId != null
         ? ne(jobs.id, activeAttemptJobId)
         : undefined,
@@ -193,6 +195,15 @@ export async function skipStaleRunningJobs(): Promise<number> {
       });
 
     for (const job of skipped) {
+      try {
+        await persistProcessingFailureRisk(job.articleId, reason);
+      } catch (persistErr) {
+        const persistMessage =
+          persistErr instanceof Error ? persistErr.message : String(persistErr);
+        console.warn(
+          `[job] could not store a held record for timed-out job ${job.id}: ${persistMessage}`,
+        );
+      }
       await refreshBatch(job);
       await reportOrphanExecutionTimeSkip(job);
     }

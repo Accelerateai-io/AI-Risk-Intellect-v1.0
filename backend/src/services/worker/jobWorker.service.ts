@@ -7,6 +7,7 @@ import { ACTIVE_JOB_STATUSES } from "../../jobs/jobFactory.js";
 import { articles } from "../../schema/articles/articles.js";
 import { jobs } from "../../schema/jobs/jobs.js";
 import { extractRiskForArticle } from "./extractRisk.service.js";
+import { persistProcessingFailureRisk } from "../risks/processingFailure.service.js";
 import { processUrlToDb } from "./processUrl.service.js";
 import { jobSkipReasonCode } from "../../ingestion/filters.js";
 import {
@@ -23,7 +24,6 @@ import {
   abortActiveJobRun,
   beginJobAttempt,
   endJobRunTimer,
-  isAbortOrTimeoutError,
   isCurrentJobAttempt,
   noteActiveAttemptJob,
   skipJobIfStillRunning,
@@ -33,6 +33,7 @@ import {
 import {
   executionLadderSkipReason,
   executionRetryLimits,
+  getJobExecutionMinutes,
   jobTimeoutSkipReason,
 } from "../jobs/jobRuntimeSettings.service.js";
 import { assignedModelForRetryTarget } from "../jobs/workerRetryTargets.service.js";
@@ -70,13 +71,14 @@ class JobTimeoutError extends Error {
   }
 }
 
+/**
+ * True only when this attempt's execution interval elapsed.
+ * A model read timeout or a 60-second call budget is not a 60-minute job timeout.
+ */
 function isTimeoutSkipError(err: unknown): boolean {
   if (err instanceof JobTimeoutError) return true;
-  if (isAbortOrTimeoutError(err)) return true;
   const message = err instanceof Error ? err.message : String(err);
-  return /timeout|timed out|aborted due to timeout|took more than \d+ minutes/i.test(
-    message,
-  );
+  return /took more than \d+ minutes without finishing/i.test(message);
 }
 
 /** Claim one pending job: pending → running (increments tries). */
@@ -430,7 +432,7 @@ export async function processClaimedJob(job: ClaimedJob): Promise<void> {
   });
 
   try {
-    const limits = executionRetryLimits(5);
+    const limits = executionRetryLimits(await getJobExecutionMinutes());
     const startMinutes = limits[0] ?? 5;
 
     for (let index = 0; index < limits.length; index += 1) {
@@ -466,6 +468,7 @@ export async function processClaimedJob(job: ClaimedJob): Promise<void> {
         .where(and(eq(jobs.id, job.id), eq(jobs.status, "running")));
 
       const attemptId = beginJobAttempt();
+      const attemptStarted = Date.now();
       const stopWatch = watchForReleasedJob(job);
       const signal = await startJobRunTimer(minutes * 60_000);
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -500,8 +503,11 @@ export async function processClaimedJob(job: ClaimedJob): Promise<void> {
         const message = err instanceof Error ? err.message : String(err);
         if (!isLast) {
           const nextMinutes = limits[index + 1];
+          const why = isTimeoutSkipError(err)
+            ? `did not finish in ${minutes} minutes`
+            : `failed (${message})`;
           process.stdout.write(
-            `[job] jobId=${job.id} url=${job.url} did not finish in ${minutes} minutes. Retrying with ${nextMinutes} minutes.\n`,
+            `[job] jobId=${job.id} url=${job.url} ${why}. Retrying with ${nextMinutes} minutes.\n`,
           );
           log("execution interval retry", {
             url: job.url,
@@ -513,18 +519,36 @@ export async function processClaimedJob(job: ClaimedJob): Promise<void> {
           continue;
         }
 
-        const reason = executionLadderSkipReason(
-          startMinutes,
-          minutes,
-          limits.length,
+        const elapsedSec = Math.max(
+          1,
+          Math.round((Date.now() - attemptStarted) / 1000),
         );
-        log("skipped URL after the final execution-time interval", {
+        const reason = isTimeoutSkipError(err)
+          ? `${executionLadderSkipReason(startMinutes, minutes, limits.length)} This attempt ran for ${elapsedSec} seconds.`
+          : `${message} This attempt ran for ${elapsedSec} seconds.`;
+        log("processing failed after retries", {
           url: job.url,
           minutes,
           intervals: limits.length,
+          reason,
         });
         await printLiveExecutionTimeSkip(job);
-        await skipJobIfStillRunning(job.id, reason);
+        let riskId: string | null = null;
+        try {
+          riskId = await persistProcessingFailureRisk(job.articleId, reason);
+        } catch (persistErr) {
+          log("could not store the failure record", {
+            message:
+              persistErr instanceof Error
+                ? persistErr.message
+                : String(persistErr),
+          });
+        }
+        if (riskId) {
+          await finishJob(job.id, "done", reason, batchRefresh);
+        } else {
+          await finishJob(job.id, "error", reason, batchRefresh);
+        }
         return;
       } finally {
         stopWatch();

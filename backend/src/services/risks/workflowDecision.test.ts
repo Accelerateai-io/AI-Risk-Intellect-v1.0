@@ -161,6 +161,73 @@ test("an unsupported main claim is held", () => {
   assert.equal(decision.publication, "hold");
 });
 
+test("a claim failure with no quote and no reason does not hold", () => {
+  const decision = decideWorkflow({
+    assessment: assessment({
+      checks: checks({
+        claim_is_demonstrated: { pass: false, reason: "", quote: "" },
+      }),
+    }),
+    evidenceType: "mitigation_target",
+  });
+  assert.equal(decision.reason, "PUBLISHED_LABELLED");
+  assert.equal(decision.publication, "publish");
+});
+
+test("a stock claim explanation without a quote does not hold", () => {
+  const decision = decideWorkflow({
+    assessment: assessment({
+      checks: checks({
+        claim_is_demonstrated: {
+          pass: false,
+          reason:
+            "The source does not show this risk as a measured result or a real incident.",
+        },
+      }),
+    }),
+    evidenceType: "demonstrated",
+  });
+  assert.equal(decision.reason, "VERIFIED");
+  assert.equal(decision.publication, "publish");
+});
+
+test("a claim failure that quotes the source still holds", () => {
+  const decision = decideWorkflow({
+    assessment: assessment({
+      checks: checks({
+        claim_is_demonstrated: {
+          pass: false,
+          quote: "models may generate unsupported details",
+          reason: "",
+        },
+      }),
+    }),
+    evidenceType: "demonstrated",
+  });
+  assert.equal(decision.reason, "CLAIM_UNSUPPORTED");
+  assert.equal(decision.publication, "hold");
+});
+
+test("blaming the proposed method is a note and does not hold", () => {
+  const decision = decideWorkflow({
+    assessment: assessment({
+      checks: checks({
+        claim_is_demonstrated: { pass: true, quote: "poor segmentation quality" },
+        not_attributed_to_proposed_method: {
+          pass: false,
+          reason: "The record blames the method the source proposes.",
+        },
+      }),
+    }),
+    evidenceType: "demonstrated",
+  });
+  assert.equal(decision.reason, "VERIFIED");
+  assert.equal(decision.publication, "publish");
+  assert.ok(
+    decision.notes.some((note) => note.startsWith("not_attributed_to_proposed_method")),
+  );
+});
+
 test("checks 2, 4, 5, 6, 7 and 8 do not hold a record on their own", () => {
   const decision = decideWorkflow({
     assessment: assessment({

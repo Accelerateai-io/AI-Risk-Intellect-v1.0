@@ -86,15 +86,23 @@ describe("detectBotBlockPage (B-4)", () => {
 });
 
 describe("getExcludedNonAiTopicSkipReason", () => {
-  it("skips sports/travel/recipe URLs with a stable info message", () => {
+  it("does not classify NOT_AI until the article content has been read", () => {
     assert.equal(
       getExcludedNonAiTopicSkipReason({
         url: "https://espn.com/nfl/football",
       }),
-      NOT_AI_RELATED_SKIP_MESSAGE,
+      null,
     );
     assert.equal(
       getExcludedNonAiTopicSkipReason({ title: "Best travel destinations" }),
+      null,
+    );
+    assert.equal(
+      getExcludedNonAiTopicSkipReason({
+        url: "https://espn.com/nfl/football",
+        title: "Sunday recap",
+        text: "The football match ended after extra time.",
+      }),
       NOT_AI_RELATED_SKIP_MESSAGE,
     );
   });
@@ -106,6 +114,38 @@ describe("getExcludedNonAiTopicSkipReason", () => {
       }),
       null,
     );
+  });
+
+  it("keeps the Air Canada chatbot article after the travel page is read", () => {
+    assert.equal(
+      getExcludedNonAiTopicSkipReason({
+        url: "https://www.bbc.com/travel/article/20240222-air-canada-chatbot-misinformation-what-travellers-should-know",
+        title:
+          "Airline held liable for its chatbot giving passenger bad advice - what this means for travellers",
+        text:
+          "When Air Canada's chatbot gave incorrect information to a traveller, the airline argued its chatbot is responsible for its own actions. Artificial intelligence is having a growing impact on the way we travel. This type of mistake, in which generative AI tools present inaccurate information, is known as AI hallucination. Expedia launched a ChatGPT plug-in to help with trip planning.",
+      }),
+      null,
+    );
+    assert.equal(
+      getExcludedNonAiTopicSkipReason({
+        url: "https://www.bbc.com/travel/article/20240222-air-canada-chatbot-misinformation-what-travellers-should-know",
+        title: "Air Canada chatbot misinformation",
+      }),
+      null,
+    );
+  });
+
+  it("does not drop the arXiv papers that failed in processing", () => {
+    for (const url of [
+      "https://arxiv.org/abs/2307.15043",
+      "https://arxiv.org/abs/2401.05566",
+      "https://arxiv.org/abs/2503.13938",
+      "https://arxiv.org/abs/2602.13473",
+      "https://arxiv.org/abs/2605.10201",
+    ]) {
+      assert.equal(getExcludedNonAiTopicSkipReason({ url, title: "arXiv paper" }), null);
+    }
   });
 
   it("allows AI articles when extracted text includes site nav terms like travel", () => {

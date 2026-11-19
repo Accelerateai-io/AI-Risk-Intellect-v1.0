@@ -3,6 +3,7 @@ import { db } from "../../db/index.js";
 import { risks } from "../../schema/risks/risks.js";
 import { articles } from "../../schema/articles/articles.js";
 import type { CatalogRiskMatch } from "./riskCatalogMatch.service.js";
+import { RETIRED_PUBLICATION_STATUS } from "./riskRetirement.js";
 
 /**
  * Machine-to-machine JSON export consumed by AI-Q's `riskIntellectClient`.
@@ -181,6 +182,7 @@ export async function queryRiskExport(
 
   const conditions = [
     sql`(${risks.extractionJson} ->> 'review_status') = ${EXPORTABLE_REVIEW_STATUS}`,
+    sql`lower(coalesce(trim(${risks.extractionJson} ->> 'publication_status'), '')) <> ${RETIRED_PUBLICATION_STATUS}`,
     gte(risks.qualityScore, minQuality),
   ];
   if (query.sector) conditions.push(eq(risks.sector, query.sector));

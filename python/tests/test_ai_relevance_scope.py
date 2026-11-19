@@ -177,12 +177,14 @@ def test_vlm_article_body_passes_even_with_an_air_travel_tag() -> None:
 
 
 def test_existing_ai_relevance_rules_still_apply() -> None:
+    assert excluded_non_ai_topic_skip_reason(url="https://espn.com/nfl/football") is None
+    assert excluded_non_ai_topic_skip_reason(title="Best travel destinations") is None
     assert (
-        excluded_non_ai_topic_skip_reason(url="https://espn.com/nfl/football")
-        == NOT_AI_RELATED_SKIP_MESSAGE
-    )
-    assert (
-        excluded_non_ai_topic_skip_reason(title="Best travel destinations")
+        excluded_non_ai_topic_skip_reason(
+            url="https://espn.com/nfl/football",
+            title="Sunday recap",
+            text="The football match ended after extra time.",
+        )
         == NOT_AI_RELATED_SKIP_MESSAGE
     )
     assert (

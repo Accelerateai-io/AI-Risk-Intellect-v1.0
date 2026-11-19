@@ -50,8 +50,9 @@ export const risks = pgTable(
     modelName: varchar("model_name", { length: 128 }),
     sourceFlag: varchar("source_flag", { length: 64 }),
     // Force-reprocess (B-3): a re-run inserts a NEW risk row linked to the
-    // risk it replaces via this self-reference; the superseded row is left
-    // untouched so history/audit is preserved. Null for original extractions.
+    // latest risk it replaces via this self-reference. Earlier rows for the
+    // article stay in the table for audit, with publication_status retired so
+    // only the newest record can remain published. Null for original extractions.
     supersedesId: uuid("supersedes_id").references(
       (): AnyPgColumn => risks.id,
       { onDelete: "set null" },

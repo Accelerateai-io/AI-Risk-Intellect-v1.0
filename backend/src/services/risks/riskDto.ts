@@ -1,6 +1,7 @@
 import { normalizeNarrativeText } from "../../utils/normalizeNarrativeText.js";
 import { decodeDisplayTitle } from "../../utils/decodeHtmlEntities.js";
 import { parseCatalogMatchesFromExtraction } from "./riskCatalogMatch.service.js";
+import { failedCheckExplanation } from "./checkExplanation.js";
 import { resolveQualityScore100, resolveReviewWhy } from "./riskQuality.js";
 import {
   impactLabel,
@@ -481,15 +482,28 @@ export function mapFactsV2Assessment(ext: ExtractionJson): FactsV2AssessmentDto 
     checks: FACTS_V2_CHECK_ORDER.map((name) => {
       const entry = (raw[name] ?? {}) as Record<string, unknown>;
       const pass = boolOrNull(entry.pass);
+      const quote = str(entry.quote);
       const reason =
         name === "catalog_match" && pass !== true
           ? catalogSuggestionExplanation(entry, ext)
-          : str(entry.reason);
+          : pass === true
+            ? str(entry.reason)
+            : failedCheckExplanation(name, {
+                pass,
+                reason: str(entry.reason),
+                quote,
+                corrected: str(entry.corrected),
+                corrected_primary: str(entry.corrected_primary),
+                corrected_secondary: str(entry.corrected_secondary),
+                best_id: str(entry.best_id),
+                verdict: str(entry.verdict),
+                percent: numOrNull(entry.percent),
+              });
       return {
         name,
         pass,
         reason,
-        quote: str(entry.quote),
+        quote,
       };
     }),
   };
@@ -518,10 +532,18 @@ export function mapEvidenceDiscipline(ext: ExtractionJson): EvidenceDisciplineDt
       (name) => name in checksRaw,
     ).map((name) => {
       const entry = (checksRaw[name] ?? {}) as Record<string, unknown>;
+      const pass = boolOrNull(entry.pass);
       return {
         name,
-        pass: boolOrNull(entry.pass),
-        reason: str(entry.reason),
+        pass,
+        reason:
+          pass === true
+            ? str(entry.reason)
+            : failedCheckExplanation(name, {
+                pass,
+                reason: str(entry.reason),
+                quote: str(entry.quote),
+              }),
       };
     });
     verifier = {

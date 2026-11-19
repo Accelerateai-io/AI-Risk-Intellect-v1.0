@@ -116,21 +116,61 @@ export function applyLimitedEvidenceLabel(extractionJson: Record<string, unknown
   extractionJson.risk = risk;
 }
 
+const MEASURED_LIMITATION =
+  /\b(?:ablation|removing|removed|degrad\w*|benchmarks?)\b/i;
+
+/**
+ * A mitigation-target record can quote a measured ablation or benchmark drop.
+ * That quote is the result. It is not evidence that the claim is unsupported
+ * merely because no deployed incident occurred.
+ */
+function quoteReportsMeasuredLimitation(quote: string): boolean {
+  const text = quote.trim();
+  if (!text || /\b(?:may|might)\b/i.test(text)) return false;
+  return MEASURED_LIMITATION.test(text);
+}
+
+function clearMeasuredLimitationClaimFailure<T extends GuardedAssessment>(
+  record: Record<string, unknown>,
+  assessment: T,
+): T {
+  const checks = { ...(assessment.checks ?? {}) };
+  const current = checks.claim_is_demonstrated ?? {};
+  if (current.pass !== false) return assessment;
+  if (!quoteReportsMeasuredLimitation(current.quote ?? "")) return assessment;
+  const risk = asRecord(record.risk ?? record);
+  const evidence = String(risk.evidence_type ?? "");
+  const finding = String(risk.demonstrated_finding ?? "");
+  const limited =
+    evidence === "mitigation_target" ||
+    /\b(?:ablation|removing|removed)\b/i.test(finding);
+  if (!limited) return assessment;
+  checks.claim_is_demonstrated = {
+    ...current,
+    pass: true,
+    reason:
+      "The source reports a measured ablation or benchmark result. A deployed incident is not required for this mitigation target.",
+  };
+  return { ...assessment, checks };
+}
+
 export function applyClaimSupportGuard<T extends GuardedAssessment>(
   record: Record<string, unknown>,
   sourceText: string,
   assessment: T,
 ): T {
   if (assessment.safety_claim === "real_world") return assessment;
-  if (!recordTreatsSpeculationAsObserved(record, sourceText ?? "")) return assessment;
-  const checks = { ...(assessment.checks ?? {}) };
-  const current = checks.claim_is_demonstrated ?? {};
-  checks.claim_is_demonstrated = {
-    ...current,
-    pass: false,
-    reason:
-      current.reason?.trim() ||
-      "The record says this was observed, but the source only says it may happen.",
-  };
-  return { ...assessment, checks };
+  if (recordTreatsSpeculationAsObserved(record, sourceText ?? "")) {
+    const checks = { ...(assessment.checks ?? {}) };
+    const current = checks.claim_is_demonstrated ?? {};
+    checks.claim_is_demonstrated = {
+      ...current,
+      pass: false,
+      reason:
+        current.reason?.trim() ||
+        "The record says this was observed, but the source only says it may happen.",
+    };
+    return { ...assessment, checks };
+  }
+  return clearMeasuredLimitationClaimFailure(record, assessment);
 }

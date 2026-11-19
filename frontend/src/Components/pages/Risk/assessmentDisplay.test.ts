@@ -58,7 +58,7 @@ test("facts-v2 detail hides the old verifier card and keeps nine check labels", 
     assessmentCheckReason(
       assessment.checks.find((check) => check.name === "catalog_match")!,
     ),
-    "No catalog entry describes this same risk.",
+    "No catalog entry describes this same risk. Recorded result: below 60 percent.",
   );
 });
 

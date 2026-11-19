@@ -64,14 +64,6 @@ export async function processUrlToDb(
     return { outcome: "skipped", reason: msg };
   }
 
-  const excludedBeforeFetch = getExcludedNonAiTopicSkipReason({
-    url,
-    title: options?.title,
-  });
-  if (excludedBeforeFetch) {
-    return { outcome: "skipped", reason: excludedBeforeFetch };
-  }
-
   const signal = getJobRunSignal();
   noteWebsiteFetchStarted();
 

@@ -11,7 +11,19 @@ import re
 import time
 from typing import Dict, Any, Optional
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore import exceptions as boto_exceptions
+
+ClientError = boto_exceptions.ClientError
+_RETRYABLE_TRANSPORT = tuple(
+    cls
+    for name in (
+        "ReadTimeoutError",
+        "ConnectTimeoutError",
+        "EndpointConnectionError",
+        "ConnectionClosedError",
+    )
+    if isinstance(cls := getattr(boto_exceptions, name, None), type)
+)
 
 try:
     from tenacity import (
@@ -36,12 +48,11 @@ logger = logging.getLogger("airisk")
 
 
 # --- Bedrock client transport config (B-2) ----------------------------------
-# The backend's python-bridge aborts a single extraction request after 120s
-# (jobTimeout.service.ts INGEST_TIMEOUT_MS), and the overall job window is a few
-# minutes. So one Bedrock call — INCLUDING retries — must finish well under that
-# 120s, otherwise the whole job is killed mid-flight and the retries are wasted.
-# This is the "job limit" the per-call budget below is kept under.
-JOB_LIMIT_SECONDS: float = 120.0
+# One model call must finish inside the worker's execution interval. The
+# shortest interval is 5 minutes, so the call budget stays under that. A 60s
+# socket timeout was aborting real papers and then being reported as a
+# 60-minute job timeout.
+JOB_LIMIT_SECONDS: float = 240.0
 
 
 def bedrock_call_budget_seconds() -> float:
@@ -52,12 +63,12 @@ def bedrock_call_budget_seconds() -> float:
     """
     raw = os.getenv("BEDROCK_CALL_BUDGET_S", "").strip()
     try:
-        budget = float(raw) if raw else 90.0
+        budget = float(raw) if raw else 180.0
     except ValueError:
-        budget = 90.0
+        budget = 180.0
     if budget <= 0:
-        budget = 90.0
-    # Always leave headroom beneath the job limit (never reach 120s).
+        budget = 180.0
+    # Leave headroom beneath the shortest job interval.
     return min(budget, JOB_LIMIT_SECONDS - 15.0)
 
 
@@ -119,11 +130,28 @@ _RETRYABLE_CODES = {
     "InternalServerException",
 }
 
+# Empty model text is not a transport error. Retry it a few times, then fail
+# with a reason the worker can store on a held record.
+EMPTY_MODEL_RESPONSE_ATTEMPTS = 3
+_EMPTY_FOLLOWUP = (
+    "The previous response had no answer text. Return ONLY the JSON object "
+    "for this article. Do not leave the response empty."
+)
+
+
+def is_empty_model_text(text: str | None) -> bool:
+    return not (text or "").strip()
+
 
 def _is_retryable_bedrock_error(exc: BaseException) -> bool:
+    if isinstance(exc, _RETRYABLE_TRANSPORT):
+        return True
     if isinstance(exc, ClientError):
         code = exc.response.get("Error", {}).get("Code", "")
-        return code in _RETRYABLE_CODES
+        if code in _RETRYABLE_CODES:
+            return True
+        message = str(exc).lower()
+        return "timeout" in message or "timed out" in message
     return False
 
 
@@ -188,17 +216,49 @@ def _strip_cache_points_messages(messages: list[dict]) -> list[dict]:
     ]
 
 
-def _converse_text(resp: dict) -> str:
-    """Join the text blocks of a Converse response; drop <think> reasoning.
+def _reasoning_text(value: object) -> str:
+    """Text from a reasoning block. Some models put the only answer here."""
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, dict):
+        return ""
+    direct = value.get("text")
+    if isinstance(direct, str) and direct.strip():
+        return direct
+    nested = value.get("reasoningText") or value.get("reasoning_text") or {}
+    if isinstance(nested, dict):
+        inner = nested.get("text")
+        if isinstance(inner, str):
+            return inner
+    return ""
 
-    DeepSeek-R1 returns its chain of thought as a reasoningContent block (and
-    some builds inline it as <think>...</think> in the text); only the answer
-    text is parsed as JSON.
+
+def _converse_text(resp: dict) -> str:
+    """Join answer text. If the answer is empty, keep reasoning text.
+
+    A reasoning model can return only a reasoningContent block, or wrap the
+    whole reply in <think>. Treating that as an empty response and sending the
+    same request again returns the same empty answer.
     """
     content = (resp.get("output") or {}).get("message", {}).get("content") or []
-    parts = [b.get("text") for b in content if isinstance(b.get("text"), str)]
-    text = "\n".join(p for p in parts if p)
-    return _THINK_RE.sub("", text).strip()
+    answer: list[str] = []
+    reasoning: list[str] = []
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        text = block.get("text")
+        if isinstance(text, str) and text.strip():
+            answer.append(text)
+        extra = _reasoning_text(block.get("reasoningContent") or block.get("reasoning_content"))
+        if extra.strip():
+            reasoning.append(extra)
+    visible = _THINK_RE.sub("", "\n".join(answer)).strip()
+    if visible:
+        return visible
+    # The answer channel was only a think block, or the model used the
+    # reasoning channel. Either can still contain the JSON.
+    hidden = "\n".join(answer + reasoning).strip()
+    return hidden
 
 
 def _collect_converse_stream(response: dict) -> dict:
@@ -236,6 +296,12 @@ def _collect_converse_stream(response: dict) -> dict:
             text = delta.get("text")
             if isinstance(text, str):
                 parts.append(text)
+            else:
+                reasoning = _reasoning_text(
+                    delta.get("reasoningContent") or delta.get("reasoning_content")
+                )
+                if reasoning:
+                    parts.append(reasoning)
         elif "messageStop" in event:
             stop_reason = event["messageStop"].get("stopReason")
         elif "metadata" in event:
@@ -766,16 +832,49 @@ JSON FORMATTING (strict — invalid JSON will be rejected):
                     )
                     model_used = self.model_id
                 else:
-                    response_body, model_used = self.invoke_with_retry(request_body)
+                    response_body = {}
+                    model_used = self.model_id
+                    generated_text = ""
+                    invoke_body = request_body
+                    for attempt in range(EMPTY_MODEL_RESPONSE_ATTEMPTS):
+                        response_body, model_used = self.invoke_with_retry(invoke_body)
+                        content = response_body.get("content") or []
+                        generated_text = ""
+                        if content and isinstance(content[0], dict):
+                            generated_text = str(content[0].get("text") or "")
+                            if is_empty_model_text(generated_text):
+                                generated_text = _reasoning_text(
+                                    content[0].get("reasoningContent")
+                                    or content[0].get("reasoning_content")
+                                )
+                        if not is_empty_model_text(generated_text):
+                            break
+                        stop = str(response_body.get("stop_reason") or "").strip()
+                        logger.warning(
+                            "Bedrock returned an empty response (stop=%s) — asking again (%d/%d)",
+                            stop or "unknown",
+                            attempt + 1,
+                            EMPTY_MODEL_RESPONSE_ATTEMPTS,
+                        )
+                        invoke_body = dict(invoke_body)
+                        invoke_body["messages"] = list(invoke_body.get("messages") or []) + [
+                            {"role": "user", "content": [{"type": "text", "text": _EMPTY_FOLLOWUP}]},
+                        ]
+                    if is_empty_model_text(generated_text):
+                        stop = str(response_body.get("stop_reason") or "").strip()
+                        detail = (
+                            "Model returned an empty response after "
+                            f"{EMPTY_MODEL_RESPONSE_ATTEMPTS} attempts"
+                        )
+                        if stop:
+                            detail += f". Stop reason: {stop}."
+                        raise ValueError(detail)
                     usage_raw = response_body.get("usage", {})
                     total_cost = self._compute_cost(
                         usage_raw.get("input_tokens", 0),
                         usage_raw.get("output_tokens", 0),
                         model_id=model_used,
                     )
-                    if not response_body.get("content"):
-                        raise ValueError("No content in Bedrock response")
-                    generated_text = response_body["content"][0]["text"]
                     obj = self._parse_model_json(generated_text, request_body=request_body)
                     unknown_fields = []
                 usage = {"cost_usd": total_cost}
@@ -826,6 +925,8 @@ JSON FORMATTING (strict — invalid JSON will be rejected):
         except Exception as e:
             logger.error(f"❌ Bedrock generation failed: {e}")
             detail = str(e)
+            if "empty response" in detail.lower():
+                raise
             if "json" in detail.lower() or "delimiter" in detail.lower():
                 detail = f"Bedrock returned invalid JSON: {detail}"
             return self._create_fallback_object(input_text, detail)
@@ -854,13 +955,40 @@ JSON FORMATTING (strict — invalid JSON will be rejected):
             content.append({"text": suffix})
         messages = [{"role": "user", "content": content}]
 
-        resp, model_used = self.converse_with_retry(
-            system_blocks, messages, max_tokens=max_new_tokens, temperature=0.1
-        )
+        resp: dict = {}
+        model_used = self.model_id
+        text = ""
+        working_messages = messages
+        for attempt in range(EMPTY_MODEL_RESPONSE_ATTEMPTS):
+            resp, model_used = self.converse_with_retry(
+                system_blocks,
+                working_messages,
+                max_tokens=max_new_tokens,
+                temperature=0.1,
+            )
+            text = _converse_text(resp)
+            if not is_empty_model_text(text):
+                break
+            stop = str(resp.get("stopReason") or "").strip()
+            logger.warning(
+                "Bedrock returned an empty response (stop=%s) — asking again (%d/%d)",
+                stop or "unknown",
+                attempt + 1,
+                EMPTY_MODEL_RESPONSE_ATTEMPTS,
+            )
+            working_messages = list(working_messages) + [
+                {"role": "user", "content": [{"text": _EMPTY_FOLLOWUP}]},
+            ]
+        if is_empty_model_text(text):
+            stop = str(resp.get("stopReason") or "").strip()
+            detail = (
+                f"Model returned an empty response after "
+                f"{EMPTY_MODEL_RESPONSE_ATTEMPTS} attempts"
+            )
+            if stop:
+                detail += f". Stop reason: {stop}."
+            raise ValueError(detail)
         usage = self._usage_from_converse(resp, model_used)
-        text = _converse_text(resp)
-        if not text:
-            raise ValueError("No text content in Bedrock converse response")
         obj = self._parse_json_converse(text, system_blocks, messages, max_new_tokens)
         return obj, usage, model_used
 

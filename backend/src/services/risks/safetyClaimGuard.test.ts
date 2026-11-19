@@ -277,6 +277,43 @@ test("a demonstrated wording of a source may-warning is held", async () => {
   assert.equal(result.decision.publication, "hold");
 });
 
+test("a measured ablation quoted as a claim failure still publishes as labelled", async () => {
+  const extraction = record(
+    "The ablation study shows substantial performance degradation across benchmarks when domain constraints are removed, representing a limited but measurable quality reduction in a research setting.",
+    {
+      risk: {
+        demonstrated_finding:
+          "Ablation study shows removing domain-informed subspace initialization causes substantial performance degradation across all five benchmarks.",
+        evidence_type: "mitigation_target",
+      },
+    },
+  );
+  const result = await runFactsV2AssessmentCycle({
+    extractionJson: extraction,
+    sourceText:
+      "Removing DISI reverts the agent to unconstrained generation. As shown in Fig. 2, both variants degrade substantially across all five benchmarks.",
+    catalogCandidates: [],
+    hints: {},
+    assess: async () =>
+      assessment({
+        safety_claim: "none",
+        grounding_score: 0.85,
+        checks: checks({
+          claim_is_demonstrated: {
+            pass: false,
+            quote:
+              "Removing DISI reverts the agent to unconstrained generation over the full space S. As shown in Fig. 2, both variants degrade substantially across all five benchmarks on primary and secondary metrics alike",
+            reason:
+              "The source does not show this risk as a measured result or a real incident.",
+          },
+          catalog_match: { pass: true, best_id: "RISK-1088", verdict: "same mechanism", percent: 72 },
+        }),
+      }),
+  });
+  assert.equal(result.decision.reason, "PUBLISHED_LABELLED");
+  assert.equal(result.decision.publication, "publish");
+});
+
 test("an ablation that denies reported harm publishes as a mitigation target", async () => {
   const extraction = record(
     "The demonstrated impact is measurable performance degradation across benchmark metrics in a research setting, with no reported deployment harm or patient safety consequences.",

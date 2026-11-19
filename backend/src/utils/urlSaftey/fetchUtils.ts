@@ -388,12 +388,56 @@ function withHttpStatus(reason: string, status: number): string {
   return `${reason} (HTTP ${status})`;
 }
 
+const FETCH_TRANSPORT_ATTEMPTS = 2;
+const FETCH_TIMEOUT_REASON =
+  "The site did not respond in time (connection timed out).";
+
 /**
  * Fetch page bytes for ingestion pipeline (no soft-404 / AI filter here).
+ * A timeout or dropped connection is retried once with a fresh timer.
+ * The job's own abort signal is not retried.
  */
 export async function fetchPageContentDetailed(
   url: string,
   timeoutMs = 30_000,
+  externalSignal?: AbortSignal,
+): Promise<PageFetchOutcome> {
+  if (externalSignal?.aborted) {
+    return { ok: false, reason: FETCH_TIMEOUT_REASON };
+  }
+
+  let lastReason = FETCH_FAILED_SKIP_MESSAGE;
+  for (
+    let transportAttempt = 0;
+    transportAttempt < FETCH_TRANSPORT_ATTEMPTS;
+    transportAttempt++
+  ) {
+    if (externalSignal?.aborted) {
+      return { ok: false, reason: FETCH_TIMEOUT_REASON };
+    }
+    try {
+      return await fetchPageContentOnce(url, timeoutMs, externalSignal);
+    } catch (err) {
+      if (externalSignal?.aborted) {
+        return { ok: false, reason: FETCH_TIMEOUT_REASON };
+      }
+      const timedOut =
+        err instanceof Error &&
+        (err.name === "AbortError" || err.name === "TimeoutError");
+      lastReason = timedOut
+        ? FETCH_TIMEOUT_REASON
+        : describeFetchNetworkError(err);
+      if (transportAttempt === FETCH_TRANSPORT_ATTEMPTS - 1) {
+        return { ok: false, reason: lastReason };
+      }
+    }
+  }
+  return { ok: false, reason: lastReason };
+}
+
+async function fetchPageContentOnce(
+  url: string,
+  timeoutMs: number,
   externalSignal?: AbortSignal,
 ): Promise<PageFetchOutcome> {
   const controller = new AbortController();
@@ -401,10 +445,7 @@ export async function fetchPageContentDetailed(
   const onExternalAbort = () => controller.abort();
   if (externalSignal?.aborted) {
     clearTimeout(timer);
-    return {
-      ok: false,
-      reason: "The site did not respond in time (connection timed out).",
-    };
+    return { ok: false, reason: FETCH_TIMEOUT_REASON };
   }
   externalSignal?.addEventListener("abort", onExternalAbort, { once: true });
 
@@ -475,13 +516,10 @@ export async function fetchPageContentDetailed(
 
     return { ok: false, reason: lastBlockReason || FETCH_FAILED_SKIP_MESSAGE };
   } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      return {
-        ok: false,
-        reason: "The site did not respond in time (connection timed out).",
-      };
+    if (externalSignal?.aborted) {
+      return { ok: false, reason: FETCH_TIMEOUT_REASON };
     }
-    return { ok: false, reason: describeFetchNetworkError(err) };
+    throw err;
   } finally {
     clearTimeout(timer);
     externalSignal?.removeEventListener("abort", onExternalAbort);

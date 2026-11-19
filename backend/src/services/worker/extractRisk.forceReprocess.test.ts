@@ -3,9 +3,10 @@ import { describe, it } from "node:test";
 import { decideRiskWriteMode } from "./extractRisk.service.js";
 
 // B-3: re-running an article (e.g. arXiv 2304.10041) with force_reprocess must
-// insert a NEW risk row that supersedes the existing one, bypassing dedup —
-// never updating or deleting the old row. decideRiskWriteMode is the pure gate
-// that drives which DB path extractRiskForArticle takes.
+// insert a NEW risk row that supersedes the existing one, bypassing dedup.
+// Earlier rows stay for audit and are retired from published status.
+// decideRiskWriteMode is the pure gate that drives which DB path
+// extractRiskForArticle takes.
 describe("decideRiskWriteMode (B-3 force reprocess)", () => {
   it("re-running an article with an existing risk inserts a new superseding row", () => {
     assert.equal(
