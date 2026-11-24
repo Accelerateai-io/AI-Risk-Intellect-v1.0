@@ -66,6 +66,7 @@ import {
   type RiskAssessment,
 } from "../risks/workflowDecision.js";
 import { pythonAssessRisk } from "../../extraction/pythonBridge.js";
+import { applyPreSaveFieldValidation } from "../risks/preSaveFieldValidation.js";
 import { withUsModelPrefix } from "../../utils/bedrockModelId.js";
 import { retireExtractionForReprocess } from "../risks/riskRetirement.js";
 import {
@@ -572,28 +573,44 @@ async function assessFactsV2(
   articleText: string,
   modelId: string,
 ): Promise<void> {
-  if (!isFactsV2Extraction(persisted.extractionJson)) return;
-  const meta = persisted.extractionJson._meta as
-    | { defaulted_fields?: unknown }
-    | undefined;
-  await runFactsV2AssessmentCycle({
-    extractionJson: persisted.extractionJson,
-    sourceText: articleText,
-    catalogCandidates: persisted.catalogCandidates,
-    hints: {
-      citation_hints: persisted.extractionJson.citation_hints ?? [],
-      defaulted_fields: meta?.defaulted_fields ?? [],
-    },
-    assess: async (request) =>
-      (await pythonAssessRisk({
-        text: request.sourceText,
-        record: request.record,
-        modelId,
-        catalogCandidates: request.catalogCandidates,
-        hints: request.hints,
-      })) as RiskAssessment,
-  });
+  if (isFactsV2Extraction(persisted.extractionJson)) {
+    const meta = persisted.extractionJson._meta as
+      | { defaulted_fields?: unknown }
+      | undefined;
+    await runFactsV2AssessmentCycle({
+      extractionJson: persisted.extractionJson,
+      sourceText: articleText,
+      catalogCandidates: persisted.catalogCandidates,
+      hints: {
+        citation_hints: persisted.extractionJson.citation_hints ?? [],
+        defaulted_fields: meta?.defaulted_fields ?? [],
+      },
+      assess: async (request) =>
+        (await pythonAssessRisk({
+          text: request.sourceText,
+          record: request.record,
+          modelId,
+          catalogCandidates: request.catalogCandidates,
+          hints: request.hints,
+        })) as RiskAssessment,
+    });
+    persisted.qualityScore = null;
+    const scoring = (persisted.extractionJson.risk_scoring ?? {}) as {
+      severity_score?: unknown;
+      likelihood?: unknown;
+      impact?: unknown;
+    };
+    if (typeof scoring.severity_score === "number") {
+      persisted.severityScore = scoring.severity_score;
+    }
+    if (typeof scoring.likelihood === "number") persisted.likelihood = scoring.likelihood;
+    if (typeof scoring.impact === "number") persisted.impact = scoring.impact;
+  }
+  applyPreSaveFieldValidation(persisted.extractionJson, articleText);
   const risk = (persisted.extractionJson.risk ?? {}) as Record<string, unknown>;
+  if (typeof risk.risk_title === "string" && risk.risk_title.trim()) {
+    persisted.riskTitle = risk.risk_title.trim();
+  }
   if (typeof risk.domains === "string" && risk.domains.trim()) {
     persisted.domains = risk.domains;
   }
@@ -601,17 +618,7 @@ async function assessFactsV2(
   if (typeof risk.secondary_risks === "string") {
     persisted.secondaryRisk = risk.secondary_risks;
   }
-  persisted.qualityScore = null;
-  const scoring = (persisted.extractionJson.risk_scoring ?? {}) as {
-    severity_score?: unknown;
-    likelihood?: unknown;
-    impact?: unknown;
-  };
-  if (typeof scoring.severity_score === "number") {
-    persisted.severityScore = scoring.severity_score;
-  }
-  if (typeof scoring.likelihood === "number") persisted.likelihood = scoring.likelihood;
-  if (typeof scoring.impact === "number") persisted.impact = scoring.impact;
+  if (typeof risk.intent === "string") persisted.intent = risk.intent;
 }
 
 /**

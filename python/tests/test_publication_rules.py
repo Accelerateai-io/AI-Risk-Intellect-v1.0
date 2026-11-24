@@ -280,3 +280,82 @@ def test_retry_output_uses_the_same_publication_decision() -> None:
     assert retry_publication["decision"] == first_publication["decision"]
     assert retry_publication["hold_reasons"] == first_publication["hold_reasons"] == []
     assert retry_evidence["review_reasons"] == first_evidence["review_reasons"] == []
+
+
+def test_r136_deliberate_deepfake_is_not_accidental() -> None:
+    from app.llm.repair import repair_extraction_obj
+
+    source = (
+        "A deepfake likeness went viral. The AI video was created by Ori Bejerano "
+        "and was circulating online without consent."
+    )
+    repaired = repair_extraction_obj(
+        {"risk": {"intent": "Accidental", "risk_title": "Deepfake video without consent", "description": "A deepfake likeness went viral after it was created and circulated."}, "controls": []},
+        source,
+    )
+    assert repaired["risk"]["intent"] == "Malicious"
+
+    accidental = repair_extraction_obj(
+        {"risk": {"intent": "Accidental", "risk_title": "Benchmark error", "description": "The model missed the expected label on the benchmark."}, "controls": []},
+        "The model missed the expected label on the benchmark.",
+    )
+    assert accidental["risk"]["intent"] == "Accidental"
+
+
+def test_r137_category_name_is_not_a_domain() -> None:
+    record = _record(
+        domains="Technical Risks",
+        secondary_risks="Security Risk",
+        description=(
+            "The roadmap treats internal agents as an insider threat that could "
+            "carry out cyber attacks if alignment is imperfect."
+        ),
+    )
+    reasons = _reasons(record, "The roadmap treats internal agents as an insider threat.")
+    assert any("not one of the seven domains" in reason for reason in reasons)
+
+    kept = _record(
+        domains="2. Privacy & Security",
+        secondary_risks="Security Risk",
+        description=(
+            "The roadmap treats internal agents as an insider threat that could "
+            "carry out cyber attacks if alignment is imperfect."
+        ),
+    )
+    assert not any("not one of the seven domains" in reason for reason in _reasons(kept, "insider threat"))
+
+
+def test_r141_title_cannot_say_real_time_support_is_impossible() -> None:
+    from app.llm.repair import repair_extraction_obj
+
+    source = (
+        "We present a polynomial-time decision procedure. Representability falls "
+        "from 55% to under 0.002%. The reference code handles 20 contexts in five seconds."
+    )
+    title = (
+        "Computational complexity and scalability limitations in context-dependent "
+        "argumentation frameworks prevent real-time decision support"
+    )
+    overstated = _record(risk_title=title, description="Representability falls from 55% to under 0.002%.")
+    assert any("Title overstates" in reason for reason in _reasons(overstated, source))
+
+    repaired = repair_extraction_obj(
+        {
+            "risk": {
+                "risk_title": title,
+                "description": "Representability falls from 55% to under 0.002%.",
+                "intent": "Systemic",
+            },
+            "controls": [],
+        },
+        source,
+    )
+    rewritten = repaired["risk"]["risk_title"]
+    assert rewritten == "Computational complexity in context-dependent argumentation frameworks"
+    grounded = _record(
+        risk_title=rewritten,
+        evidence_type="demonstrated",
+        demonstrated_finding="Representability falls from 55% to under 0.002%.",
+        description="Representability falls from 55% to under 0.002%.",
+    )
+    assert _reasons(grounded, source) == []

@@ -346,7 +346,7 @@ test("an ablation that denies reported harm publishes as a mitigation target", a
   );
 });
 
-test("failed severity and rationale checks do not hold when there is no safety claim", () => {
+test("failed severity and rationale checks hold when there is no safety claim", () => {
   const decision = decideWorkflow({
     assessment: assessment({
       checks: checks({
@@ -356,10 +356,9 @@ test("failed severity and rationale checks do not hold when there is no safety c
     }),
     evidenceType: "demonstrated",
   });
-  assert.equal(decision.reason, "VERIFIED");
-  assert.equal(decision.publication, "publish");
-  assert.ok(decision.notes.some((note) => note.startsWith("severity_within_evidence")));
-  assert.ok(decision.notes.some((note) => note.startsWith("rationale_supported")));
+  assert.equal(decision.reason, "RATIONALE_UNSUPPORTED");
+  assert.equal(decision.publication, "hold");
+  assert.equal(decision.confidence, "LOW");
 });
 
 test("low grounding holds before repair and does not become a safety hold", async () => {

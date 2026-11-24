@@ -34,13 +34,15 @@ import { getClientIp } from "../../utils/requestClient.js";
 
 const REFRESH_COOKIE_NAME = "refresh_token";
 
-function refreshCookieOptions(expiresAt?: Date): CookieOptions {
+function refreshCookieOptions(req: Request, expiresAt?: Date): CookieOptions {
+  const secure = env.COOKIE_SECURE || req.secure;
+  const domain = env.COOKIE_DOMAIN?.trim();
   return {
     httpOnly: true,
-    secure: env.COOKIE_SECURE,
-    sameSite: env.COOKIE_SECURE ? "none" : "lax",
+    secure,
+    sameSite: secure ? "none" : "lax",
     path: "/api/v1",
-    domain: env.COOKIE_DOMAIN,
+    ...(domain ? { domain } : {}),
     expires: expiresAt,
   };
 }
@@ -81,7 +83,7 @@ export async function inviteSetPasswordSubmit(
   res.cookie(
     REFRESH_COOKIE_NAME,
     tokens.refreshToken,
-    refreshCookieOptions(tokens.refreshTokenExpiresAt),
+    refreshCookieOptions(req, tokens.refreshTokenExpiresAt),
   );
 
   res.status(200).json({
@@ -100,7 +102,7 @@ export async function register(req: Request, res: Response): Promise<void> {
   res.cookie(
     REFRESH_COOKIE_NAME,
     tokens.refreshToken,
-    refreshCookieOptions(tokens.refreshTokenExpiresAt),
+    refreshCookieOptions(req, tokens.refreshTokenExpiresAt),
   );
 
   res.status(201).json({
@@ -119,7 +121,7 @@ export async function login(req: Request, res: Response): Promise<void> {
   res.cookie(
     REFRESH_COOKIE_NAME,
     tokens.refreshToken,
-    refreshCookieOptions(tokens.refreshTokenExpiresAt),
+    refreshCookieOptions(req, tokens.refreshTokenExpiresAt),
   );
 
   res.status(200).json({
@@ -152,7 +154,7 @@ export async function resetPassword(
   res.cookie(
     REFRESH_COOKIE_NAME,
     tokens.refreshToken,
-    refreshCookieOptions(tokens.refreshTokenExpiresAt),
+    refreshCookieOptions(req, tokens.refreshTokenExpiresAt),
   );
 
   res.status(200).json({
@@ -184,7 +186,7 @@ export async function refresh(req: Request, res: Response): Promise<void> {
   res.cookie(
     REFRESH_COOKIE_NAME,
     tokens.refreshToken,
-    refreshCookieOptions(tokens.refreshTokenExpiresAt),
+    refreshCookieOptions(req, tokens.refreshTokenExpiresAt),
   );
 
   res.status(200).json({
@@ -203,7 +205,7 @@ export async function logout(req: Request, res: Response): Promise<void> {
   if (presented) {
     await revokeRefreshToken(presented);
   }
-  res.clearCookie(REFRESH_COOKIE_NAME, refreshCookieOptions());
+  res.clearCookie(REFRESH_COOKIE_NAME, refreshCookieOptions(req));
   res.status(204).end();
 }
 
@@ -240,7 +242,7 @@ export async function patchMe(req: Request, res: Response): Promise<void> {
   res.cookie(
     REFRESH_COOKIE_NAME,
     tokens.refreshToken,
-    refreshCookieOptions(tokens.refreshTokenExpiresAt),
+    refreshCookieOptions(req, tokens.refreshTokenExpiresAt),
   );
 
   res.status(200).json({
@@ -270,7 +272,7 @@ export async function postMeChangePassword(
   res.cookie(
     REFRESH_COOKIE_NAME,
     tokens.refreshToken,
-    refreshCookieOptions(tokens.refreshTokenExpiresAt),
+    refreshCookieOptions(req, tokens.refreshTokenExpiresAt),
   );
 
   res.status(200).json({

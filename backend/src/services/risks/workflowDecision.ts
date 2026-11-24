@@ -12,6 +12,13 @@
 import { applyClaimSupportGuard, applyLimitedEvidenceLabel } from "./claimSupportGuard.js";
 import { failedCheckExplanation, failedCheckNote } from "./checkExplanation.js";
 import { alignSecondaryClassification } from "./classificationAlignment.js";
+import {
+  applyPreSaveFieldValidation,
+  approvedDomain,
+  approvedPrimary,
+  approvedSecondary,
+  domainSupportedBySource,
+} from "./preSaveFieldValidation.js";
 import { applySafetyClaimGuard } from "./safetyClaimGuard.js";
 
 export const FACTS_V2_PIPELINE_VERSION = "2026.11.facts-v2";
@@ -32,16 +39,26 @@ export const ASSESSMENT_CHECKS = [
   "catalog_match",
 ] as const;
 
-/** Failures of these checks are notes. They do not hold a facts-v2 record. */
+/**
+ * Failures of these checks are notes. They do not hold a facts-v2 record.
+ *
+ * Workflow v2 section 6: checks 2, 5, 7 and 8 are notes. Check 3 is a
+ * claim check (rule 1). Checks 4 and 6 were promoted to hold rules after
+ * the 21 Nov golden retest found failed severity and rationale checks on
+ * published records (approved by Asad, 21 Nov 2026).
+ */
 export const NON_HOLDING_CHECKS = [
   "mitigations_reflected",
-  "not_attributed_to_proposed_method",
-  "severity_within_evidence",
   "evidence_type_consistent",
-  "rationale_supported",
   "domain_correct",
   "primary_secondary_correct",
 ] as const;
+
+/** Checks whose failure on the main claim holds the record (rule 1). */
+export const CLAIM_CHECKS = ["claim_is_demonstrated", "not_attributed_to_proposed_method"] as const;
+
+/** Checks whose failure holds the record with its own reason code. */
+export const EVIDENCE_HOLD_CHECKS = ["rationale_supported", "severity_within_evidence"] as const;
 
 export const DECISION_REASON_CODES = [
   "FETCH_FAIL",
@@ -51,8 +68,11 @@ export const DECISION_REASON_CODES = [
   "REPAIRED",
   "REPAIR_FAILED",
   "SAFETY_HOLD",
+  "RATIONALE_UNSUPPORTED",
+  "SEVERITY_UNSUPPORTED",
   "CATALOG_SUGGESTED",
   "PUBLISHED_LABELLED",
+  "PUBLISHED_WITH_NOTES",
   "VERIFIED",
 ] as const;
 
@@ -166,13 +186,13 @@ function catalogStatus(
   return "established";
 }
 
-const HOLDING_CHECKS = ["claim_is_demonstrated"] as const;
+const HOLDING_CHECKS = [...CLAIM_CHECKS, ...EVIDENCE_HOLD_CHECKS] as const;
 
 const UNEVIDENCED_CLAIM_REASON =
   /^(The source does not show this risk as a measured result or a real incident\.|This check did not run, so there is no verdict to trace\.)/;
 
 /**
- * A claim failure holds the record only when the assessor supplied a quote
+ * A failure holds the record only when the assessor supplied a quote
  * or a reason of its own. A blank failure is not evidence that the finding
  * is unsupported.
  */
@@ -190,11 +210,37 @@ function nonHoldingNotes(assessment: RiskAssessment | null | undefined): string[
     const entry = checkOf(assessment, name);
     if (entry.pass === false) notes.push(failedCheckNote(name, entry));
   }
-  const claim = checkOf(assessment, "claim_is_demonstrated");
-  if (claim.pass === false && !evidencedClaimFailure(claim)) {
-    notes.push(failedCheckNote("claim_is_demonstrated", claim));
+  for (const name of HOLDING_CHECKS) {
+    const entry = checkOf(assessment, name);
+    if (entry.pass === false && !evidencedClaimFailure(entry)) {
+      notes.push(failedCheckNote(name, entry));
+    }
   }
   return notes;
+}
+
+/** Holding checks that failed with evidence, in rule order. */
+function heldChecks(
+  assessment: RiskAssessment | null | undefined,
+  names: readonly (typeof ASSESSMENT_CHECKS)[number][],
+): (typeof ASSESSMENT_CHECKS)[number][] {
+  return names.filter((name) => evidencedClaimFailure(checkOf(assessment, name)));
+}
+
+function evidenceHoldReason(
+  failed: readonly (typeof ASSESSMENT_CHECKS)[number][],
+): DecisionReasonCode | null {
+  if (failed.includes("rationale_supported")) return "RATIONALE_UNSUPPORTED";
+  if (failed.includes("severity_within_evidence")) return "SEVERITY_UNSUPPORTED";
+  return null;
+}
+
+/** VERIFIED means every check passed (Workflow v2 rule 6). */
+function allChecksPass(assessment: RiskAssessment | null | undefined): boolean {
+  return ASSESSMENT_CHECKS.every((name) => {
+    if (name === "catalog_match") return catalogStatus(assessment) === "established";
+    return passes(assessment, name);
+  });
 }
 
 /** Every check that failed or never ran, with a traceable sentence. */
@@ -229,19 +275,21 @@ function confidenceFor(
     reason === "REPAIRED" ||
     reason === "REPAIR_FAILED" ||
     reason === "CLAIM_UNSUPPORTED" ||
+    reason === "RATIONALE_UNSUPPORTED" ||
+    reason === "SEVERITY_UNSUPPORTED" ||
     reason === "SAFETY_HOLD"
   ) {
     return "LOW";
   }
-  if (reason === "CATALOG_SUGGESTED" || reason === "PUBLISHED_LABELLED") {
+  if (
+    reason === "CATALOG_SUGGESTED" ||
+    reason === "PUBLISHED_LABELLED" ||
+    reason === "PUBLISHED_WITH_NOTES"
+  ) {
     return "MEDIUM";
   }
   if (reason !== "VERIFIED") return "LOW";
-  const allPass = ASSESSMENT_CHECKS.every((name) => {
-    if (name === "catalog_match") return catalogStatus(assessment) === "established";
-    return passes(assessment, name);
-  });
-  if (allPass && evidenceType === "demonstrated") return "HIGH";
+  if (allChecksPass(assessment) && evidenceType === "demonstrated") return "HIGH";
   return "MEDIUM";
 }
 
@@ -278,10 +326,19 @@ export function decideWorkflow(input: {
   const grounding = assessment?.grounding_score;
   const groundingFail =
     typeof grounding !== "number" || grounding < GROUNDING_MIN;
-  const mainClaimFail = evidencedClaimFailure(checkOf(assessment, "claim_is_demonstrated"));
-  if (mainClaimFail || groundingFail || assessment?.parsed === false || assessment?.ran === false) {
+  const mainClaimFail = heldChecks(assessment, CLAIM_CHECKS).length > 0;
+  const evidenceHold = evidenceHoldReason(heldChecks(assessment, EVIDENCE_HOLD_CHECKS));
+  if (mainClaimFail || assessment?.parsed === false || assessment?.ran === false) {
     return finish(
       input.repaired ? "REPAIR_FAILED" : "CLAIM_UNSUPPORTED",
+      "hold",
+      nonHoldingNotes(assessment),
+    );
+  }
+  if (groundingFail) {
+    // Name the failed check when there is one, so the queue says why.
+    return finish(
+      input.repaired ? "REPAIR_FAILED" : (evidenceHold ?? "CLAIM_UNSUPPORTED"),
       "hold",
       nonHoldingNotes(assessment),
     );
@@ -297,6 +354,13 @@ export function decideWorkflow(input: {
 
   if (assessment?.safety_claim === "real_world") {
     return finish("SAFETY_HOLD", "hold", nonHoldingNotes(assessment));
+  }
+
+  // Rule 2 runs first: a proposed repair can clear a failed rationale or
+  // severity check. Without one, or after it, those failures hold. The
+  // safety hold keeps its own label.
+  if (evidenceHold) {
+    return finish(input.repaired ? "REPAIR_FAILED" : evidenceHold, "hold", nonHoldingNotes(assessment));
   }
 
   if (input.repaired) {
@@ -318,6 +382,9 @@ export function decideWorkflow(input: {
     return finish("PUBLISHED_LABELLED", "publish", nonHoldingNotes(assessment));
   }
 
+  if (!allChecksPass(assessment)) {
+    return finish("PUBLISHED_WITH_NOTES", "publish", nonHoldingNotes(assessment));
+  }
   return finish("VERIFIED", "publish", nonHoldingNotes(assessment));
 }
 
@@ -365,10 +432,18 @@ export function applyAssessorCorrections(
   sourceText = "",
 ): void {
   const risk = (extractionJson.risk ?? {}) as Record<string, unknown>;
-  const domain = checkOf(assessment, "domain_correct").corrected?.trim();
-  if (domain) risk.domains = domain;
-  const primary = checkOf(assessment, "primary_secondary_correct").corrected_primary?.trim();
-  const secondary = checkOf(assessment, "primary_secondary_correct").corrected_secondary?.trim();
+  const domain = approvedDomain(checkOf(assessment, "domain_correct").corrected);
+  const currentDomain = approvedDomain(String(risk.domains ?? ""));
+  // Keep the extracted domain when the correction is a category name, or when
+  // the article does not support the replacement.
+  if (domain && domainSupportedBySource(domain, sourceText)) risk.domains = domain;
+  else if (domain && !currentDomain) risk.domains = domain;
+  const primary = approvedPrimary(
+    checkOf(assessment, "primary_secondary_correct").corrected_primary,
+  );
+  const secondary = approvedSecondary(
+    checkOf(assessment, "primary_secondary_correct").corrected_secondary,
+  );
   if (primary) risk.primary_risk = primary;
   if (secondary) risk.secondary_risks = secondary;
 
@@ -558,6 +633,7 @@ export async function runFactsV2AssessmentCycle(input: {
   }
 
   applyDecisionToExtraction(extractionJson, decision, assessment, input.sourceText);
+  applyPreSaveFieldValidation(extractionJson, input.sourceText);
   return { assessCalls, decision };
 }
 

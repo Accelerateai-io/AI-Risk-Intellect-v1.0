@@ -14,9 +14,19 @@ export type RefreshTokenPayload = {
   jti: string;
 };
 
+/**
+ * jsonwebtoken treats a unitless string such as "900" as milliseconds.
+ * A bare number is seconds. "45m" and "7d" stay strings.
+ */
+export function jwtExpiresIn(raw: string): SignOptions["expiresIn"] {
+  const value = raw.trim();
+  if (/^\d+$/.test(value)) return Number(value);
+  return value as SignOptions["expiresIn"];
+}
+
 export function signAccessToken(payload: AccessTokenPayload): string {
   const opts: SignOptions = {
-    expiresIn: env.ACCESS_TOKEN_TTL as SignOptions["expiresIn"],
+    expiresIn: jwtExpiresIn(env.ACCESS_TOKEN_TTL),
   };
   return jwt.sign(payload, env.JWT_ACCESS_SECRET, opts);
 }
@@ -29,7 +39,7 @@ export function verifyAccessToken(token: string): AccessTokenPayload &
 
 export function signRefreshToken(payload: RefreshTokenPayload): string {
   const opts: SignOptions = {
-    expiresIn: env.REFRESH_TOKEN_TTL as SignOptions["expiresIn"],
+    expiresIn: jwtExpiresIn(env.REFRESH_TOKEN_TTL),
   };
   return jwt.sign(payload, env.JWT_REFRESH_SECRET, opts);
 }

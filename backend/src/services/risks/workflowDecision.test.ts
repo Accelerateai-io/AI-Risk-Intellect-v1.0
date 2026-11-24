@@ -187,7 +187,8 @@ test("a stock claim explanation without a quote does not hold", () => {
     }),
     evidenceType: "demonstrated",
   });
-  assert.equal(decision.reason, "VERIFIED");
+  // Not a hold, but not every check passed, so it is not VERIFIED.
+  assert.equal(decision.reason, "PUBLISHED_WITH_NOTES");
   assert.equal(decision.publication, "publish");
 });
 
@@ -208,7 +209,7 @@ test("a claim failure that quotes the source still holds", () => {
   assert.equal(decision.publication, "hold");
 });
 
-test("blaming the proposed method is a note and does not hold", () => {
+test("blaming the proposed method holds the record (Workflow v2 rule 1, check 3)", () => {
   const decision = decideWorkflow({
     assessment: assessment({
       checks: checks({
@@ -221,21 +222,16 @@ test("blaming the proposed method is a note and does not hold", () => {
     }),
     evidenceType: "demonstrated",
   });
-  assert.equal(decision.reason, "VERIFIED");
-  assert.equal(decision.publication, "publish");
-  assert.ok(
-    decision.notes.some((note) => note.startsWith("not_attributed_to_proposed_method")),
-  );
+  assert.equal(decision.reason, "CLAIM_UNSUPPORTED");
+  assert.equal(decision.publication, "hold");
 });
 
-test("checks 2, 4, 5, 6, 7 and 8 do not hold a record on their own", () => {
+test("checks 2, 5, 7 and 8 do not hold a record on their own, and it is not VERIFIED", () => {
   const decision = decideWorkflow({
     assessment: assessment({
       checks: checks({
         mitigations_reflected: { pass: false, reason: "a safeguard was omitted" },
-        severity_within_evidence: { pass: false, reason: "impact is high" },
         evidence_type_consistent: { pass: false, reason: "label is off" },
-        rationale_supported: { pass: false, reason: "weak paraphrase" },
         domain_correct: { pass: false, corrected: "2. Privacy & Security" },
         primary_secondary_correct: {
           pass: false,
@@ -246,10 +242,98 @@ test("checks 2, 4, 5, 6, 7 and 8 do not hold a record on their own", () => {
     }),
     evidenceType: "demonstrated",
   });
-  assert.equal(decision.reason, "VERIFIED");
+  assert.equal(decision.reason, "PUBLISHED_WITH_NOTES");
   assert.equal(decision.publication, "publish");
   assert.equal(decision.confidence, "MEDIUM");
-  assert.equal(decision.notes.length, 6);
+  assert.equal(decision.notes.length, 4);
+});
+
+test("a failed rationale check holds as RATIONALE_UNSUPPORTED", () => {
+  const decision = decideWorkflow({
+    assessment: assessment({
+      checks: checks({ rationale_supported: { pass: false, reason: "no passage supports it" } }),
+    }),
+    evidenceType: "demonstrated",
+  });
+  assert.equal(decision.reason, "RATIONALE_UNSUPPORTED");
+  assert.equal(decision.publication, "hold");
+  assert.equal(decision.confidence, "LOW");
+});
+
+test("a failed severity check holds as SEVERITY_UNSUPPORTED", () => {
+  const decision = decideWorkflow({
+    assessment: assessment({
+      checks: checks({ severity_within_evidence: { pass: false, reason: "impact beyond the evidence" } }),
+    }),
+    evidenceType: "demonstrated",
+  });
+  assert.equal(decision.reason, "SEVERITY_UNSUPPORTED");
+  assert.equal(decision.publication, "hold");
+});
+
+test("a blank rationale or severity failure is not evidence and does not hold", () => {
+  const decision = decideWorkflow({
+    assessment: assessment({
+      checks: checks({
+        rationale_supported: { pass: false },
+        severity_within_evidence: { pass: false },
+      }),
+    }),
+    evidenceType: "demonstrated",
+  });
+  assert.equal(decision.publication, "publish");
+  assert.equal(decision.reason, "PUBLISHED_WITH_NOTES");
+});
+
+test("low grounding with a failed rationale check names the rationale (R-135)", () => {
+  const decision = decideWorkflow({
+    assessment: assessment({
+      grounding_score: 0.4,
+      checks: checks({
+        severity_within_evidence: { pass: false, reason: "impact beyond the evidence" },
+        rationale_supported: { pass: false, reason: "no passage supports it" },
+      }),
+    }),
+    evidenceType: "demonstrated",
+  });
+  assert.equal(decision.reason, "RATIONALE_UNSUPPORTED");
+  assert.equal(decision.publication, "hold");
+});
+
+test("a failed rationale check on a catalog suggestion still holds (R-139, R-144)", () => {
+  const decision = decideWorkflow({
+    assessment: assessment({
+      checks: checks({
+        severity_within_evidence: { pass: false, reason: "account abuse at scale is not in the source" },
+        rationale_supported: { pass: false, reason: "no passage supports it" },
+        catalog_match: { pass: false, best_id: "AIQ-0100", verdict: "related", percent: 45 },
+      }),
+    }),
+    evidenceType: "demonstrated",
+  });
+  assert.equal(decision.reason, "RATIONALE_UNSUPPORTED");
+  assert.equal(decision.publication, "hold");
+});
+
+test("a repair that clears the rationale failure publishes as REPAIRED", () => {
+  const first = decideWorkflow({
+    assessment: assessment({
+      repair: { drop_clause: "account fraud at scale", reason: "not in the source" },
+      checks: checks({ rationale_supported: { pass: false, reason: "clause unsupported" } }),
+    }),
+    evidenceType: "demonstrated",
+  });
+  assert.equal(first.reason, "REPAIRED");
+  assert.deepEqual(first.reassess, { dropClause: "account fraud at scale" });
+  const failedAgain = decideWorkflow({
+    assessment: assessment({
+      checks: checks({ rationale_supported: { pass: false, reason: "still unsupported" } }),
+    }),
+    evidenceType: "demonstrated",
+    repaired: true,
+  });
+  assert.equal(failedAgain.reason, "REPAIR_FAILED");
+  assert.equal(failedAgain.publication, "hold");
 });
 
 test("all nine checks are stored", async () => {
@@ -410,7 +494,8 @@ test("domain correction is applied and the old quality gate is not", async () =>
   const extraction = record();
   await runFactsV2AssessmentCycle({
     extractionJson: extraction,
-    sourceText: "source",
+    sourceText:
+      "The benchmark measured a three percent drop. The article describes a privacy breach and a security vulnerability.",
     catalogCandidates: [],
     hints: {},
     assess: async () =>
@@ -422,7 +507,7 @@ test("domain correction is applied and the old quality gate is not", async () =>
   });
   assert.equal(
     (extraction.risk as { domains: string }).domains,
-    "2. Privacy & Security",
+    "Privacy and Security",
   );
   const gate = applyPublicationDecision({
     qualityScore: null,
@@ -487,6 +572,34 @@ test("a security mechanism is relabeled without changing the catalog decision", 
   assert.equal(result.decision.reason, "CATALOG_SUGGESTED");
   assert.equal(result.decision.publication, "publish");
   assert.equal(extraction.grounding_score, 0.95);
+});
+
+test("a category name is not written into the domain", async () => {
+  const extraction = record();
+  extraction.risk = {
+    ...(extraction.risk as object),
+    risk_title: "Agents with internal access can take harmful actions",
+    description:
+      "Imperfectly aligned agents with system access are treated as an insider threat and may carry out cyber attacks.",
+    domains: "2. Privacy & Security",
+    secondary_risks: "Technical/Performance Risk",
+  };
+  await runFactsV2AssessmentCycle({
+    extractionJson: extraction,
+    sourceText: "The roadmap treats internal agents as an insider threat.",
+    catalogCandidates: [],
+    hints: {},
+    assess: async () =>
+      assessment({
+        checks: checks({
+          domain_correct: { pass: false, corrected: "Technical Risks" },
+          primary_secondary_correct: { pass: true },
+        }),
+      }),
+  });
+  const risk = extraction.risk as { domains: string; secondary_risks: string };
+  assert.equal(risk.domains, "Privacy and Security");
+  assert.equal(risk.secondary_risks, "Security Risk");
 });
 
 test("an output-quality failure stays Technical/Performance Risk", async () => {

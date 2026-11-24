@@ -149,7 +149,11 @@ New fields (all required):
 === RISK EXTRACTION RULES ===
 
 Extract factual information directly supported by the text:
-- risk_title: Clear, descriptive title (5-50 words)
+- risk_title: Clear, descriptive title (5-50 words).
+  State the limitation the source reports. Do not say a result prevents
+  real-time support, is impossible, or is a scalability failure unless the
+  source uses those words. A polynomial-time procedure and a successful
+  larger run are not a claim that real-time support is impossible.
 - description: Concise summary of the extracted risk from the article ONLY (50-100 words).
   Do NOT include catalog/reference risk text. Cover what happened, who is affected, and
   why it matters — no bullet lists, no repetition of the title. Describe only
@@ -159,7 +163,14 @@ Extract factual information directly supported by the text:
 - observable_indicators: Signs this risk is happening
 - data_to_identify_risk: Data needed to detect this risk
 - evidence_sources: Citations from the text
-- intent: Malicious, Accidental, Systemic, or Unknown
+- intent: Malicious, Accidental, Systemic, or Unknown.
+  Malicious means a person produced the outcome on purpose. A deepfake,
+  likeness, or false video that someone created and posted is Malicious,
+  including when the poster labeled it as AI. Accidental means the system
+  failed without anyone trying to cause that result. Do not mark a
+  deliberate deepfake Accidental.
+- domains: exactly one of the seven domains above. Never put a primary
+  category name (Technical Risks, Operational Risks, Business Risks) in domains.
 - timing: When this risk typically occurs
 - risk_type_detected: Type based on content
 - sector: Public, Private, or Non-Profit

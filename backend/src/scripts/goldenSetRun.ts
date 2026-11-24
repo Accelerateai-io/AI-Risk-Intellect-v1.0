@@ -31,9 +31,12 @@ const REASON_CODES = [
   "CATALOG_SUGGESTED",
   "CLAIM_UNSUPPORTED",
   "SAFETY_HOLD",
+  "RATIONALE_UNSUPPORTED",
+  "SEVERITY_UNSUPPORTED",
   "REPAIR_FAILED",
   "FETCH_FAIL",
   "NOT_AI",
+  "PUBLISHED_WITH_NOTES",
   "VERIFIED",
   "REPAIRED",
   "MERGED",
@@ -89,6 +92,8 @@ function mismatchNote(expected: string | null, actual: string, result: JobResult
   }
   if (actual === "CLAIM_UNSUPPORTED") return "Claim check failed";
   if (actual === "SAFETY_HOLD") return "Safety hold";
+  if (actual === "RATIONALE_UNSUPPORTED") return "Rationale check failed";
+  if (actual === "SEVERITY_UNSUPPORTED") return "Severity check failed";
   if (expected === "CLAIM_UNSUPPORTED") return "Claim check passed";
   if (expected === "CATALOG_SUGGESTED" && result.catalogPercent != null) {
     return `Catalog score ${result.catalogPercent}, at or above 60`;

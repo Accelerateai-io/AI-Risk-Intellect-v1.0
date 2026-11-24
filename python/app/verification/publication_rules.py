@@ -285,7 +285,10 @@ def check_risk_classification(record: dict, source_text: str = "") -> Optional[s
     }
     chosen = next((name for name, _cues in _DOMAIN_CUES if name in domain), None)
     if chosen is None:
-        return None
+        return (
+            "Risk classification conflicts with the explanation: the domain "
+            "is not one of the seven domains."
+        )
     best_other = max((score for name, score in scores.items() if name != chosen), default=0)
     if scores.get(chosen, 0) == 0 and best_other >= 3:
         return (
@@ -381,6 +384,73 @@ def check_sensitive_claims(record: dict, source_text: str) -> Optional[str]:
     return None
 
 
+_TITLE_ABSOLUTE_RE = re.compile(
+    r"\b(prevents?|preclud\w*|impossible|not possible|isn't possible|isnt possible|"
+    r"scalability|real[- ]time|decision support)\b",
+    re.IGNORECASE,
+)
+
+
+def unsupported_title_claim(title: str, source_text: str) -> Optional[str]:
+    """An absolute title claim the source does not make.
+
+    The title can name the measured limitation. It cannot say that limitation
+    prevents a capability, or call it a scalability failure, unless the source
+    uses those words.
+    """
+    text = title or ""
+    source = (source_text or "").lower().replace("-", " ")
+    for match in _TITLE_ABSOLUTE_RE.finditer(text):
+        word = match.group(0).lower().replace("-", " ")
+        if word not in source:
+            return (
+                "Title overstates the source: "
+                f"'{match.group(0)}' is not a claim the source makes."
+            )
+    return None
+
+
+def rewrite_overstated_title(title: str, source_text: str) -> str:
+    """Drop an unsupported absolute clause from the title.
+
+    The shortened title is kept only when it still names the subject.
+    Otherwise the original title is left for the publication check to hold.
+    """
+    updated = title or ""
+    if unsupported_title_claim(updated, source_text) is None:
+        return updated
+    source = (source_text or "").lower()
+    if "scalability" not in source:
+        updated = re.sub(r"\bscalability limitations\b", "", updated, flags=re.IGNORECASE)
+        updated = re.sub(r"\bscalability\b", "", updated, flags=re.IGNORECASE)
+    verb = re.search(
+        r"\b(prevents?|preclud\w*|impossible|not possible|isn't possible|isnt possible)\b",
+        updated,
+        re.IGNORECASE,
+    )
+    if verb and updated[verb.start() :].lower() not in source.lower():
+        updated = updated[: verb.start()]
+    if re.search(r"\breal[- ]time\b|\bdecision support\b", updated, re.IGNORECASE):
+        if "real time" not in source.replace("-", " "):
+            updated = re.sub(r"\breal[- ]time\b", "", updated, flags=re.IGNORECASE)
+        if "decision support" not in source:
+            updated = re.sub(r"\bdecision support\b", "", updated, flags=re.IGNORECASE)
+    updated = re.sub(r"\s{2,}", " ", updated)
+    updated = re.sub(r"\s+([,.;])", r"\1", updated)
+    updated = re.sub(r"\band\s+(and|in)\b", r"\1", updated, flags=re.IGNORECASE)
+    updated = updated.strip(" ,;:-")
+    if len(updated.split()) < 4:
+        return title
+    return updated
+
+
+def check_title_overstatement(record: dict, source_text: str) -> Optional[str]:
+    """Hold a title that states a capability the source does not deny."""
+    if not isinstance(record, dict):
+        return None
+    return unsupported_title_claim(_text(_risk(record).get("risk_title")), source_text)
+
+
 def check_claim_scope(record: dict, source_text: str) -> Optional[str]:
     """Keep claims inside the tasks the source tested, and attribute prior work."""
     if not isinstance(record, dict):
@@ -457,6 +527,7 @@ def publication_review(record: dict, source_text: str = "") -> dict[str, Any]:
         ("simulation_scope", check_simulation_scope),
         ("sensitive_claims", check_sensitive_claims),
         ("claim_scope", check_claim_scope),
+        ("title_overstatement", check_title_overstatement),
     )
     checks: list[dict[str, Any]] = []
     reasons: list[str] = []
