@@ -394,6 +394,7 @@ export type PythonAssessment = {
   quoted_support?: string[];
   safety_claim?: string | null;
   repair?: { drop_clause?: string; reason?: string } | null;
+  buyer_relevance?: { pass?: boolean | null; use_case?: string; consequence?: string } | null;
 };
 
 async function runAssessHttp(payload: {

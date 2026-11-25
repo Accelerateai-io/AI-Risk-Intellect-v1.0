@@ -1680,7 +1680,73 @@ html.app-theme-dark .riskDetail__classCardAction--edit {
 }
 
 .riskDetail__checkTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
   font-weight: 600;
+}
+
+.riskDetail__checkBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+}
+
+.riskDetail__checkBadge--held {
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+}
+
+.riskDetail__checkBadge--note {
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.14);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+}
+
+.riskDetail__checkBadgeNote {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin: 0.35rem 0 0;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  background: rgba(59, 130, 246, 0.08);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.riskDetail__checkBadgeNote svg {
+  flex-shrink: 0;
+  margin-top: 0.12rem;
+  color: #60a5fa;
+}
+
+html:not(.app-theme-dark) .riskDetail__checkBadge--held {
+  color: #92400e;
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+
+html:not(.app-theme-dark) .riskDetail__checkBadge--note {
+  color: #334155;
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+html:not(.app-theme-dark) .riskDetail__checkBadgeNote {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1e3a8a;
 }
 
 .riskDetail__checkReason {
@@ -1689,6 +1755,15 @@ html.app-theme-dark .riskDetail__classCardAction--edit {
 
 .riskDetail__checkReasonLabel {
   font-weight: 600;
+}
+
+.riskDetail__decisionReason--held {
+  color: #fbbf24;
+  font-weight: 650;
+}
+
+html:not(.app-theme-dark) .riskDetail__decisionReason--held {
+  color: #92400e;
 }
 
 .riskDetail__infoNote {

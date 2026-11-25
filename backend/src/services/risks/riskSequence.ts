@@ -50,14 +50,25 @@ export function buildRiskDisplayIdMap(
   return map;
 }
 
-/** Stable R-n ids across Risks page, Review queue, and Feedback (by global ingest order). */
+/**
+ * Stable R-n ids across Risks, Review, and search.
+ * Uses the same created-time-then-id sequence the Risks table prints.
+ */
 export async function fetchGlobalRiskDisplayIdMap(): Promise<
   Map<string, string>
 > {
-  const orderRows = await db
-    .select({ id: risks.id, createdAt: risks.createdAt })
+  const rows = await db
+    .select({
+      id: risks.id,
+      seq: riskIngestSequenceSql(),
+    })
     .from(risks);
-  return buildRiskDisplayIdMap(orderRows);
+  const total = rows.length;
+  const map = new Map<string, string>();
+  for (const row of rows) {
+    map.set(row.id, formatRiskDisplayId(Number(row.seq), total));
+  }
+  return map;
 }
 
 /** R-n ids for a page of risks without loading the full id list into memory. */

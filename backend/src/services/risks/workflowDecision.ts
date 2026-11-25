@@ -109,7 +109,13 @@ export type RiskAssessment = {
   quoted_support?: string[];
   safety_claim?: string | null;
   repair?: { drop_clause?: string; reason?: string } | null;
+  /** Plausible adverse consequence in an identifiable buyer use case. Null when not returned. */
+  buyer_relevance?: { pass?: boolean | null; use_case?: string; consequence?: string } | null;
 };
+
+/** Note stored when a record is published as research-only for buyer relevance. */
+export const NOT_BUYER_RELEVANT_NOTE =
+  "Research only: the record does not describe a plausible adverse consequence in a buyer use case.";
 
 export type EvidenceEntry = { article_id: number; url: string };
 
@@ -154,6 +160,36 @@ function applyJudgedCatalogMatch(
   return {
     ...assessment,
     checks: { ...assessment.checks, catalog_match: check },
+  };
+}
+
+/**
+ * The verifier names domains with "&" (Privacy & Security) while records store
+ * the catalog spelling (Privacy and Security). A "correction" that maps to the
+ * record's own catalog domain changes nothing that is stored, so it is a pass,
+ * not a failed check.
+ */
+export function reconcileDomainCheck(
+  extractionJson: Record<string, unknown>,
+  assessment: RiskAssessment,
+): RiskAssessment {
+  const entry = assessment.checks?.domain_correct;
+  if (!entry || entry.pass !== false) return assessment;
+  const risk = (extractionJson.risk ?? {}) as Record<string, unknown>;
+  const current = approvedDomain(String(risk.domains ?? ""));
+  const corrected = approvedDomain(entry.corrected);
+  if (!current || !corrected || current !== corrected) return assessment;
+  return {
+    ...assessment,
+    checks: {
+      ...assessment.checks,
+      domain_correct: {
+        ...entry,
+        pass: true,
+        corrected: "",
+        reason: `The suggested domain is the record's own domain (${current}) spelled differently.`,
+      },
+    },
   };
 }
 
@@ -367,6 +403,17 @@ export function decideWorkflow(input: {
     return finish("REPAIRED", "publish", nonHoldingNotes(assessment));
   }
 
+  // Buyer relevance (approved by Asad, 24 Nov 2026): an accurate record with no
+  // plausible adverse consequence in a buyer use case is published as research
+  // only, never VERIFIED. A missing verdict changes nothing. It runs before the
+  // catalog rule because CATALOG_SUGGESTED records also go to AI-Q (Asad, 24 Nov).
+  if (assessment?.buyer_relevance?.pass === false) {
+    return finish("PUBLISHED_LABELLED", "publish", [
+      ...nonHoldingNotes(assessment),
+      NOT_BUYER_RELEVANT_NOTE,
+    ]);
+  }
+
   const match = checkOf(assessment, "catalog_match");
   const percent = catalogPercent(assessment);
   if (!match.best_id || percent == null || percent < CATALOG_SUGGEST_BELOW) {
@@ -513,6 +560,7 @@ export function applyDecisionToExtraction(
   extractionJson.grounding_score = assessment?.grounding_score ?? null;
   extractionJson.quoted_support = assessment?.quoted_support ?? [];
   extractionJson.safety_claim = assessment?.safety_claim ?? null;
+  extractionJson.buyer_relevance = assessment?.buyer_relevance ?? null;
   extractionJson.check_notes = decision.notes;
   const failedNotes = failedAssessmentNotes(assessment);
   if (!published) {
@@ -580,7 +628,7 @@ export async function runFactsV2AssessmentCycle(input: {
       applySafetyClaimGuard(
         extractionJson,
         input.sourceText,
-        await input.assess(requestFor(extractionJson)),
+        reconcileDomainCheck(extractionJson, await input.assess(requestFor(extractionJson))),
       ),
     ),
     input.catalogCandidates,
@@ -617,7 +665,7 @@ export async function runFactsV2AssessmentCycle(input: {
           applySafetyClaimGuard(
             extractionJson,
             input.sourceText,
-            await input.assess(requestFor(extractionJson)),
+            reconcileDomainCheck(extractionJson, await input.assess(requestFor(extractionJson))),
           ),
         ),
         input.catalogCandidates,

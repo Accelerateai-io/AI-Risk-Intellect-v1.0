@@ -181,6 +181,41 @@ test("riskRowMatchesFilters applies primaryKey, tag and search", () => {
     riskRowMatchesFilters(row, { primaryKey: null, tag: null, search: "no-such-term" }),
     false,
   );
+  assert.equal(
+    riskRowMatchesFilters(
+      { ...row, displayId: "R-149" },
+      { primaryKey: null, tag: null, search: "R-149" },
+    ),
+    true,
+  );
+  assert.equal(
+    riskRowMatchesFilters(
+      { ...row, displayId: "R-09" },
+      { primaryKey: null, tag: null, search: "R-9" },
+    ),
+    true,
+  );
+  assert.equal(
+    riskRowMatchesFilters(
+      { ...row, displayId: "R-19" },
+      { primaryKey: null, tag: null, search: "R-9" },
+    ),
+    false,
+  );
+  assert.equal(
+    riskRowMatchesFilters(
+      { ...row, displayId: "R-09" },
+      { primaryKey: null, tag: null, search: "9" },
+    ),
+    true,
+  );
+  assert.equal(
+    riskRowMatchesFilters(
+      { ...row, displayId: "R-149" },
+      { primaryKey: null, tag: null, search: "R-14" },
+    ),
+    false,
+  );
   // null filters never exclude.
   assert.equal(
     riskRowMatchesFilters(row, { primaryKey: null, tag: null, search: null }),

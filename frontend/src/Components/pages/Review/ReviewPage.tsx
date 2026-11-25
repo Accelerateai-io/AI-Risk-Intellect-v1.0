@@ -679,7 +679,7 @@ export function ReviewPage() {
   );
 
   const searchPlaceholder =
-    tab === "queue" ? "Search review queue or URL…" : "Search feedback or URL…";
+    tab === "queue" ? "Search ID, review queue, or URL…" : "Search ID, feedback, or URL…";
   const searchAriaLabel = tab === "queue" ? "Search review queue" : "Search feedback samples";
   const hasQueueFilters = tab === "queue" && (whyFilter !== "all" || Boolean(reviewSearch.trim()) || assignee !== "all");
 

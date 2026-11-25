@@ -57,9 +57,18 @@ export function safetyHarmText(record: Record<string, unknown>): string {
   return parts.filter(Boolean).join("\n");
 }
 
+/**
+ * A denied harm ("no reports of harm to patients") is cut out of the sentence
+ * before the harm test, so a denial is not read as a claim. Only the denied
+ * phrase is removed: harm asserted elsewhere in the same sentence still counts.
+ */
+const DENIED_HARM_PHRASE =
+  /\bno (?:reports?|evidence|record|cases?|instances?|indication|signs?) of\b[^.,;]{0,40}?\b(?:harm\w*|injur\w*|deaths?|misdiagnos\w*)(?:\s+(?:to|of|in|among)\s+(?:patients?|clinicians?|users?))?/gi;
+
 function sentenceAssertsHarm(sentence: string): boolean {
-  if (!HARM_SENTENCE.test(sentence) || NOT_A_HARM_CLAIM.test(sentence)) return false;
-  if (METRIC_ONLY.test(sentence) && !CONSEQUENCE.test(sentence)) return false;
+  const claim = sentence.replace(DENIED_HARM_PHRASE, " ");
+  if (!HARM_SENTENCE.test(claim) || NOT_A_HARM_CLAIM.test(claim)) return false;
+  if (METRIC_ONLY.test(claim) && !CONSEQUENCE.test(claim)) return false;
   return true;
 }
 

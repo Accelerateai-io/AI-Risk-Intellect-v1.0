@@ -58,14 +58,16 @@ Checks:
 1. claim_is_demonstrated: pass when the record's risk is something the source reports as observed, measured, or as a real incident, OR the record marks it as hypothesized and writes it as a suggestion. Pass when evidence_type is "mitigation_target" and the source reports a measured ablation, benchmark degradation, or the effect of removing a component. That measured research result is not a failure for lack of a deployed incident. Fail when a speculation is written as an observed fact, or evidence_type is "demonstrated" without a result. Fail when the record says the authors observed, found, showed, or demonstrated a behavior that the source only says may or might happen, including when the record says the paper demonstrates it through experiments. A failure must include a source quote. Do not fail this check with an empty reason.
 2. mitigations_reflected: pass when safeguards, validation, limitations, or mitigations in the source are reflected, or the source describes none.
 3. not_attributed_to_proposed_method: pass when the risk is the problem the source documents, including a limitation the source reports in the method it proposes, such as a measured segmentation, depth, or simulation failure. Fail when the record blames that method for a harm the source does not report. This check does not by itself decide publication.
-4. severity_within_evidence: pass when likelihood, impact, and their rationales stay within what the source reports. Fail when a rationale states patient harm, physical harm, or a deployment failure the source does not report. A sentence about improved patient care, resource allocation, better outcomes, or another hoped-for benefit does not show that harm occurred. This check does not by itself decide publication.
+4. severity_within_evidence: pass when likelihood, impact, and their rationales stay within what the source reports. Fail when a rationale states patient harm, physical harm, or a deployment failure the source does not report. A sentence about improved patient care, resource allocation, better outcomes, or another hoped-for benefit does not show that harm occurred. A statement that harm, a deployment, or a failure was not reported (for example "no reported harm" or "rather than a deployed system failure") stays within the evidence when the source does not report it; do not fail this check for that statement. Harm, a deployment, or a failure asserted elsewhere in the same sentence is still checked. This check does not by itself decide publication.
 5. evidence_type_consistent: pass when "demonstrated" has a measured result or incident, "mitigation_target" is a fix the source proposes, and anything else is "hypothesized".
-6. rationale_supported: pass when each rationale sentence is supported by a passage you can quote, including a faithful paraphrase. A benefit or improvement sentence does not support a harm rationale. This check does not by itself decide publication.
+6. rationale_supported: pass when each rationale sentence is supported by a passage you can quote, including a faithful paraphrase. A benefit or improvement sentence does not support a harm rationale. A sentence that only says the source does not report something needs no quote; do not fail this check for it. This check does not by itself decide publication.
 7. domain_correct: pass when the domain matches the harm. If not, return the corrected domain string. The corrected value must be one of the seven domains (Discrimination & Toxicity, Privacy & Security, Misinformation, Malicious Actors, Human-Computer Interaction, Socioeconomic & Environmental, AI System Safety, Failures, & Limitations). Never return a primary category such as Technical Risks, Operational Risks, or Business Risks.
 8. primary_secondary_correct: pass when primary and secondary categories match the mechanism of harm, not a single keyword. Technical/Performance Risk is only for output quality: hallucination, inaccurate output, inconsistent responses, or performance degradation. CAPTCHA-solving accuracy, a success rate, learning a new CAPTCHA class, and simulated perturbation recovery are Technical/Performance Risk. The words CAPTCHA, bypass, evasion, or defeat alone are not Security Risk. Security Risk for a CAPTCHA system requires the source to report unauthorized access, account takeover, or credential abuse. Unauthorized agent actions, cyberattacks, prompt injection, data exposure, and system compromise are Security Risk under Technical Risks. If the record uses the wrong one, fail and return corrected_primary and corrected_secondary. Do not rewrite the finding.
 9. catalog_match: best candidate id, verdict ("same mechanism", "related", or "topical only"), and percent 0 to 100. No candidate: best_id null and percent null.
 
-Also return grounding_score 0 to 1 (share of the record the source supports, paraphrase included), quoted_support (source passages), safety_claim, and repair (one secondary clause to drop, or null). safety_claim is "real_world" when the record asserts actual or potential health or physical-safety harm in the finding or the impact, including harm that could follow from a test, benchmark, or simulation. Use "none" when the finding or impact says that harm was not reported or did not occur, including "no reported physical harm" and "no patient safety consequences". Use "research_only" when the work is research and the record does not assert that harm. Use "none" when there is no health or physical-safety claim. A measured accuracy, AUC, F1, or error count is not by itself a safety harm. When the record asserts that harm, return repair null. Do not name the harm sentence as the clause to drop.
+Also return grounding_score 0 to 1 (share of the record the source supports, paraphrase included), quoted_support (source passages), safety_claim, and repair (one secondary clause to drop, or null). safety_claim is "real_world" when the record asserts actual or potential health or physical-safety harm in the finding or the impact, including harm that could follow from a test, benchmark, or simulation. Use "none" when the finding or impact says that harm was not reported or did not occur, including "no reported physical harm" and "no patient safety consequences". Use "research_only" when the work is research and the record does not assert that harm. Use "none" when there is no health or physical-safety claim. A measured accuracy, AUC, F1, or error count is not by itself a safety harm. When the record asserts that harm, return repair null. Do not name the harm sentence as the clause to drop. When check 4 or check 6 fails only because of one clause that is not the record's main claim, return that exact clause as repair.drop_clause so the record can be repaired instead of held.
+
+Also return buyer_relevance. pass is true when the record describes a plausible adverse consequence for an organization that buys or deploys an AI system in an identifiable use case (for example a hospital triage tool, a hiring screener, or a customer chatbot), even if no harm has occurred yet. pass is false when the record only describes a design property of the method the source proposes, a baseline the source improves on (unless the record names a use case in which buyers rely on that baseline), a benchmark or test score with no consequence for anyone using AI, or a theoretical result. When pass is true, name the use_case and the consequence in a few words each. buyer_relevance does not change any of the nine checks.
 
 Return ONLY this JSON object:
 {
@@ -83,7 +85,8 @@ Return ONLY this JSON object:
   "grounding_score": 0.0,
   "quoted_support": ["..."],
   "safety_claim": "none",
-  "repair": null
+  "repair": null,
+  "buyer_relevance": {"pass": true, "use_case": "", "consequence": ""}
 }
 No markdown, no text outside the JSON."""
 
@@ -280,6 +283,23 @@ def _parse_check(name: str, entry: Any) -> dict:
     )
 
 
+def _parse_buyer_relevance(value: Any) -> Optional[dict]:
+    """Buyer relevance verdict, or None when the model did not return one."""
+    if isinstance(value, dict):
+        verdict = _as_bool(value.get("pass"))
+        if verdict is None:
+            return None
+        return {
+            "pass": verdict,
+            "use_case": str(value.get("use_case") or "").strip()[:200],
+            "consequence": str(value.get("consequence") or "").strip()[:200],
+        }
+    verdict = _as_bool(value)
+    if verdict is None:
+        return None
+    return {"pass": verdict, "use_case": "", "consequence": ""}
+
+
 def parse_verifier_response(text: str) -> dict:
     """Normalise the model's answer. Never raises; missing checks are None."""
     from app.llm.json_parse import parse_llm_json
@@ -325,6 +345,7 @@ def parse_verifier_response(text: str) -> dict:
         "unsupported_claims": quotes[:10],
         "safety_claim": safety,
         "repair": repair,
+        "buyer_relevance": _parse_buyer_relevance(raw.get("buyer_relevance")),
         "parsed": bool(raw),
     }
 
@@ -392,6 +413,7 @@ def run_verifier(
             "unsupported_claims": [],
             "safety_claim": None,
             "repair": None,
+            "buyer_relevance": None,
             "review_reasons": [f"{REASON_PREFIX} did not run - {error[:120]}"],
             "passed": False,
         }
@@ -400,7 +422,7 @@ def run_verifier(
         text, model_used, usage = generate_text(
             VERIFIER_SYSTEM_PROMPT,
             blocks,
-            max_tokens=1_500,
+            max_tokens=2_000,
             temperature=0.0,
             model_id=model_id,
         )
@@ -413,7 +435,7 @@ def run_verifier(
             text, model_used, usage = generate_text(
                 VERIFIER_SYSTEM_PROMPT,
                 blocks + [{"text": "The previous reply was not valid JSON. Return only the JSON object."}],
-                max_tokens=1_500,
+                max_tokens=2_000,
                 temperature=0.0,
                 model_id=model_id,
             )

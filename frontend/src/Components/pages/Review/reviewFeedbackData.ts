@@ -111,8 +111,12 @@ export function filterReviewFeedbackSamples(
     if (item.classification !== classification) return false;
     if (!q) return true;
 
+    const asId = /^r-\d+$/i.test(q) ? q : /^\d+$/.test(q) ? `r-${q}` : "";
+    if (asId) {
+      const shown = item.displayId.trim().toLowerCase();
+      return shown.replace(/^r-0*/, "r-") === asId.replace(/^r-0*/, "r-");
+    }
     return [
-      item.displayId,
       item.title,
       item.domain,
       item.primaryRisk,

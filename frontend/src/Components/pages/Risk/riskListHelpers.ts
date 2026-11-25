@@ -1,6 +1,16 @@
 import { groundingSortValue } from "./assessmentDisplay";
 import type { RiskDetail } from "./riskData";
 
+/** R-9, R-09, and 9 all match the shown id R-09. R-9 does not match R-19. */
+function displayIdMatches(query: string, displayId: string): boolean {
+  const shown = displayId.trim().toLowerCase();
+  if (!shown) return false;
+  const asId = /^r-\d+$/i.test(query) ? query : /^\d+$/.test(query) ? `r-${query}` : "";
+  if (!asId) return false;
+  const normalize = (value: string) => value.replace(/^r-0*/, "r-");
+  return normalize(shown) === normalize(asId);
+}
+
 export function riskMatchesFilters(
   row: RiskDetail,
   primaryRisk: string,
@@ -15,9 +25,11 @@ export function riskMatchesFilters(
   }
   const q = search.trim().toLowerCase();
   if (!q) return true;
+  if (/^r-\d+$/i.test(q) || /^\d+$/.test(q)) {
+    return displayIdMatches(q, row.displayId ?? "");
+  }
   const hay = [
     row.id,
-    row.displayId ?? "",
     row.articleId ?? "",
     row.title,
     row.domain,

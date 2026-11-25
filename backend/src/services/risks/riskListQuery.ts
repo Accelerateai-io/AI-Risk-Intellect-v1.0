@@ -1,3 +1,4 @@
+import { parseRiskDisplaySequence } from "./riskDisplayId.js";
 import { primaryKeyFromLabel, tagKeyFromDomain } from "./riskDto.js";
 import { resolveQualityScore100 } from "./riskQuality.js";
 
@@ -54,6 +55,8 @@ export type RiskFilterRow = {
   articleUrl: string | null;
   aiProductName: string | null;
   aiProductVendor: string | null;
+  /** Shown id, such as R-149. Set by the list scan when a search is active. */
+  displayId?: string | null;
   qualityScore: number | null;
   severityScore: number | null;
   extractionJson: unknown;
@@ -158,9 +161,30 @@ function riskPrimaryLabel(row: RiskFilterRow): string {
   return String(row.primaryRisk ?? ext.risk?.primary_risk ?? "").trim();
 }
 
+/** R-149, R-0149, and 149 are a risk-id search. Other text is not. */
+function riskIdQuery(search: string): number | null {
+  const trimmed = search.trim();
+  const asId = /^r-\d+$/i.test(trimmed)
+    ? trimmed
+    : /^\d+$/.test(trimmed)
+      ? `R-${trimmed}`
+      : "";
+  if (!asId) return null;
+  return parseRiskDisplaySequence(asId);
+}
+
+/** R-9 and R-09 are the same shown id. A bare number matches that id too. */
+function searchMatchesDisplayId(search: string, displayId: string): boolean {
+  const wanted = riskIdQuery(search);
+  if (wanted == null) return false;
+  const actual = parseRiskDisplaySequence(displayId);
+  return actual != null && wanted === actual;
+}
+
 /** The free-text haystack for one row (columns the search box advertises). */
 function searchHaystack(row: RiskFilterRow): string {
   return [
+    row.displayId,
     row.riskTitle,
     riskDomain(row),
     riskPrimaryLabel(row),
@@ -194,7 +218,13 @@ export function riskRowMatchesFilters(
     if (tagKeyFromDomain(riskDomain(row)) !== params.tag) return false;
   }
   if (params.search) {
-    if (!searchHaystack(row).includes(params.search.toLowerCase())) return false;
+    if (riskIdQuery(params.search) != null) {
+      if (!searchMatchesDisplayId(params.search, String(row.displayId ?? ""))) {
+        return false;
+      }
+    } else if (!searchHaystack(row).includes(params.search.toLowerCase())) {
+      return false;
+    }
   }
   return true;
 }

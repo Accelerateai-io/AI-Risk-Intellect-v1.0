@@ -51,10 +51,13 @@ import type { EvidenceDisciplineInfo, FactsV2AssessmentInfo } from "./riskData";
 import {
   assessmentCheckLabel,
   assessmentCheckPassDescription,
+  decisionHoldNote,
   displayGroundingScore,
   formatGroundingScore,
   formatPublicationStatus,
   formatStoredToken,
+  splitAssessmentChecks,
+  type IndexedAssessmentCheck,
   verifierCardMode,
 } from "./assessmentDisplay";
 import { FieldEditDialog, type FieldEditSpec } from "./FieldEditDialog";
@@ -825,6 +828,50 @@ const CatalogMatchCard = memo(function CatalogMatchCard({ match }: { match: Cata
   );
 });
 
+function AssessmentCheckItem({
+  check,
+  badge,
+  info,
+}: {
+  check: IndexedAssessmentCheck;
+  badge: "held" | "note" | null;
+  info: string | null;
+}) {
+  return (
+    <li className="riskDetail__checkItem">
+      <p className="riskDetail__checkTitle">
+        {check.pass === false ? "✗" : check.pass === true ? "✓" : "?"}{" "}
+        Check {check.number}. {assessmentCheckLabel(check.name)}
+        {badge ? (
+          <span className={`riskDetail__checkBadge riskDetail__checkBadge--${badge}`}>
+            {badge === "held" ? "Holds the record" : "Note"}
+          </span>
+        ) : null}
+      </p>
+      {info ? (
+        <p className="riskDetail__checkBadgeNote" role="note">
+          <Info size={14} strokeWidth={2} aria-hidden />
+          <span>{info}</span>
+        </p>
+      ) : null}
+      {check.pass === true ? (
+        <p className="riskDetail__checkReason">
+          <span className="riskDetail__checkReasonLabel">Reason: </span>
+          {assessmentCheckPassDescription(check.name)}
+        </p>
+      ) : check.reason ? (
+        <p className="riskDetail__checkReason">
+          <span className="riskDetail__checkReasonLabel">Reason: </span>
+          {check.reason}
+        </p>
+      ) : null}
+      {check.quote ? (
+        <p className="riskDetail__checkReason">“{check.quote}”</p>
+      ) : null}
+    </li>
+  );
+}
+
 const AssessmentSection = memo(function AssessmentSection({
   baseId,
   assessment,
@@ -832,6 +879,13 @@ const AssessmentSection = memo(function AssessmentSection({
   baseId: string;
   assessment: FactsV2AssessmentInfo;
 }) {
+  const holdNote = decisionHoldNote(assessment.decisionReason);
+  const groups = splitAssessmentChecks(assessment.checks, assessment.decisionReason);
+  const heldNames = new Set(groups.held.map((check) => check.name));
+  const noteNames = new Set(groups.notes.map((check) => check.name));
+  const ordered = [...groups.held, ...groups.notes, ...groups.rest].sort(
+    (left, right) => left.number - right.number,
+  );
   return (
     <section
       className="riskDetail__section riskDetail__cardSection"
@@ -852,33 +906,27 @@ const AssessmentSection = memo(function AssessmentSection({
           <span>{formatPublicationStatus(assessment.publicationStatus)}</span>
         </DetailInfoCard>
         <DetailInfoCard title="Decision reason" icon={ClipboardList}>
-          <span>{formatStoredToken(assessment.decisionReason)}</span>
+          <span className={holdNote ? "riskDetail__decisionReason riskDetail__decisionReason--held" : undefined}>
+            {formatStoredToken(assessment.decisionReason)}
+          </span>
         </DetailInfoCard>
       </dl>
       <dl className="riskDetail__classification riskDetail__evidenceBento">
         <DetailInfoCard title="Assessment checks" icon={ShieldCheck} span={4}>
           <ul className="riskDetail__plainList riskDetail__checkList">
-            {assessment.checks.map((check, index) => (
-              <li key={check.name} className="riskDetail__checkItem">
-                <p className="riskDetail__checkTitle">
-                  {check.pass === false ? "✗" : check.pass === true ? "✓" : "?"}{" "}
-                  Check {index + 1}. {assessmentCheckLabel(check.name)}
-                </p>
-                {check.pass === true ? (
-                  <p className="riskDetail__checkReason">
-                    <span className="riskDetail__checkReasonLabel">Reason: </span>
-                    {assessmentCheckPassDescription(check.name)}
-                  </p>
-                ) : check.reason ? (
-                  <p className="riskDetail__checkReason">
-                    <span className="riskDetail__checkReasonLabel">Reason: </span>
-                    {check.reason}
-                  </p>
-                ) : null}
-                {check.quote ? (
-                  <p className="riskDetail__checkReason">“{check.quote}”</p>
-                ) : null}
-              </li>
+            {ordered.map((check) => (
+              <AssessmentCheckItem
+                key={check.name}
+                check={check}
+                badge={heldNames.has(check.name) ? "held" : noteNames.has(check.name) ? "note" : null}
+                info={
+                  heldNames.has(check.name)
+                    ? groups.heldLead
+                    : noteNames.has(check.name)
+                      ? groups.notesLead
+                      : null
+                }
+              />
             ))}
           </ul>
         </DetailInfoCard>

@@ -123,6 +123,117 @@ export function formatStoredToken(value: string | null | undefined): string {
   return text ? text : "—";
 }
 
+/** Stored codes such as REPAIR_FAILED, shown as "Repair failed". */
+export function formatDecisionReason(value: string | null | undefined): string {
+  const text = value?.trim();
+  if (!text) return "—";
+  const words = text.toLowerCase().split("_").filter(Boolean);
+  if (words.length === 0) return "—";
+  return words
+    .map((word, index) => (index === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word))
+    .join(" ");
+}
+
+const HOLD_NOTES: Record<string, string> = {
+  REPAIR_FAILED: "A clause was removed, and these checks still failed.",
+  CLAIM_UNSUPPORTED: "The main claim is not supported by the source.",
+  RATIONALE_UNSUPPORTED: "A likelihood or impact explanation is not supported by the source.",
+  SEVERITY_UNSUPPORTED: "The likelihood or impact goes beyond what the source reports.",
+  SAFETY_HOLD: "The record asserts a real-world safety harm.",
+};
+
+/** Checks whose failure holds the record. Other failed checks stay in the full list. */
+const HOLDING_CHECK_NAMES = new Set([
+  "claim_is_demonstrated",
+  "not_attributed_to_proposed_method",
+  "severity_within_evidence",
+  "rationale_supported",
+]);
+
+export function decisionHoldNote(reason: string | null | undefined): string | null {
+  const text = reason?.trim() ?? "";
+  return HOLD_NOTES[text] ?? null;
+}
+
+function holdReasonSentence(reason: string): string {
+  const beforeQuote = reason.split(/\s+Source quote:/i)[0]?.trim() ?? "";
+  return beforeQuote || reason.trim();
+}
+
+export type HoldCheckSummary = { name: string; label: string; reason: string };
+
+/** Failed checks that explain a hold, without the long source quote. */
+export function holdCheckSummaries(
+  checks: AssessmentCheckView[],
+): HoldCheckSummary[] {
+  return checks
+    .filter((check) => check.pass === false && HOLDING_CHECK_NAMES.has(check.name))
+    .map((check) => ({
+      name: check.name,
+      label: assessmentCheckLabel(check.name),
+      reason: holdReasonSentence(assessmentCheckReason(check)),
+    }));
+}
+
+export type IndexedAssessmentCheck = AssessmentCheckView & { number: number };
+
+export type AssessmentCheckGroups = {
+  held: IndexedAssessmentCheck[];
+  notes: IndexedAssessmentCheck[];
+  rest: IndexedAssessmentCheck[];
+  heldLead: string | null;
+  notesLead: string | null;
+};
+
+/** One sentence for the checks that decided a hold. Null when the record is published. */
+export function assessmentHeldLead(reason: string | null | undefined): string | null {
+  const note = decisionHoldNote(reason);
+  if (!note) return null;
+  return `These checks kept the status ${reason?.trim()}. ${note}`;
+}
+
+/** One sentence for failed checks that do not decide a hold. */
+export function assessmentNotesLead(
+  reason: string | null | undefined,
+  held: boolean,
+): string {
+  if (held) return "These checks are saved with the record. They do not hold it.";
+  const code = reason?.trim() ?? "";
+  if (code === "CATALOG_SUGGESTED") {
+    return "These checks explain the catalog suggestion. The record is published.";
+  }
+  if (code === "REPAIRED") {
+    return "A clause was removed and the record was published. These checks are notes.";
+  }
+  return "These checks are notes. The record is published.";
+}
+
+/**
+ * Split the nine checks from the stored decision.
+ * Holding failures explain a hold. Every other failure is a note.
+ * Passed checks stay in rest. Check numbers keep their original order.
+ */
+export function splitAssessmentChecks(
+  checks: AssessmentCheckView[],
+  decisionReason: string | null | undefined,
+): AssessmentCheckGroups {
+  const indexed = checks.map((check, index) => ({ ...check, number: index + 1 }));
+  const heldDecision = decisionHoldNote(decisionReason) != null;
+  const held = heldDecision
+    ? indexed.filter((check) => check.pass === false && HOLDING_CHECK_NAMES.has(check.name))
+    : [];
+  const heldNames = new Set(held.map((check) => check.name));
+  const notes = indexed.filter((check) => check.pass === false && !heldNames.has(check.name));
+  const rest = indexed.filter((check) => check.pass !== false);
+  return {
+    held,
+    notes,
+    rest,
+    heldLead: assessmentHeldLead(decisionReason),
+    notesLead: notes.length > 0 ? assessmentNotesLead(decisionReason, heldDecision) : null,
+  };
+}
+
 export function formatPublicationStatus(value: string | null | undefined): string {
   const text = formatStoredToken(value);
   if (text === "—") return text;

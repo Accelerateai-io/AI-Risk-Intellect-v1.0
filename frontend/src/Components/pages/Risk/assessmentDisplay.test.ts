@@ -6,10 +6,15 @@ import {
   assessmentCheckPassDescription,
   assessmentCheckReason,
   displayGroundingScore,
+  assessmentNotesLead,
+  decisionHoldNote,
+  formatDecisionReason,
+  splitAssessmentChecks,
   formatGroundingScore,
   formatPublicationStatus,
   formatStoredToken,
   groundingSortValue,
+  holdCheckSummaries,
   verifierCardMode,
   type FactsV2AssessmentView,
 } from "./assessmentDisplay.ts";
@@ -59,6 +64,87 @@ test("facts-v2 detail hides the old verifier card and keeps nine check labels", 
       assessment.checks.find((check) => check.name === "catalog_match")!,
     ),
     "No catalog entry describes this same risk. Recorded result: below 60 percent.",
+  );
+});
+
+test("a repair failure names the holding checks without the source quote", () => {
+  assert.equal(formatDecisionReason("REPAIR_FAILED"), "Repair failed");
+  assert.equal(
+    decisionHoldNote("REPAIR_FAILED"),
+    "A clause was removed, and these checks still failed.",
+  );
+  assert.equal(decisionHoldNote("VERIFIED"), null);
+  const summaries = holdCheckSummaries([
+    {
+      name: "severity_within_evidence",
+      pass: false,
+      reason:
+        'The likelihood or impact goes beyond what the source reports. Source quote: "account creation".',
+      quote: "account creation",
+    },
+    {
+      name: "catalog_match",
+      pass: false,
+      reason: "No catalog entry describes this same risk.",
+      quote: "",
+    },
+    {
+      name: "claim_is_demonstrated",
+      pass: true,
+      reason: "",
+      quote: "measured result",
+    },
+  ]);
+  assert.deepEqual(summaries, [
+    {
+      name: "severity_within_evidence",
+      label: "Severity within evidence",
+      reason: "The likelihood or impact goes beyond what the source reports.",
+    },
+  ]);
+  const repairGroups = splitAssessmentChecks(
+    [
+      { name: "claim_is_demonstrated", pass: true, reason: "", quote: "measured" },
+      {
+        name: "severity_within_evidence",
+        pass: false,
+        reason: "The likelihood or impact goes beyond what the source reports.",
+        quote: "",
+      },
+      {
+        name: "primary_secondary_correct",
+        pass: false,
+        reason: "Corrected categories: Technical Risks / Technical/Performance Risk.",
+        quote: "",
+      },
+      {
+        name: "catalog_match",
+        pass: false,
+        reason: "Closest catalog entry: RISK-340. Verdict: topical only.",
+        quote: "",
+      },
+    ],
+    "REPAIR_FAILED",
+  );
+  assert.deepEqual(repairGroups.held.map((check) => check.number), [2]);
+  assert.deepEqual(repairGroups.notes.map((check) => check.number), [3, 4]);
+  assert.deepEqual(repairGroups.rest.map((check) => check.number), [1]);
+  assert.match(repairGroups.heldLead ?? "", /REPAIR_FAILED/);
+  assert.match(repairGroups.notesLead ?? "", /do not hold it/);
+
+  const catalogGroups = splitAssessmentChecks(
+    [
+      { name: "claim_is_demonstrated", pass: true, reason: "", quote: "" },
+      { name: "catalog_match", pass: false, reason: "topical only", quote: "" },
+    ],
+    "CATALOG_SUGGESTED",
+  );
+  assert.equal(catalogGroups.held.length, 0);
+  assert.equal(catalogGroups.heldLead, null);
+  assert.deepEqual(catalogGroups.notes.map((check) => check.name), ["catalog_match"]);
+  assert.equal(
+    assessmentNotesLead("CATALOG_SUGGESTED", false),
+    "These checks explain the catalog suggestion. The record is published.",
   );
 });
 

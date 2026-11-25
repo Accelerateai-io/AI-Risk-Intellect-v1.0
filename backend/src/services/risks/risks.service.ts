@@ -212,6 +212,10 @@ export async function listRisks(
     params.order === "severity";
   const earlyTarget = params.offset + params.limit + 1;
 
+  const displayIdByRiskId = params.search
+    ? await fetchGlobalRiskDisplayIdMap()
+    : null;
+
   const collected: RiskLightRecord[] = [];
   let scanOffset = 0;
   for (;;) {
@@ -225,7 +229,14 @@ export async function listRisks(
       .offset(scanOffset);
     if (batch.length === 0) break;
     for (const row of batch) {
-      if (rowPassesList(row, params)) collected.push(toLightRecord(row));
+      if (
+        rowPassesList(
+          { ...row, displayId: displayIdByRiskId?.get(row.id) ?? null },
+          params,
+        )
+      ) {
+        collected.push(toLightRecord(row));
+      }
     }
     scanOffset += batch.length;
     if (batch.length < RISK_SCAN_BATCH) break;
