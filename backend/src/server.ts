@@ -7,6 +7,7 @@ import { initDB } from "./database/db.js";
 import { httpLoggerMiddleware, logger } from "./logger/index.js";
 import { resumeActiveCronJobServices } from "./services/admin/cronJobs.service.js";
 import { startPendingJobWorkerWatch } from "./services/admin/workerManager.service.js";
+import { startEvidenceExportScheduler } from "./services/evidence/evidenceExportScheduler.js";
 import { apiRouter } from "./routes/index.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.middleware.js";
 
@@ -89,6 +90,7 @@ try {
   await initDB();
   await resumeActiveCronJobServices();
   startPendingJobWorkerWatch();
+  startEvidenceExportScheduler();
   app.listen(env.PORT, () => {
     logger.info("Server listening", { port: env.PORT });
   });

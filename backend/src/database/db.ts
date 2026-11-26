@@ -7,6 +7,7 @@ import {
 } from "../config/databaseDefaults.js";
 import { createLogger } from "../logger/index.js";
 import { ensureJobsRelatedSchema } from "../schema/ensureJobsRelatedSchema.js";
+import { ensureEvidenceSchema } from "../schema/ensureEvidenceSchema.js";
 
 const dbLog = createLogger("db");
 
@@ -75,6 +76,7 @@ export async function initDB() {
         DB_DEFAULTS.name,
     });
     await ensureJobsRelatedSchema(pool);
+    await ensureEvidenceSchema(pool);
   } catch (err) {
     dbLog.error("Database connection failed", {
       error: err instanceof Error ? err.message : String(err),

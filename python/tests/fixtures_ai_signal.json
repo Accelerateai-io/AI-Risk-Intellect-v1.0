@@ -1,0 +1,53 @@
+{
+  "_comment": "Shared by python/tests/test_ai_core_signal.py and backend/src/ingestion/aiCoreSignal.test.ts so the two gates stay in step.",
+  "no_ai_signal": [
+    "Recall: Ondansetron Injection, 2 mg/mL, 10 mL vials, due to a potential safety issue.",
+    "Each kit contains a 10 ML syringe, 50 MG/ML strength, in a 10-ML vial.",
+    "Each kit contains a 5 ML syringe and a safety cap.",
+    "Insulin pump recall: a dosing algorithm error may deliver too much insulin.",
+    "CWE-327: Use of a Broken or Risky Cryptographic Algorithm allows an attacker to obtain a session token.",
+    "CISA's Automated Indicator Sharing (AIS) service will add new indicators. Vessel AIS transponders were spoofed.",
+    "The SEC charged Gemini Trust Company over the Gemini Earn program.",
+    "FINRA fined the firm for supervisory failures in its algorithmic trading desk.",
+    "The Board released a new dataset on household debt. Staff caution against drawing an inference. Read the prompt notes.",
+    "The plane's autopilot disengaged at 10,000 feet.",
+    "Gemini Trust Company paused the Gemini Earn program.",
+    "Amazon Q3 earnings beat expectations.",
+    "Alexa Smith was named the company's new finance director."
+  ],
+  "ai_signal": [
+    "Regulators questioned how the A.I. system ranked applicants.",
+    "GPT-4o produced fabricated citations in a court filing.",
+    "GPT‑4o produced fabricated citations in a court filing.",
+    "The company deployed GenAI assistants to its call centre.",
+    "Agentic tools placed orders without user approval.",
+    "Artificial-intelligence startups raised record funding.",
+    "A hospital chatbot gave patients incorrect dosing advice.",
+    "The bank's ML model denied loans at a higher rate for older applicants.",
+    "The CFPB said algorithmic underwriting tools must still explain adverse actions.",
+    "Landlords used a rent-setting algorithm that pushed up rents for tenants.",
+    "The insurer's algorithm was used to deny care to Medicare patients.",
+    "A Waymo robotaxi blocked an ambulance in San Francisco.",
+    "Scammers used a voice clone of the CEO to authorise a transfer.",
+    "Meta released Llama 3 with fewer refusals.",
+    "Google's Gemini app produced inaccurate historical images.",
+    "Facial-recognition matches led to a wrongful arrest.",
+    "Autopilot was engaged when the Model S hit a parked fire truck.",
+    "Owners reported phantom braking on the highway.",
+    "The FSD beta ran a stop sign.",
+    "Gemini Robotics 2 lets robots fold laundry.",
+    "DeepMind said the model could find software vulnerabilities.",
+    "ShotSpotter sent police to the wrong block.",
+    "Regulators asked whether the driver-assistance system should have warned him.",
+    "Police say the Tesla was on autopilot when it crossed the median.",
+    "A malicious change shipped in the Amazon Q Developer extension.",
+    "Amazon's Alexa voice assistant told a child to touch a coin to a plug.",
+    "The virtual assistant booked the wrong flight."
+  ],
+  "ai_signal_from_url_only": [
+    [
+      "Bug lets users read other chats",
+      "https://www.theregister.com/2026/11/20/openai_chatgpt_bug/"
+    ]
+  ]
+}

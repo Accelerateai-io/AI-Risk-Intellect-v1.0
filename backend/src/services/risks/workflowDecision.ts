@@ -443,6 +443,11 @@ function replaceClause(value: unknown, clause: string): { next: unknown; removed
     .replace(clause, "")
     .replace(/\s{2,}/g, " ")
     .replace(/\s+([,.;])/g, "$1")
+    // Removing a clause between two commas left "A,, and B" (R-216).
+    .replace(/([,;])[,;]+/g, "$1")
+    .replace(/[,;]+\./g, ".")
+    .replace(/^[,;\s]+/, "")
+    .replace(/[,;\s]+$/, "")
     .trim();
   return { next, removed: next !== value };
 }
@@ -603,19 +608,35 @@ export type AssessRequest = {
  */
 export async function runFactsV2AssessmentCycle(input: {
   extractionJson: Record<string, unknown>;
+  /** Article body. The rule-based guards and pre-save corrections read this. */
   sourceText: string;
+  /**
+   * What the assessor model reads. Defaults to sourceText. The worker passes
+   * the article title plus body, because the extractor saw the title too
+   * (N-03 / R-209). Kept away from the rule-based guards on purpose: a
+   * headline word must not change intent, domain or the title check.
+   */
+  assessorSourceText?: string;
   catalogCandidates: unknown[];
   hints: unknown;
   assess: (request: AssessRequest) => Promise<RiskAssessment>;
 }): Promise<{ assessCalls: number; decision: WorkflowDecision }> {
-  const requestFor = (extractionJson: Record<string, unknown>): AssessRequest => ({
-    sourceText: input.sourceText,
-    record: extractionJson,
-    catalogCandidates: input.catalogCandidates,
-    hints: input.hints,
-  });
+  const requestFor = (extractionJson: Record<string, unknown>): AssessRequest => {
+    // The assessor judges the record, not our own pre-save notes about it.
+    const { pre_save_checks: _notes, ...record } = extractionJson;
+    return {
+      sourceText: input.assessorSourceText ?? input.sourceText,
+      record,
+      catalogCandidates: input.catalogCandidates,
+      hints: input.hints,
+    };
+  };
 
   let extractionJson = input.extractionJson;
+  // Title, intent, domain and category corrections run before the checks, so
+  // the record the assessor checks is the record that is saved (R-17: the title
+  // used to be cut after the VERIFIED decision).
+  applyPreSaveFieldValidation(extractionJson, input.sourceText);
   applyLimitedEvidenceLabel(extractionJson);
   let assessCalls = 0;
   const evidenceTypeOf = () =>
@@ -681,7 +702,9 @@ export async function runFactsV2AssessmentCycle(input: {
   }
 
   applyDecisionToExtraction(extractionJson, decision, assessment, input.sourceText);
-  applyPreSaveFieldValidation(extractionJson, input.sourceText);
+  // Assessor corrections may change domain or category; normalize those again,
+  // but never change the title after the decision.
+  applyPreSaveFieldValidation(extractionJson, input.sourceText, { keepTitle: true });
   return { assessCalls, decision };
 }
 

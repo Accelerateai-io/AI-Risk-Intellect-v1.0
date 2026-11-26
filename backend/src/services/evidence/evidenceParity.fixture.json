@@ -1,0 +1,169 @@
+{
+ "dto": {
+  "id": "125150cc-3f77-4a26-8208-0388485f6451",
+  "displayId": "R-174",
+  "title": "Transformer-based time series forecasting models exploit redundant token dependencies that introduce irrelevant information and weaken generalization performance",
+  "domain": "AI System Safety, Failures, and Limitations",
+  "description": "Research demonstrates that Transformer-based time series forecasting models trained with prediction error losses exploit both critical and redundant token dependencies. In experiments on multiple datasets, removing certain token dependencies improved forecasting performance, indicating that models rely on redundant dependencies arising from occasional abnormal fluctuations, measurement noise, or unstable short-term correlations in training data. These redundant dependencies introduce additional noise during prediction on unseen test data, weakening forecasting accuracy measured by MSE and MAE metrics across six real-world datasets including ECL, ETTh2, Traffic, Solar-Energy, PEMS03, and Weather.",
+  "intent": "Systemic",
+  "timing": "During model training when prediction error losses are optimized without explicit constraints on token dependency selection, and during inference when models apply learned redundant dependencies to unseen test data.",
+  "articleUrl": "https://arxiv.org/abs/2503.06867",
+  "ingestedAt": "2026-11-24T15:48:22.658Z",
+  "sector": "Private",
+  "industry": "Research and Development",
+  "product": {
+   "name": null,
+   "vendor": null
+  },
+  "humanReview": {
+   "status": "approved",
+   "reviewedBy": null,
+   "reviewedByUsername": null,
+   "feedback": null
+  },
+  "riskScoring": {
+   "likelihood": 4,
+   "impact": 2,
+   "likelihoodReasoning": "The paper reports that dependency removal experiments on trained models showed many redundant dependencies across multiple datasets, and the issue occurs in standard Transformer-based TSF methods trained with prediction error losses.",
+   "impactReasoning": "The paper demonstrates measured performance differences in MSE and MAE metrics on forecasting benchmarks, with improvements of a few percentage points when redundant dependencies are addressed, representing limited harm in a research setting."
+  },
+  "riskAnalysis": {
+   "catalogMatches": [
+    {
+     "riskId": "RISK-212"
+    },
+    {
+     "riskId": "RISK-60"
+    },
+    {
+     "riskId": "RISK-631"
+    },
+    {
+     "riskId": "RISK-289"
+    },
+    {
+     "riskId": "RISK-270"
+    }
+   ]
+  },
+  "assessment": {
+   "pipelineVersion": "2026.11.facts-v2",
+   "confidence": "HIGH",
+   "decisionReason": "VERIFIED",
+   "publicationStatus": "published",
+   "checks": [
+    {
+     "name": "claim_is_demonstrated",
+     "pass": true,
+     "quote": "we first conduct a dependency removal experiment on a trained Transformer-based TSF model... Dependencies whose removal reduces the MSE are marked in purple... The experimental results show that many token dependencies can be removed without degrading model performance. This phenomenon indicates that existing models indeed exploit many redundant token dependencies during prediction, which can negatively affect forecasting results."
+    },
+    {
+     "name": "mitigations_reflected",
+     "pass": true,
+     "quote": ""
+    },
+    {
+     "name": "not_attributed_to_proposed_method",
+     "pass": true,
+     "quote": ""
+    },
+    {
+     "name": "severity_within_evidence",
+     "pass": true,
+     "quote": ""
+    },
+    {
+     "name": "evidence_type_consistent",
+     "pass": true,
+     "quote": ""
+    },
+    {
+     "name": "rationale_supported",
+     "pass": true,
+     "quote": ""
+    },
+    {
+     "name": "domain_correct",
+     "pass": true,
+     "quote": ""
+    },
+    {
+     "name": "primary_secondary_correct",
+     "pass": true,
+     "quote": ""
+    },
+    {
+     "name": "catalog_match",
+     "pass": true,
+     "quote": ""
+    }
+   ]
+  },
+  "evidenceDiscipline": {
+   "sourceType": "empirical_study"
+  }
+ },
+ "expected": {
+  "schema_version": "evidence-record-1.0",
+  "record_id": "125150cc-3f77-4a26-8208-0388485f6451",
+  "version": 1,
+  "airi_row_id": "125150cc-3f77-4a26-8208-0388485f6451",
+  "display_id": "R-174",
+  "checkpoint": 1002,
+  "content_hash": "sha256:b162361eee2bb62805ff267801e839b52e434e057773373d2b0f2a802018e067",
+  "status": "verified",
+  "decision_reason": "VERIFIED",
+  "supersedes_version": null,
+  "retraction_reason": null,
+  "published_at": "2026-11-24T20:00:00Z",
+  "approved_by": null,
+  "approval_reason": null,
+  "source_url": "https://arxiv.org/abs/2503.06867",
+  "publisher": null,
+  "source_published_at": null,
+  "retrieved_at": "2026-11-24T15:48:22Z",
+  "document_hash": "sha256:cd47a72da15468f3c2cb7fa6efec644e33988574d93fc924b2168a69d014c82f",
+  "quote": "we first conduct a dependency removal experiment on a trained Transformer-based TSF model... Dependencies whose removal reduces the MSE are marked in purple... The experimental results show that many token dependencies can be removed without degrading model performance. This phenomenon indicates that existing models indeed exploit many redundant token dependencies during prediction, which can negatively affect forecasting results.",
+  "risk_title": "Transformer-based time series forecasting models exploit redundant token dependencies that introduce irrelevant information and weaken generalization performance",
+  "summary": "Research demonstrates that Transformer-based time series forecasting models trained with prediction error losses exploit both critical and redundant token dependencies. In experiments on multiple datasets, removing certain token dependencies improved forecasting performance, indicating that models rely on redundant dependencies arising from occasional abnormal fluctuations, measurement noise, or unstable short-term correlations in training data. These redundant dependencies introduce additional noise during prediction on unseen test data, weakening forecasting accuracy measured by MSE and MAE metrics across six real-world datasets including ECL, ETTh2, Traffic, Solar-Energy, PEMS03, and Weather.",
+  "domain": "AI System Safety, Failures, and Limitations",
+  "intent": "Systemic",
+  "timing": "During model training when prediction error losses are optimized without explicit constraints on token dependency selection, and during inference when models apply learned redundant dependencies to unseen test data.",
+  "likelihood": 4,
+  "impact": 2,
+  "likelihood_rationale": "The paper reports that dependency removal experiments on trained models showed many redundant dependencies across multiple datasets, and the issue occurs in standard Transformer-based TSF methods trained with prediction error losses.",
+  "impact_rationale": "The paper demonstrates measured performance differences in MSE and MAE metrics on forecasting benchmarks, with improvements of a few percentage points when redundant dependencies are addressed, representing limited harm in a research setting.",
+  "confidence": "HIGH",
+  "sector": "Private",
+  "industry": "Research and Development",
+  "use_case_tags": [],
+  "jurisdictions": [],
+  "affected_groups": [],
+  "vendor": null,
+  "product": null,
+  "model": null,
+  "suggested_risk_ids": [
+   "RISK-212",
+   "RISK-60",
+   "RISK-631",
+   "RISK-289",
+   "RISK-270"
+  ],
+  "checks": {
+   "claim_is_demonstrated": true,
+   "mitigations_reflected": true,
+   "not_attributed_to_proposed_method": true,
+   "severity_within_evidence": true,
+   "evidence_type_consistent": true,
+   "rationale_supported": true,
+   "domain_correct": true,
+   "primary_secondary_correct": true,
+   "catalog_match": true
+  },
+  "pipeline_version": "2026.11.facts-v2",
+  "approved_at": null,
+  "source_type": "empirical_study",
+  "quote_location": null,
+  "evidence_kind": "research_result"
+ }
+}

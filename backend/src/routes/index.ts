@@ -14,6 +14,7 @@ import { notificationsRouter } from "../notifications/notifications.routes.js";
 import { internalRouter } from "./internal.routes.js";
 import { apiKeysRouter } from "./apiKeys.routes.js";
 import { webhooksRouter } from "./webhooks.routes.js";
+import { evidenceRouter } from "./evidence.routes.js";
 
 export const apiRouter: Router = Router();
 
@@ -38,3 +39,4 @@ apiRouter.use("/observability", observabilityRouter);
 apiRouter.use("/notifications", notificationsRouter);
 apiRouter.use("/keys", apiKeysRouter);
 apiRouter.use("/webhooks", webhooksRouter);
+apiRouter.use("/evidence", evidenceRouter);

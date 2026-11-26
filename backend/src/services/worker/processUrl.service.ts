@@ -1,3 +1,4 @@
+import { abandonEmptyArticleShell } from "../../ingestion/articleShellDedup.js";
 import { extractTitleFromHtml } from "../../ingestion/extractText.js";
 import {
   detectBotBlockPage,
@@ -9,6 +10,7 @@ import {
   ArticleDuplicateError,
   applyIngestToArticle,
   checkArticleDedupExcluding,
+  type DedupeReason,
 } from "../../ingestion/persist.js";
 import {
   pythonIngestHtml,
@@ -21,6 +23,7 @@ import {
   UrlFetchError,
 } from "../../utils/fetchUtils.js";
 import { parseArxivAbsId, resolveArxivSource } from "../../ingestion/arxiv.js";
+import { researchSourceSkipReason } from "../../ingestion/researchSources.js";
 import { getJobRunSignal } from "../jobs/jobTimeout.service.js";
 import {
   noteFeedStored,
@@ -51,10 +54,40 @@ export type ProcessUrlResult = ProcessUrlSuccess | ProcessUrlSkipped;
  * - `skipped` — dedupe, fetch failed, soft-404, not AI-related, etc.
  * - `error` — thrown to caller for exception handling
  */
+function dedupeSkipReason(
+  canonicalArticleId: number,
+  reason: DedupeReason,
+): string {
+  const why =
+    reason === "content"
+      ? "same extracted text as that article"
+      : "this URL is already stored on that article";
+  return `dedupe hit → article ${canonicalArticleId} (${why})`;
+}
+
+async function skipForDedup(
+  articleId: number,
+  canonicalArticleId: number,
+  reason: DedupeReason,
+  jobId?: number,
+): Promise<ProcessUrlSkipped> {
+  if (jobId != null && canonicalArticleId !== articleId) {
+    await abandonEmptyArticleShell({
+      jobId,
+      shellArticleId: articleId,
+      canonicalArticleId,
+    });
+  }
+  return {
+    outcome: "skipped",
+    reason: dedupeSkipReason(canonicalArticleId, reason),
+  };
+}
+
 export async function processUrlToDb(
   url: string,
   articleId: number,
-  options?: { title?: string },
+  options?: { title?: string; jobId?: number },
 ): Promise<ProcessUrlResult> {
   try {
     await validateUrl(url);
@@ -62,6 +95,13 @@ export async function processUrlToDb(
     const msg =
       err instanceof UrlFetchError ? err.message : "URL validation failed";
     return { outcome: "skipped", reason: msg };
+  }
+
+  // Research papers are out of scope (25 Nov 2026): skip before any fetch or
+  // LLM call, whichever way the URL arrived (feed, manual job, rerun).
+  const researchSkip = researchSourceSkipReason(url);
+  if (researchSkip) {
+    return { outcome: "skipped", reason: researchSkip };
   }
 
   const signal = getJobRunSignal();
@@ -158,10 +198,7 @@ export async function processUrlToDb(
         articleId,
       );
       if (dup) {
-        return {
-          outcome: "skipped",
-          reason: `dedupe hit → article ${dup.article.id}`,
-        };
+        return skipForDedup(articleId, dup.article.id, dup.reason, options?.jobId);
       }
 
       noteFeedStoreStarted();
@@ -247,10 +284,7 @@ export async function processUrlToDb(
 
     const dup = await checkArticleDedupExcluding({ url, text }, articleId);
     if (dup) {
-      return {
-        outcome: "skipped",
-        reason: `dedupe hit → article ${dup.article.id}`,
-      };
+      return skipForDedup(articleId, dup.article.id, dup.reason, options?.jobId);
     }
 
     noteFeedStoreStarted();
@@ -272,10 +306,7 @@ export async function processUrlToDb(
       return { outcome: "skipped", reason: err.message };
     }
     if (err instanceof ArticleDuplicateError) {
-      return {
-        outcome: "skipped",
-        reason: `dedupe hit → article ${err.article.id}`,
-      };
+      return skipForDedup(articleId, err.article.id, err.reason, options?.jobId);
     }
     throw err;
   }

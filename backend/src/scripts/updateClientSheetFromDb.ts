@@ -26,6 +26,7 @@ const CODES = [
   "REPAIR_FAILED",
   "FETCH_FAIL",
   "NOT_AI",
+  "RESEARCH",
   "PUBLISHED_WITH_NOTES",
   "VERIFIED",
   "REPAIRED",
@@ -104,7 +105,14 @@ function catalogNote(expected: string | null, actual: string, result: RowResult)
 }
 
 function publicationWord(reason: string, publication: string): string {
-  if (reason === "FETCH_FAIL" || reason === "NOT_AI" || reason === "MERGED") return "No record";
+  if (
+    reason === "FETCH_FAIL" ||
+    reason === "NOT_AI" ||
+    reason === "MERGED" ||
+    reason === "RESEARCH"
+  ) {
+    return "No record";
+  }
   if (publication === "held") return "Held";
   if (publication === "published") return "Published";
   return publication || "Published";

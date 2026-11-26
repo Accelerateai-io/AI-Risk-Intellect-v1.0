@@ -166,17 +166,99 @@ export function looksLikeSoft404(
 
 // ---------- Fast AI-topic classifier (regex keywords; no LLM) ----------
 
-const AI_INCLUDE = [
-  /\b(openai|chatgpt|gpt-4|gpt-3|gemini|anthropic|claude|copilot|deepseek)\b/i,
-  // "AIs" is the same token as "AI". Plurals are the same terms, not new topics.
-  /\b(ais?|artificial intelligence)\b/i,
-  /\b(llms?|large language models?|language models?)\b/i,
-  /\b(machine learning|ml|deep learning|neural network)\b/i,
-  /\b(embedding|token|inference|fine[- ]?tun(?:ing|ed)|rlhf|safety|alignment)\b/i,
-  /\b(prompt|prompt injection|jailbreak|hallucination|red teaming)\b/i,
-  /\b(model weights?|training data|dataset|inference api)\b/i,
+// Words that make "algorithm" about a decision about people, not maths or code.
+const ALGORITHM_CONTEXT =
+  String.raw`(?:deny|denied|denials?|decid\w*|decisions?|discriminat\w*|bias(?:ed)?` +
+  String.raw`|eligib\w*|hiring|tenants?|rents?|credit|lending|loans?|pricing` +
+  String.raw`|polic(?:e|ing)|benefits|surveillance|amplif\w*|feeds?|content moderation` +
+  String.raw`|social media|welfare|fairness|accountab\w*)`;
+
+// Terms that on their own mean the page is about AI. A page needs at least one
+// of these to count as AI content. Generic words that also appear in recalls,
+// security advisories and finance news (safety, token, inference, prompt,
+// dataset...) only add weight on top of a core term. Mirrors AI_CORE in
+// python/app/ingestion/filters.py.
+const AI_CORE = [
+  // Products and labs. Gemini only with Google/AI context (Gemini Trust is a
+  // crypto exchange).
+  new RegExp(
+    String.raw`\b(openai|chatgpt|gpt[-‐‑ ]?\d\w*|gpts|anthropic|claude|copilot` +
+    String.raw`|deepseek|grok|xai|google(?:'s)? gemini|gemini (?:ai|app|advanced|pro` +
+    String.raw`|ultra|nano|flash|live|\d)|llama[- ]?\d\w*|midjourney|stable diffusion` +
+    String.raw`|dall[- ·]?e|character\.ai|hugging ?face|perplexity ai|mistral ai` +
+    String.raw`|google bard|bing chat|openai'?s sora|meta ai|apple intelligence)\b`,
+    "i",
+  ),
+  // "AI" and its spellings. "A.I." is the New York Times house style.
+  /\b(ai|genai|agentic|artificial[- ]intelligence)\b|\bA\.I\./i,
+  // Plural "AIs" only in this case, so CISA's "AIS" (Automated Indicator
+  // Sharing) and maritime AIS do not count.
+  /\bAIs\b/,
+  // Model and method terms.
+  new RegExp(
+    String.raw`\b(llms?|(?:large[- ])?language[- ]models?|machine[- ]learning` +
+    String.raw`|deep[- ]learning|neural[- ]net(?:work)?s?|reinforcement learning` +
+    String.raw`|diffusion models?|transformer (?:models?|architecture)` +
+    String.raw`|federated learning|adversarial (?:examples?|attacks?|robustness)` +
+    String.raw`|reward models?|in-context learning|chain[- ]of[- ]thought` +
+    String.raw`|retrieval[- ]augmented|rlhf|prompt injection|model weights?` +
+    String.raw`|training data|vlms?|vision[- ]language models?|foundation models?` +
+    String.raw`|computer vision)\b`,
+    "i",
+  ),
+  // "ML" only upper-case and only with a model word after it. A bare \bml\b
+  // matched "10 mL" and "50 MG/ML" in FDA recalls.
+  new RegExp(
+    String.raw`\b(?:AI/ML|MLOps|ML[- ](?:models?|systems?|based|powered|driven` +
+    String.raw`|pipelines?|algorithms?|engineers?))\b`,
+  ),
+  // Applications and harms.
+  new RegExp(
+    String.raw`\b(chatbots?|deepfakes?|facial[- ]recognition|face[- ]recognition` +
+    String.raw`|algorithmic(?!\s+trading)|self[- ]driving|robotaxis?|driverless` +
+    String.raw`|autonomous (?:vehicles?|driving|cars?|trucks?|weapons?|agents?)|waymo` +
+    String.raw`|tesla(?:'s)? autopilot|full self[- ]driving|automated (?:decision` +
+    String.raw`|valuation|underwriting|hiring|employment|eligibility|screening)\w*` +
+    String.raw`|predictive (?:policing|analytics|algorithms?)|recommend(?:ation` +
+    String.raw`|er) (?:systems?|algorithms?|engines?)|risk[- ]scoring (?:tools?` +
+    String.raw`|algorithms?|models?)|voice[- ]clon\w*|synthetic (?:media|voices?` +
+    String.raw`|imagery)|nudify\w*|(?:ai|machine|computer)[- ]generated` +
+    String.raw`|generative (?:models?|tools?|systems?))\b`,
+    "i",
+  ),
+  // Driver assistance, lab and model names, and detection systems that the AI
+  // Incident Database tracks as AI incidents (Tesla Autopilot crashes, phantom
+  // braking, ShotSpotter). Found by running the gate on the 27 Oct prod export.
+  new RegExp(
+    String.raw`\b(deepmind|gemini (?:robotics|omni|image|models?|api|cli|code)` +
+      String.raw`|driver[- ]assist(?:ance|ed)?|automatic emergency braking|phantom braking` +
+      String.raw`|gunshot detection|shotspotter|recommendation algorithms?` +
+      String.raw`|amazon (?:q|nova)|tesla(?:'s)?\b[^.\n]{0,40}\bautopilot` +
+      String.raw`|voice[- ]assistants?|virtual assistants?|smart speakers?` +
+      String.raw`|amazon(?:'s)? alexa|alexa (?:voice|devices?|skills?))\b`,
+    "i",
+  ),
+  // Capitalised product terms only: "the plane's autopilot" does not count.
+  /\b(Autopilot|FSD|ADAS)\b/,
+  // "Algorithm" only near a decision or harm word. Bare "algorithm" hits
+  // dosing-algorithm recalls and CISA crypto advisories.
+  new RegExp(
+    String.raw`\balgorithm(?:s|ic)?\b(?!\s+trading)[^.\n]{0,60}?\b${ALGORITHM_CONTEXT}\b` +
+      String.raw`|\b${ALGORITHM_CONTEXT}\b[^.\n]{0,60}?\balgorithm(?:s|ic)?\b(?!\s+trading)`,
+    "i",
+  ),
+];
+
+// Generic terms: they count toward the "clearly AI" threshold only when a core
+// term is also present.
+const AI_GENERIC = [
+  /\b(embedding|token|inference|fine[- ]?tun(?:ing|ed)|safety|alignment)\b/i,
+  /\b(prompt|jailbreak|hallucination|red teaming)\b/i,
+  /\b(dataset|inference api)\b/i,
   /\b(privacy|pii|data leakage|governance|compliance) in (ai|ml)\b/i,
 ];
+
+const AI_INCLUDE = [...AI_CORE, ...AI_GENERIC];
 
 const AI_EXCLUDE = [
   /\b(sports|football|basketball|baseball|soccer|golf|tennis)\b/i,
@@ -185,12 +267,15 @@ const AI_EXCLUDE = [
 ];
 
 function hitCount(text: string, patterns: RegExp[]): number {
-  const low = (text || "").toLowerCase();
-  return patterns.reduce((n, p) => (p.test(low) ? n + 1 : n), 0);
+  // Patterns carry their own case rules (the upper-case "ML" pattern is
+  // case-sensitive), so the text is not lower-cased here.
+  const src = text || "";
+  return patterns.reduce((n, p) => (p.test(src) ? n + 1 : n), 0);
 }
 
 export type ClassifyDetails = {
   include_hits: number;
+  core_hits: number;
   exclude_hits: number;
   threshold: number;
 };
@@ -205,11 +290,13 @@ export const NOT_AI_RELATED_SKIP_MESSAGE = "not ai related";
  *                paywall, auth/forbidden/rate-limit, network/HTTP error, soft-404).
  *   NOT_AI     — the page was fetched fine but carries no AI-relevant risk.
  *   MERGED     — the article was attached to an existing risk; no new row.
+ *   RESEARCH   — the URL is a research-paper source, out of scope for AIRI.
  */
 export const JOB_SKIP_REASON_CODES = {
   FETCH_FAIL: "FETCH_FAIL",
   NOT_AI: "NOT_AI",
   MERGED: "MERGED",
+  RESEARCH: "RESEARCH",
 } as const;
 
 export type JobSkipReasonCode =
@@ -238,6 +325,9 @@ export function jobSkipReasonCode(
   if (/^merged with existing risk$/i.test(text)) {
     return JOB_SKIP_REASON_CODES.MERGED;
   }
+  if (/^research paper source\b/i.test(text)) {
+    return JOB_SKIP_REASON_CODES.RESEARCH;
+  }
   if (NOT_AI_REASON_RE.test(text)) return JOB_SKIP_REASON_CODES.NOT_AI;
   if (FETCH_FAIL_REASON_RE.test(text)) return JOB_SKIP_REASON_CODES.FETCH_FAIL;
   return null;
@@ -260,7 +350,10 @@ function topicBlob(parts: {
   title?: string;
   text?: string;
 }): string {
-  return [parts.title, parts.url, relevanceText(parts.text)]
+  // Underscores are word characters to \b, so "/openai_chatgpt_bug/" style
+  // slugs would never match; treat them as spaces.
+  const url = (parts.url ?? "").replace(/_/g, " ");
+  return [parts.title, url, relevanceText(parts.text)]
     .map((part) => part?.trim())
     .filter((part): part is string => Boolean(part))
     .join(" ")
@@ -289,12 +382,28 @@ export function getExcludedNonAiTopicSkipReason(parts: {
   const threshold = 2;
   // News pages often mention Travel/Sports/Food in nav/footer chrome. Do not skip
   // when the article itself is clearly AI-related.
-  if (include_hits - exclude_hits >= threshold) return null;
+  if (hitCount(blob, AI_CORE) >= 1 && include_hits - exclude_hits >= threshold) {
+    return null;
+  }
 
   const headBlob = topicBlob({ url: parts.url, title: parts.title });
-  if (headBlob && hitCount(headBlob, AI_INCLUDE) >= 1) return null;
+  if (headBlob && hitCount(headBlob, AI_CORE) >= 1) return null;
 
   return NOT_AI_RELATED_SKIP_MESSAGE;
+}
+
+/**
+ * True when the content carries no core AI term at all. Port of
+ * `has_no_ai_signal` (the Python B-4 gate); generic words alone do not count.
+ */
+export function hasNoAiSignal(parts: {
+  url?: string;
+  title?: string;
+  text?: string;
+}): boolean {
+  const blob = topicBlob(parts);
+  if (!blob) return false;
+  return hitCount(blob, AI_CORE) === 0;
 }
 
 /** Simple deterministic filter. Port of `classify_ai_related`. */
@@ -308,9 +417,12 @@ export function classifyAiRelated(
   const blob = topicBlob({ title, url, text });
 
   const include_hits = hitCount(blob, AI_INCLUDE);
+  const core_hits = hitCount(blob, AI_CORE);
   const exclude_hits = hitCount(blob, AI_EXCLUDE);
   const ok =
-    exclude_hits === 0 && include_hits - exclude_hits >= threshold;
+    exclude_hits === 0 &&
+    core_hits >= 1 &&
+    include_hits - exclude_hits >= threshold;
 
-  return [ok, { include_hits, exclude_hits, threshold }];
+  return [ok, { include_hits, core_hits, exclude_hits, threshold }];
 }

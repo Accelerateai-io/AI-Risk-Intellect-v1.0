@@ -572,14 +572,21 @@ async function assessFactsV2(
   persisted: PersistedExtraction,
   articleText: string,
   modelId: string,
+  articleTitle?: string | null,
 ): Promise<void> {
-  if (isFactsV2Extraction(persisted.extractionJson)) {
+  // The extractor sees the article title; the checker must see it too, or it
+  // reports a figure from the headline as unsupported (N-03 / R-209).
+  const title = (articleTitle ?? "").trim();
+  const assessorSourceText = title ? `TITLE: ${title}\n\n${articleText}` : articleText;
+  const factsV2 = isFactsV2Extraction(persisted.extractionJson);
+  if (factsV2) {
     const meta = persisted.extractionJson._meta as
       | { defaulted_fields?: unknown }
       | undefined;
     await runFactsV2AssessmentCycle({
       extractionJson: persisted.extractionJson,
       sourceText: articleText,
+      assessorSourceText,
       catalogCandidates: persisted.catalogCandidates,
       hints: {
         citation_hints: persisted.extractionJson.citation_hints ?? [],
@@ -606,7 +613,8 @@ async function assessFactsV2(
     if (typeof scoring.likelihood === "number") persisted.likelihood = scoring.likelihood;
     if (typeof scoring.impact === "number") persisted.impact = scoring.impact;
   }
-  applyPreSaveFieldValidation(persisted.extractionJson, articleText);
+  // Facts-v2 records were already validated inside the cycle, before the checks.
+  if (!factsV2) applyPreSaveFieldValidation(persisted.extractionJson, articleText);
   const risk = (persisted.extractionJson.risk ?? {}) as Record<string, unknown>;
   if (typeof risk.risk_title === "string" && risk.risk_title.trim()) {
     persisted.riskTitle = risk.risk_title.trim();
@@ -719,7 +727,7 @@ export async function extractRiskForArticle(
         resolvedModel,
         forceReprocess: true,
       });
-      await assessFactsV2(persisted, text, resolvedModel);
+      await assessFactsV2(persisted, text, resolvedModel, article.title);
 
       const supersededId =
         (await latestRiskIdForArticle(article.id)) ?? existing?.id ?? null;
@@ -770,7 +778,7 @@ export async function extractRiskForArticle(
         resolvedModel,
         forceReprocess: options?.forceReprocess,
       });
-      await assessFactsV2(persisted, text, resolvedModel);
+      await assessFactsV2(persisted, text, resolvedModel, article.title);
 
       const preservedExtraction = preserveReviewState(
         (existing.extractionJson ?? {}) as Record<string, unknown>,
@@ -841,7 +849,7 @@ export async function extractRiskForArticle(
         shouldRefreshNonEnglish ||
         shouldRefreshMissingScoring
       ) {
-        await assessFactsV2(persisted, text, resolvedModel);
+        await assessFactsV2(persisted, text, resolvedModel, article.title);
         await db
           .update(risks)
           .set({
@@ -888,7 +896,7 @@ export async function extractRiskForArticle(
       return { outcome: "skipped", reason: MERGED_SKIP_MESSAGE };
     }
 
-    await assessFactsV2(persisted, text, resolvedModel);
+    await assessFactsV2(persisted, text, resolvedModel, article.title);
 
     const supersededId = options?.forceReprocess
       ? await latestRiskIdForArticle(article.id)

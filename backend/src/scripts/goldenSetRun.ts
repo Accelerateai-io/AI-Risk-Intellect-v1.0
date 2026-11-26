@@ -36,6 +36,7 @@ const REASON_CODES = [
   "REPAIR_FAILED",
   "FETCH_FAIL",
   "NOT_AI",
+  "RESEARCH",
   "PUBLISHED_WITH_NOTES",
   "VERIFIED",
   "REPAIRED",
@@ -70,7 +71,12 @@ function expectedCode(raw: string): string | null {
 }
 
 function publicationWord(result: JobResult, reason: string): string {
-  if (reason === "FETCH_FAIL" || reason === "NOT_AI" || reason === "MERGED") {
+  if (
+    reason === "FETCH_FAIL" ||
+    reason === "NOT_AI" ||
+    reason === "MERGED" ||
+    reason === "RESEARCH"
+  ) {
     return "No record";
   }
   if (result.publication === "held") return "Held";

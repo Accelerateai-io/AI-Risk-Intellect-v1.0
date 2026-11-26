@@ -337,6 +337,7 @@ export async function processClaimedJob(job: ClaimedJob): Promise<void> {
     log("ingest start", { url: job.url, jobSource: job.source });
     const ingest = await processUrlToDb(job.url, job.articleId, {
       title: articleRow?.title ?? undefined,
+      jobId: job.id,
     });
 
     if (!attemptStillCurrent() || !(await jobStillRunning(job.id))) {

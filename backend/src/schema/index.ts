@@ -27,3 +27,4 @@ export * from "./batchRuns/batchRunItems.js";
 export * from "./apiKeys/apiKeys.js";
 export * from "./apiKeys/apiKeyAuditLogs.js";
 export * from "./apiKeys/webhookDeliveries.js";
+export * from "./evidence/evidenceExportLog.js";

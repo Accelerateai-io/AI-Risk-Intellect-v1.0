@@ -142,8 +142,15 @@ export function factualTitle(title: string, sourceText: string): string {
     .trim()
     .replace(/^[,;:\-\s]+|[,;:\-\s]+$/g, "");
   if (updated.split(/\s+/).filter(Boolean).length < 4) return title.trim();
+  // A cut that leaves an unfinished sentence ("...but the source does not
+  // claim support is", R-17) is worse than the original: keep the original
+  // and let the checks judge it.
+  if (DANGLING_END.test(updated)) return title.trim();
   return updated;
 }
+
+const DANGLING_END =
+  /\b(?:is|are|was|were|be|been|being|the|a|an|of|to|for|from|with|by|and|or|but|that|which|who|its|their|this|these|than|as|at|in|on|not|no|can|could|may|might|will|would|should|does|do|did|has|have|had)$/i;
 
 function remember(
   corrections: PreSaveCorrection[],
@@ -163,6 +170,7 @@ function remember(
 export function applyPreSaveFieldValidation(
   extractionJson: Record<string, unknown>,
   sourceText: string,
+  options: { keepTitle?: boolean } = {},
 ): PreSaveCorrection[] {
   const risk = (extractionJson.risk ?? {}) as Record<string, unknown>;
   const corrections: PreSaveCorrection[] = [];
@@ -186,7 +194,7 @@ export function applyPreSaveFieldValidation(
   }
 
   const titleFrom = String(risk.risk_title ?? "").trim();
-  const titleTo = factualTitle(titleFrom, source);
+  const titleTo = options.keepTitle ? titleFrom : factualTitle(titleFrom, source);
   if (titleTo && titleTo !== titleFrom) {
     remember(
       corrections,

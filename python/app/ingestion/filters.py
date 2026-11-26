@@ -101,20 +101,103 @@ SOFT_404_PAT = re.compile(
     re.I,
 )
 
-AI_INCLUDE = [
-    re.compile(r"\b(openai|chatgpt|gpt-4|gpt-3|gemini|anthropic|claude|copilot|deepseek)\b", re.I),
-    # "AIs" is the same token as "AI". Plurals are the same terms, not new topics.
-    re.compile(r"\b(ais?|artificial intelligence)\b", re.I),
-    re.compile(r"\b(llms?|large language models?|language models?)\b", re.I),
-    re.compile(r"\b(machine learning|ml|deep learning|neural network)\b", re.I),
+# Words that make "algorithm" about a decision about people, not maths or code.
+_ALGORITHM_CONTEXT = (
+    r"(?:deny|denied|denials?|decid\w*|decisions?|discriminat\w*|bias(?:ed)?"
+    r"|eligib\w*|hiring|tenants?|rents?|credit|lending|loans?|pricing"
+    r"|polic(?:e|ing)|benefits|surveillance|amplif\w*|feeds?|content moderation"
+    r"|social media|welfare|fairness|accountab\w*)"
+)
+
+# Terms that on their own mean the page is about AI. A page needs at least one
+# of these to count as AI content. Generic words that also appear in recalls,
+# security advisories and finance news (safety, token, inference, prompt,
+# dataset...) only add weight on top of a core term; on their own they used to
+# keep a page that has nothing to do with AI.
+AI_CORE = [
+    # Products and labs. Gemini only with Google/AI context (Gemini Trust is a
+    # crypto exchange).
     re.compile(
-        r"\b(embedding|token|inference|fine[- ]?tun(?:ing|ed)|rlhf|safety|alignment)\b",
+        r"\b(openai|chatgpt|gpt[-‐‑ ]?\d\w*|gpts|anthropic|claude|copilot"
+        r"|deepseek|grok|xai|google(?:'s)? gemini|gemini (?:ai|app|advanced|pro"
+        r"|ultra|nano|flash|live|\d)|llama[- ]?\d\w*|midjourney|stable diffusion"
+        r"|dall[- ·]?e|character\.ai|hugging ?face|perplexity ai|mistral ai"
+        r"|google bard|bing chat|openai'?s sora|meta ai|apple intelligence)\b",
         re.I,
     ),
-    re.compile(r"\b(prompt|prompt injection|jailbreak|hallucination|red teaming)\b", re.I),
-    re.compile(r"\b(model weights?|training data|dataset|inference api)\b", re.I),
+    # "AI" and its spellings. "A.I." is the New York Times house style.
+    re.compile(r"\b(ai|genai|agentic|artificial[- ]intelligence)\b|\bA\.I\.", re.I),
+    # Plural "AIs" only in this case, so CISA's "AIS" (Automated Indicator
+    # Sharing) and maritime AIS do not count.
+    re.compile(r"\bAIs\b"),
+    # Model and method terms.
+    re.compile(
+        r"\b(llms?|(?:large[- ])?language[- ]models?|machine[- ]learning"
+        r"|deep[- ]learning|neural[- ]net(?:work)?s?|reinforcement learning"
+        r"|diffusion models?|transformer (?:models?|architecture)"
+        r"|federated learning|adversarial (?:examples?|attacks?|robustness)"
+        r"|reward models?|in-context learning|chain[- ]of[- ]thought"
+        r"|retrieval[- ]augmented|rlhf|prompt injection|model weights?"
+        r"|training data|vlms?|vision[- ]language models?|foundation models?"
+        r"|computer vision)\b",
+        re.I,
+    ),
+    # "ML" only upper-case and only with a model word after it. A bare \bml\b
+    # matched "10 mL" and "50 MG/ML" in FDA recalls.
+    re.compile(
+        r"\b(?:AI/ML|MLOps|ML[- ](?:models?|systems?|based|powered|driven"
+        r"|pipelines?|algorithms?|engineers?))\b",
+    ),
+    # Applications and harms.
+    re.compile(
+        r"\b(chatbots?|deepfakes?|facial[- ]recognition|face[- ]recognition"
+        r"|algorithmic(?!\s+trading)|self[- ]driving|robotaxis?|driverless"
+        r"|autonomous (?:vehicles?|driving|cars?|trucks?|weapons?|agents?)|waymo"
+        r"|tesla(?:'s)? autopilot|full self[- ]driving|automated (?:decision"
+        r"|valuation|underwriting|hiring|employment|eligibility|screening)\w*"
+        r"|predictive (?:policing|analytics|algorithms?)|recommend(?:ation"
+        r"|er) (?:systems?|algorithms?|engines?)|risk[- ]scoring (?:tools?"
+        r"|algorithms?|models?)|voice[- ]clon\w*|synthetic (?:media|voices?"
+        r"|imagery)|nudify\w*|(?:ai|machine|computer)[- ]generated"
+        r"|generative (?:models?|tools?|systems?))\b",
+        re.I,
+    ),
+    # Driver assistance, lab and model names, and detection systems that the AI
+    # Incident Database tracks as AI incidents (Tesla Autopilot crashes, phantom
+    # braking, ShotSpotter). Found by running the gate on the 27 Oct prod export.
+    re.compile(
+        r"\b(deepmind|gemini (?:robotics|omni|image|models?|api|cli|code)"
+        r"|driver[- ]assist(?:ance|ed)?|automatic emergency braking|phantom braking"
+        r"|gunshot detection|shotspotter|recommendation algorithms?"
+        r"|amazon (?:q|nova)|tesla(?:'s)?\b[^.\n]{0,40}\bautopilot"
+        r"|voice[- ]assistants?|virtual assistants?|smart speakers?"
+        r"|amazon(?:'s)? alexa|alexa (?:voice|devices?|skills?))\b",
+        re.I,
+    ),
+    # Capitalised product terms only: "the plane's autopilot" does not count.
+    re.compile(r"\b(Autopilot|FSD|ADAS)\b"),
+    # "Algorithm" only near a decision or harm word. Bare "algorithm" hits
+    # dosing-algorithm recalls and CISA crypto advisories.
+    re.compile(
+        rf"\balgorithm(?:s|ic)?\b(?!\s+trading)[^.\n]{{0,60}}?\b{_ALGORITHM_CONTEXT}\b"
+        rf"|\b{_ALGORITHM_CONTEXT}\b[^.\n]{{0,60}}?\balgorithm(?:s|ic)?\b(?!\s+trading)",
+        re.I,
+    ),
+]
+
+# Generic terms: they count toward the "clearly AI" threshold only when a core
+# term is also present.
+AI_GENERIC = [
+    re.compile(
+        r"\b(embedding|token|inference|fine[- ]?tun(?:ing|ed)|safety|alignment)\b",
+        re.I,
+    ),
+    re.compile(r"\b(prompt|jailbreak|hallucination|red teaming)\b", re.I),
+    re.compile(r"\b(dataset|inference api)\b", re.I),
     re.compile(r"\b(privacy|pii|data leakage|governance|compliance) in (ai|ml)\b", re.I),
 ]
+
+AI_INCLUDE = [*AI_CORE, *AI_GENERIC]
 
 AI_EXCLUDE = [
     re.compile(r"\b(sports|football|basketball|baseball|soccer|golf|tennis)\b", re.I),
@@ -184,8 +267,9 @@ def looks_like_soft_404(
 
 
 def _hit_count(text: str, patterns: list[re.Pattern[str]]) -> int:
-    low = (text or "").lower()
-    return sum(1 for p in patterns if p.search(low))
+    # Patterns carry their own case rules (the upper-case "ML" pattern is
+    # case-sensitive), so the text is not lower-cased here.
+    return sum(1 for p in patterns if p.search(text or ""))
 
 
 # Tag/category lines that survive extraction ("Tags: air travel, football").
@@ -202,6 +286,9 @@ def _relevance_text(text: str) -> str:
 
 
 def _topic_blob(*, url: str = "", title: str = "", text: str = "") -> str:
+    # Underscores are word characters to \b, so "/openai_chatgpt_bug/" style
+    # slugs would never match; treat them as spaces.
+    url = (url or "").replace("_", " ")
     return " ".join(
         part.strip()
         for part in (title, url, _relevance_text(text))
@@ -232,11 +319,11 @@ def excluded_non_ai_topic_skip_reason(
 
     include_hits = _hit_count(blob, AI_INCLUDE)
     threshold = 2
-    if include_hits - exclude_hits >= threshold:
+    if _hit_count(blob, AI_CORE) >= 1 and include_hits - exclude_hits >= threshold:
         return None
 
     head_blob = _topic_blob(url=url, title=title)
-    if head_blob and _hit_count(head_blob, AI_INCLUDE) >= 1:
+    if head_blob and _hit_count(head_blob, AI_CORE) >= 1:
         return None
 
     return NOT_AI_RELATED_SKIP_MESSAGE
@@ -251,10 +338,16 @@ def classify_ai_related(
 ) -> tuple[bool, dict[str, Any]]:
     blob = _topic_blob(url=url, title=title, text=text)
     include_hits = _hit_count(blob, AI_INCLUDE)
+    core_hits = _hit_count(blob, AI_CORE)
     exclude_hits = _hit_count(blob, AI_EXCLUDE)
-    ok = exclude_hits == 0 and (include_hits - exclude_hits) >= include_threshold
+    ok = (
+        exclude_hits == 0
+        and core_hits >= 1
+        and (include_hits - exclude_hits) >= include_threshold
+    )
     details = {
         "include_hits": include_hits,
+        "core_hits": core_hits,
         "exclude_hits": exclude_hits,
         "threshold": include_threshold,
     }
@@ -264,8 +357,10 @@ def classify_ai_related(
 def has_no_ai_signal(text: str, *, title: str = "", url: str = "") -> bool:
     """True when the content carries zero AI signal at all (B-4).
 
-    Deliberately conservative: it fires only when *no* AI_INCLUDE pattern
-    matches the title/url/text — so a page with even one AI mention is kept.
+    It fires when no AI_CORE term matches the title/url/text. Generic words
+    alone (safety, token, inference, prompt, dataset, "mL" in a dosage) do not
+    count as AI signal, so an FDA recall or a non-AI security advisory is
+    skipped. A page with even one core AI mention is kept.
     This is the "no AI-relevant risk" gate used to skip inserting a risk row
     for off-topic pages (e.g. a CISA KEV alert about a non-AI CVE, R-30)
     without dropping borderline AI risks.
@@ -273,4 +368,4 @@ def has_no_ai_signal(text: str, *, title: str = "", url: str = "") -> bool:
     blob = _topic_blob(url=url, title=title, text=text)
     if not blob:
         return False
-    return _hit_count(blob, AI_INCLUDE) == 0
+    return _hit_count(blob, AI_CORE) == 0

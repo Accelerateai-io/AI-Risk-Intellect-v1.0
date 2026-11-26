@@ -215,6 +215,45 @@ def _visible_text(html: str) -> str:
     return _WS_RE.sub(" ", _TAG_RE.sub(" ", without_scripts)).strip()
 
 
+def _piece_for_span(
+    source: str,
+    span: tuple[int, int],
+    cuts: list[tuple[int, int]],
+) -> str:
+    start, end = span
+    relative = [
+        (cut_start - start, cut_end - start)
+        for cut_start, cut_end in cuts
+        if cut_start >= start and cut_end <= end and cut_end > cut_start
+    ]
+    return _apply_cuts(source[start:end], relative)
+
+
+def _choose_content_span(
+    source: str,
+    cuts: list[tuple[int, int]],
+    article_span: tuple[int, int] | None,
+    main_span: tuple[int, int] | None,
+    body_span: tuple[int, int] | None,
+) -> tuple[int, int] | None:
+    """Prefer the article when it carries the main text.
+
+    A short first ``<article>`` (a teaser card) must not hide a much longer
+    ``<main>``. A lone article, main, or body is unchanged.
+    """
+    if article_span and main_span:
+        article_len = len(_visible_text(_piece_for_span(source, article_span, cuts)))
+        main_len = len(_visible_text(_piece_for_span(source, main_span, cuts)))
+        # Main is substantially more content when it is at least twice the teaser.
+        if main_len > article_len and article_len * 2 < main_len:
+            return main_span
+        if article_len:
+            return article_span
+        if main_len:
+            return main_span
+    return article_span or main_span or body_span
+
+
 def isolate_main_content_html(html: str) -> str:
     """Keep the article (or main/body) and drop identifiable page chrome.
 
@@ -232,12 +271,16 @@ def isolate_main_content_html(html: str) -> str:
         finder.close()
     except Exception:
         return source
-    span = finder.article_span or finder.main_span or finder.body_span
+    span = _choose_content_span(
+        source,
+        finder.cuts,
+        finder.article_span,
+        finder.main_span,
+        finder.body_span,
+    )
     if not span:
         return source
-    start, end = span
-    cuts = [(cut_start - start, cut_end - start) for cut_start, cut_end in finder.cuts if cut_start >= start and cut_end <= end and cut_end > cut_start]
-    piece = _apply_cuts(source[start:end], cuts)
+    piece = _piece_for_span(source, span, finder.cuts)
     if not _visible_text(piece):
         return source
     return f"<!DOCTYPE html><html><body>{piece}</body></html>"
