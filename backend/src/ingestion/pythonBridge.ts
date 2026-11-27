@@ -20,9 +20,15 @@ export type PythonIngestResult = {
   text: string;
   title: string;
   details: {
-    include_hits: number;
-    exclude_hits: number;
-    threshold: number;
+    include_hits?: number;
+    exclude_hits?: number;
+    threshold?: number;
+    language?: string;
+    extraction_quality?: {
+      score: number;
+      parts: Record<string, number>;
+      reasons: string[];
+    };
   };
 };
 

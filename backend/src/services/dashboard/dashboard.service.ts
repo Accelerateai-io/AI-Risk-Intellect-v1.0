@@ -41,6 +41,7 @@ export type DashboardCategoryItem = {
   key: string;
   count: number;
   pct: number;
+  subcategories: Array<{ key: string; label: string; count: number }>;
 };
 
 export type DashboardIndustryItem = {
@@ -167,21 +168,63 @@ function sectorKey(
   return null;
 }
 
+const CATEGORY_SUBTYPES = {
+  technical: [
+    { key: "security", label: "Security Risk" },
+    { key: "privacy", label: "Privacy Risk" },
+    { key: "performance", label: "Technical/Performance Risk" },
+    { key: "data", label: "Data Risk" },
+  ],
+  operational: [
+    { key: "compliance", label: "Compliance/Regulatory Risk" },
+    { key: "legal", label: "Legal/Liability Risk" },
+    { key: "vendor", label: "Third-Party/Vendor Risk" },
+  ],
+  business: [
+    { key: "financial", label: "Business/Financial Risk" },
+    { key: "reputation", label: "Reputational Risk" },
+    { key: "ethical", label: "Ethical Risk" },
+    { key: "strategic", label: "Strategic Risk" },
+  ],
+} as const;
+
+type CategoryKey = keyof typeof CATEGORY_SUBTYPES;
+
+function secondarySubtypeKey(
+  category: CategoryKey,
+  secondary: string | null,
+): string {
+  const text = (secondary ?? "").toLowerCase();
+  const matchers: Record<CategoryKey, Array<[string, string[]]>> = {
+    technical: [
+      ["privacy", ["privacy"]],
+      ["security", ["security"]],
+      ["data", ["data"]],
+      ["performance", ["performance", "technical"]],
+    ],
+    operational: [
+      ["compliance", ["compliance", "regulatory"]],
+      ["legal", ["legal", "liability"]],
+      ["vendor", ["vendor", "third-party", "third party"]],
+    ],
+    business: [
+      ["financial", ["financial"]],
+      ["reputation", ["reputat"]],
+      ["ethical", ["ethical"]],
+      ["strategic", ["strateg"]],
+    ],
+  };
+  for (const [key, needles] of matchers[category]) {
+    if (needles.some((needle) => text.includes(needle))) return key;
+  }
+  return "other";
+}
+
 function primaryCategoryKey(primary: string | null): "technical" | "operational" | "business" {
   const l = (primary ?? "").toLowerCase();
   if (l.includes("operational")) return "operational";
   if (l.includes("business")) return "business";
   return "technical";
-}
-
-function severityKey(score: number | null): "low" | "medium" | "high" | "critical" {
-  if (score == null) return "low";
-  // Accept both unit (0–1) and percent (0–100) quality scores.
-  const pct = score <= 1 ? score * 100 : score;
-  if (pct >= 90) return "critical";
-  if (pct >= 75) return "high";
-  if (pct >= 50) return "medium";
-  return "low";
 }
 
 function confidenceKey(score: number | null): "high" | "medium" | "low" {
@@ -355,6 +398,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     .select({
       domains: risks.domains,
       primaryRisk: risks.primaryRisk,
+      secondaryRisk: risks.secondaryRisk,
       sector: risks.sector,
       industry: risks.industry,
       qualityScore: risks.qualityScore,
@@ -410,6 +454,11 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     TAXONOMY_KEYS.map((k) => [k, 0]),
   ) as Record<(typeof TAXONOMY_KEYS)[number], number>;
   const categoryCounts = { technical: 0, operational: 0, business: 0 };
+  const subcategoryCounts: Record<CategoryKey, Map<string, number>> = {
+    technical: new Map(),
+    operational: new Map(),
+    business: new Map(),
+  };
   const sectorCounts = { private: 0, public: 0, nonprofit: 0 };
   const industryBySector: Record<
     "private" | "public" | "nonprofit",
@@ -428,11 +477,11 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       qualityScore: row.qualityScore,
       extractionJson: row.extractionJson,
     });
-    severityCounts[severityKey(score)] += 1;
     confidenceCounts[confidenceKey(score)] += 1;
 
     const band = (row.severityBand ?? "").toLowerCase();
     if (band === "low" || band === "medium" || band === "high" || band === "critical") {
+      severityCounts[band] += 1;
       ratingCounts[band] += 1;
     } else {
       ratingUnscored += 1;
@@ -446,7 +495,11 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     const domainKey = taxonomyKeyFromDomain(row.domains ?? "");
     if (domainKey) taxonomyCounts[domainKey] += 1;
 
-    categoryCounts[primaryCategoryKey(row.primaryRisk)] += 1;
+    const category = primaryCategoryKey(row.primaryRisk);
+    categoryCounts[category] += 1;
+    const subtype = secondarySubtypeKey(category, row.secondaryRisk);
+    const subtypeMap = subcategoryCounts[category];
+    subtypeMap.set(subtype, (subtypeMap.get(subtype) ?? 0) + 1);
 
     const sk = sectorKey(row.sector);
     if (sk) {
@@ -459,7 +512,11 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     }
   }
 
-  const severityTotal = totalRisks;
+  const severityTotal =
+    severityCounts.low +
+    severityCounts.medium +
+    severityCounts.high +
+    severityCounts.critical;
   const severityColors: Record<string, string> = {
     low: "#22c55e",
     medium: "#eab308",
@@ -518,6 +575,12 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     ["technical", "operational", "business"] as const
   ).map((key) => {
     const count = categoryCounts[key];
+    const known = CATEGORY_SUBTYPES[key].map((sub) => ({
+      key: sub.key,
+      label: sub.label,
+      count: subcategoryCounts[key].get(sub.key) ?? 0,
+    }));
+    const other = subcategoryCounts[key].get("other") ?? 0;
     return {
       key,
       count,
@@ -525,6 +588,10 @@ export async function getDashboardStats(): Promise<DashboardStats> {
         categoryTotal > 0
           ? Math.round((count / categoryTotal) * 1000) / 10
           : 0,
+      subcategories:
+        other > 0
+          ? [...known, { key: "other", label: "Other", count: other }]
+          : known,
     };
   });
 
@@ -533,7 +600,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     limit = 5,
   ): DashboardIndustryItem[] {
     return [...map.entries()]
-      .sort((a, b) => b[1] - a[1])
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .slice(0, limit)
       .map(([name, count]) => ({ name, count }));
   }
@@ -573,7 +640,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
           `~${(completed24h / 24).toFixed(1)}/hour avg`,
       ),
       avgTime: {
-        value: `${avgSeconds}s`,
+        value: `${formatCount(avgSeconds)}s`,
         sparkPoints: [avgSeconds],
         trend: "neutral",
         changePct: "0.0%",

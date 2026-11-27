@@ -49,7 +49,12 @@ export type DashboardApiStats = {
     breakdown: { high: number; medium: number; low: number };
   };
   taxonomy: Array<{ key: string; count: number }>;
-  topCategories: Array<{ key: string; count: number; pct: number }>;
+  topCategories: Array<{
+    key: string;
+    count: number;
+    pct: number;
+    subcategories?: Array<{ key: string; label: string; count: number }>;
+  }>;
   sector: {
     total: number;
     private: number;

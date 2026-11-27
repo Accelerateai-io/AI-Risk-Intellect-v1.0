@@ -1,4 +1,5 @@
 import dns from "node:dns/promises";
+import os from "node:os";
 import { extractTitleFromHtml } from "../../ingestion/extractText.js";
 import {
   detectBotBlockPage,
@@ -7,40 +8,41 @@ import {
 } from "../../ingestion/filters.js";
 import { isBlockedResolvedIp } from "./ipAddress.js";
 
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+import { createLogger } from "../../logger/logger.js";
 
-const DEFAULT_HEADERS: Record<string, string> = {
-  "User-Agent": UA,
-  Accept:
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-  "Accept-Language": "en-US,en;q=0.5",
-  "Accept-Encoding": "gzip, deflate",
-  Connection: "keep-alive",
-  "Upgrade-Insecure-Requests": "1",
-};
+const fetchLog = createLogger("fetch");
 
-/**
- * Fuller browser fingerprint used for the single retry after a block (B-4):
- * a newer UA plus Client-Hint / Sec-Fetch headers that some sites require
- * before serving the real article to a non-interactive client.
- */
-const BROWSER_RETRY_HEADERS: Record<string, string> = {
-  "User-Agent":
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
-  Accept:
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-  "Accept-Language": "en-US,en;q=0.9",
-  "Accept-Encoding": "gzip, deflate, br",
-  "Sec-Ch-Ua": '"Chromium";v="126", "Google Chrome";v="126", "Not/A)Brand";v="8"',
+/** One Chrome identity. Client hints must match this UA. */
+const CHROME_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+
+const CHROME_CLIENT_HINTS: Record<string, string> = {
+  "Sec-Ch-Ua": '"Chromium";v="126", "Google Chrome";v="126", "Not.A/Brand";v="24"',
   "Sec-Ch-Ua-Mobile": "?0",
-  "Sec-Ch-Ua-Platform": '"macOS"',
+  "Sec-Ch-Ua-Platform": '"Windows"',
   "Sec-Fetch-Dest": "document",
   "Sec-Fetch-Mode": "navigate",
   "Sec-Fetch-Site": "none",
   "Sec-Fetch-User": "?1",
+};
+
+const DEFAULT_HEADERS: Record<string, string> = {
+  "User-Agent": CHROME_UA,
+  Accept:
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
   "Upgrade-Insecure-Requests": "1",
-  Connection: "keep-alive",
+  ...CHROME_CLIENT_HINTS,
+};
+
+/**
+ * Same Chrome identity as the first request. The retry only adds a cache-busting
+ * fetch site hint sites sometimes require; it does not switch to Safari.
+ */
+const BROWSER_RETRY_HEADERS: Record<string, string> = {
+  ...DEFAULT_HEADERS,
+  "Cache-Control": "no-cache",
+  Pragma: "no-cache",
 };
 
 /** Below this raw-body size a response is a stub/error page, not an article (B-4). */
@@ -48,7 +50,7 @@ const MIN_FETCH_BODY_CHARS = 500;
 
 /** Browser-like headers for RSS/Atom feed fetch (many sites block bot user agents). */
 export const FEED_FETCH_HEADERS: Record<string, string> = {
-  "User-Agent": UA,
+  "User-Agent": CHROME_UA,
   Accept:
     "application/rss+xml, application/xml, text/xml, application/atom+xml, application/octet-stream, */*",
   "Accept-Language": "en-US,en;q=0.5",
@@ -388,7 +390,32 @@ function withHttpStatus(reason: string, status: number): string {
   return `${reason} (HTTP ${status})`;
 }
 
-const FETCH_TRANSPORT_ATTEMPTS = 2;
+const FETCH_TRANSPORT_ATTEMPTS = 3;
+const TRANSIENT_HTTP = new Set([408, 429, 500, 502, 503, 504]);
+
+const CDN_RESTRICTION_RE =
+  /akamai|access denied|attention required|cf-ray|cloudflare|captcha|bot detection|request blocked|reference #[0-9a-f.]+/i;
+
+function fetchEnvironment(): Record<string, string> {
+  return {
+    host: os.hostname(),
+    nodeEnv: process.env.NODE_ENV ?? "",
+    egressNote:
+      "Compare this host with the machine where FTC fetches succeed. Akamai can 404 by source IP.",
+  };
+}
+
+function notFoundReason(status: number, body: string, forPdf: boolean): string {
+  const sample = body.slice(0, 4000);
+  if (CDN_RESTRICTION_RE.test(sample)) {
+    return `suspected CDN or security restriction (HTTP ${status})`;
+  }
+  return forPdf ? `HTTP ${status} for PDF` : `HTTP ${status}`;
+}
+
+function logFetch(details: Record<string, unknown>): void {
+  fetchLog.info("page fetch", { ...fetchEnvironment(), ...details });
+}
 const FETCH_TIMEOUT_REASON =
   "The site did not respond in time (connection timed out).";
 
@@ -416,7 +443,16 @@ export async function fetchPageContentDetailed(
       return { ok: false, reason: FETCH_TIMEOUT_REASON };
     }
     try {
-      return await fetchPageContentOnce(url, timeoutMs, externalSignal);
+      const outcome = await fetchPageContentOnce(url, timeoutMs, externalSignal);
+      if (outcome.ok) return outcome;
+      const retryable =
+        /^(HTTP (404|410|451)|suspected CDN)/.test(outcome.reason) ||
+        /\bHTTP (408|429|500|502|503|504)\b/.test(outcome.reason);
+      if (transportAttempt === FETCH_TRANSPORT_ATTEMPTS - 1 || !retryable) {
+        return outcome;
+      }
+      await sleep(500 * 2 ** transportAttempt);
+      continue;
     } catch (err) {
       if (externalSignal?.aborted) {
         return { ok: false, reason: FETCH_TIMEOUT_REASON };
@@ -465,24 +501,46 @@ async function fetchPageContentOnce(
 
       const contentType = (getRes.headers.get("content-type") ?? "")
         .toLowerCase();
+      logFetch({
+        url,
+        attempt,
+        status: getRes.status,
+        finalUrl: getRes.url,
+        redirected: getRes.redirected,
+        contentType,
+        server: getRes.headers.get("server") ?? "",
+      });
+      if (getRes.redirected && getRes.url) {
+        try {
+          await validateUrl(getRes.url);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "redirect blocked";
+          return { ok: false, reason: message };
+        }
+      }
       const isPdf =
         contentType.includes("application/pdf") ||
         url.toLowerCase().split("?")[0]!.endsWith(".pdf");
 
+      if (TRANSIENT_HTTP.has(getRes.status)) {
+        lastBlockReason = `HTTP ${getRes.status}`;
+        await sleep(400 * 2 ** attempt);
+        continue;
+      }
+
+      if ([404, 410, 451].includes(getRes.status)) {
+        const body = await getRes.text();
+        lastBlockReason = notFoundReason(getRes.status, body, isPdf);
+        if (attempt < headerCandidates.length - 1) continue;
+        return { ok: false, reason: lastBlockReason };
+      }
+
       if (isPdf) {
-        if ([404, 410, 451].includes(getRes.status)) {
-          return { ok: false, reason: `HTTP ${getRes.status} for PDF` };
-        }
         const bytes = Buffer.from(await getRes.arrayBuffer());
         return { ok: true, page: { kind: "pdf", bytes, title: "" } };
       }
 
       const html = await getRes.text();
-
-      // A pure not-found is a definite miss; a browser UA will not change it.
-      if ([404, 410, 451].includes(getRes.status)) {
-        return { ok: false, reason: `HTTP ${getRes.status}` };
-      }
 
       // Judge "too small" and the paywall gate on the extracted body TEXT, not
       // the raw HTML: a page can carry kilobytes of markup/nav chrome yet have

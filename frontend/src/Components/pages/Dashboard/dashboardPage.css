@@ -294,12 +294,23 @@ html.app-theme-dark .mainLayout__content.dashboardPage {
 
 .dashboardPage__insightsRow {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
-  gap: 1.1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
   align-items: stretch;
 }
 
-@media (max-width: 1024px) {
+.dashboardPage__insightsRow > .dashInsight {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 1280px) {
+  .dashboardPage__insightsRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
   .dashboardPage__insightsRow {
     grid-template-columns: 1fr;
   }
@@ -730,7 +741,7 @@ html:not(.app-theme-dark) .dashHeatmap__legendLabel {
 
 .dashSeverityLegend__row {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) 2.5rem 3.25rem minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
   align-items: baseline;
   gap: 0.35rem 0.5rem;
   font-size: 0.8rem;
@@ -755,6 +766,11 @@ html:not(.app-theme-dark) .dashHeatmap__legendLabel {
   height: 0.45rem;
   border-radius: 999px;
   flex-shrink: 0;
+}
+
+.dashSeverityLegend__pct,
+.dashSeverityLegend__count {
+  text-align: right;
 }
 
 .dashSeverityLegend__pct {
@@ -985,54 +1001,56 @@ html:not(.app-theme-dark) .dashConfBreakdown__row {
   color: #e2e8f0;
 }
 
-.dashTaxonomy__list {
+.dashTaxonomy__grid {
   list-style: none;
   margin: 0;
   padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.dashTaxonomyCard {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-}
-
-.dashTaxonomy__item {
+  gap: 0.55rem;
+  min-height: 8.5rem;
   margin: 0;
-}
-
-.dashTaxonomy__row {
-  display: grid;
-  grid-template-columns: 0.5rem minmax(0, 1.35fr) minmax(3.5rem, 1fr) 3.25rem 2rem;
-  align-items: center;
-  column-gap: 0.65rem;
-  width: 100%;
-  padding: 0.65rem 0.85rem;
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  border-radius: 8px;
+  padding: 0.9rem 0.95rem 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 10px;
   background: rgba(15, 23, 42, 0.4);
-  font: inherit;
-  font-size: 0.82rem;
-  text-align: left;
-  cursor: pointer;
+}
+
+.dashTaxonomyCard__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dashTaxonomyCard__order {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashTaxonomyCard__name {
+  margin: 0;
+  min-height: 2.4rem;
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.35;
   color: #f1f5f9;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
 }
 
-.dashTaxonomy__row:hover {
-  background: rgba(30, 41, 59, 0.65);
-  border-color: rgba(148, 163, 184, 0.22);
-}
-
-.dashTaxonomy__row:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.45);
-}
-
-.dashTaxonomy__row--active {
-  border-color: rgba(56, 189, 248, 0.45);
-  background: rgba(8, 47, 73, 0.35);
-  box-shadow: inset 3px 0 0 #38bdf8;
+.dashTaxonomyCard__stats {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: auto 0 0;
 }
 
 .dashTaxonomy__dot {
@@ -1042,41 +1060,33 @@ html:not(.app-theme-dark) .dashConfBreakdown__row {
   flex-shrink: 0;
 }
 
-.dashTaxonomy__name {
-  min-width: 0;
-  line-height: 1.35;
-}
-
 .dashTaxonomy__barTrack {
   display: block;
-  height: 4px;
+  height: 6px;
   border-radius: 999px;
   background: rgba(148, 163, 184, 0.18);
   overflow: hidden;
-  min-width: 0;
 }
 
 .dashTaxonomy__barFill {
   display: block;
   height: 100%;
   border-radius: inherit;
-  min-width: 0;
   transition: width 0.35s ease;
 }
 
 .dashTaxonomy__pct {
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
   color: #cbd5e1;
-  text-align: right;
 }
 
 .dashTaxonomy__count {
-  font-size: 0.82rem;
-  font-weight: 600;
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
   color: #f8fafc;
-  text-align: right;
 }
 
 .dashTaxonomy__foot {
@@ -1088,39 +1098,15 @@ html:not(.app-theme-dark) .dashConfBreakdown__row {
   color: var(--dash-label);
 }
 
-@media (max-width: 720px) {
-  .dashTaxonomy__row {
-    grid-template-columns: 0.5rem 1fr auto auto;
-    grid-template-rows: auto auto;
-    row-gap: 0.5rem;
+@media (max-width: 1100px) {
+  .dashTaxonomy__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
 
-  .dashTaxonomy__dot {
-    grid-row: 1;
-    align-self: start;
-    margin-top: 0.35rem;
-  }
-
-  .dashTaxonomy__name {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .dashTaxonomy__pct {
-    grid-column: 3;
-    grid-row: 1;
-    align-self: start;
-  }
-
-  .dashTaxonomy__count {
-    grid-column: 4;
-    grid-row: 1;
-    align-self: start;
-  }
-
-  .dashTaxonomy__barTrack {
-    grid-column: 1 / -1;
-    grid-row: 2;
+@media (max-width: 640px) {
+  .dashTaxonomy__grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1132,20 +1118,13 @@ html:not(.app-theme-dark) .dashTaxonomy__totalValue {
   color: var(--main-text-color, #0f172a);
 }
 
-html:not(.app-theme-dark) .dashTaxonomy__row {
+html:not(.app-theme-dark) .dashTaxonomyCard {
   background: #f8fafc;
   border-color: #e2e8f0;
+}
+
+html:not(.app-theme-dark) .dashTaxonomyCard__name {
   color: var(--main-text-color, #1e293b);
-}
-
-html:not(.app-theme-dark) .dashTaxonomy__row:hover {
-  background: #f1f5f9;
-  border-color: #cbd5e1;
-}
-
-html:not(.app-theme-dark) .dashTaxonomy__row--active {
-  background: #ecfeff;
-  border-color: rgba(56, 189, 248, 0.45);
 }
 
 html:not(.app-theme-dark) .dashTaxonomy__pct {
@@ -1205,75 +1184,38 @@ html:not(.app-theme-dark) .dashTaxonomy__barTrack {
   white-space: nowrap;
 }
 
-.dashRiskCat__list {
+.dashRiskCat__grid {
   list-style: none;
   margin: 0;
   padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.dashRiskCatCard {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
-}
-
-.dashRiskCat__item {
   margin: 0;
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  border-radius: 8px;
+  padding: 0.9rem 0.95rem 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 10px;
   background: rgba(15, 23, 42, 0.4);
-  overflow: hidden;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
 }
 
-.dashRiskCat__item:hover {
-  border-color: rgba(148, 163, 184, 0.22);
-}
-
-.dashRiskCat__item:has(.dashRiskCat__row:focus-visible) {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.45);
-}
-
-.dashRiskCat__row {
+.dashRiskCatCard__top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.85rem;
-  width: 100%;
-  padding: 0.72rem 0.85rem 0.55rem;
-  border: none;
-  background: transparent;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  color: #f1f5f9;
-  transition: background 0.15s ease;
 }
 
-.dashRiskCat__row:hover {
-  background: rgba(30, 41, 59, 0.35);
-}
-
-.dashRiskCat__row:focus-visible {
-  outline: none;
-}
-
-.dashRiskCat__chevron {
-  flex-shrink: 0;
-  color: #94a3b8;
-  transition: transform 0.2s ease;
-}
-
-.dashRiskCat__row--open .dashRiskCat__chevron {
-  transform: rotate(90deg);
-}
-
-.dashRiskCat__rowMain {
+.dashRiskCatCard__stats {
   display: flex;
-  align-items: center;
+  align-items: baseline;
+  justify-content: space-between;
   gap: 0.5rem;
-  min-width: 0;
-  flex: 1;
+  margin: 0;
 }
 
 .dashRiskCat__dot {
@@ -1283,63 +1225,39 @@ html:not(.app-theme-dark) .dashTaxonomy__barTrack {
   flex-shrink: 0;
 }
 
-.dashRiskCat__textBlock {
-  display: flex;
-  flex-direction: column;
-  gap: 0.12rem;
-  min-width: 0;
-}
-
 .dashRiskCat__name {
-  font-size: 0.9rem;
+  margin: 0;
+  font-size: 0.95rem;
   font-weight: 700;
   line-height: 1.25;
+  color: #f1f5f9;
 }
 
 .dashRiskCat__subMeta {
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   color: #94a3b8;
   line-height: 1.3;
 }
 
-.dashRiskCat__stats {
-  display: inline-flex;
-  align-items: center;
-  gap: 1rem;
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-}
-
 .dashRiskCat__pct {
-  font-size: 0.85rem;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
   color: #cbd5e1;
 }
 
-.dashRiskCat__countWrap {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.28rem;
-  font-size: 0.85rem;
-  font-weight: 600;
+.dashRiskCat__count {
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
   color: #f8fafc;
-}
-
-.dashRiskCat__linkIcon {
-  flex-shrink: 0;
-  color: #e2e8f0;
-  opacity: 0.9;
-}
-
-.dashRiskCat__barRow {
-  padding: 0 0.85rem 0.6rem;
-  margin-top: -0.1rem;
 }
 
 .dashRiskCat__barTrack {
   display: block;
-  height: 2px;
+  height: 6px;
   border-radius: 999px;
-  background: rgba(148, 163, 184, 0.2);
+  background: rgba(148, 163, 184, 0.18);
   overflow: hidden;
 }
 
@@ -1347,49 +1265,42 @@ html:not(.app-theme-dark) .dashTaxonomy__barTrack {
   display: block;
   height: 100%;
   border-radius: inherit;
-  min-width: 0;
   transition: width 0.35s ease;
 }
 
 .dashRiskCat__subList {
   list-style: none;
-  margin: 0;
-  padding: 0.25rem 0.45rem 0.55rem;
-  border-top: 1px solid rgba(148, 163, 184, 0.1);
+  margin: 0.15rem 0 0;
+  padding: 0.65rem 0 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 
 .dashRiskCat__subItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  color: #cbd5e1;
 }
 
-.dashRiskCat__subBtn {
+.dashRiskCat__subLabel {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  width: 100%;
-  padding: 0.48rem 0.55rem;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  font: inherit;
-  font-size: 0.82rem;
-  text-align: left;
-  color: #cbd5e1;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease;
+  min-width: 0;
 }
 
-.dashRiskCat__subBtn:hover {
-  background: rgba(30, 41, 59, 0.55);
-  color: #f1f5f9;
-}
-
-.dashRiskCat__subBtn:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 2px rgba(56, 189, 248, 0.35);
-  border-radius: 6px;
+.dashRiskCat__subCount {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #f8fafc;
 }
 
 .dashRiskCat__subDot {
@@ -1409,15 +1320,9 @@ html:not(.app-theme-dark) .dashTaxonomy__barTrack {
   color: var(--dash-label);
 }
 
-@media (max-width: 520px) {
-  .dashRiskCat__row {
-    flex-wrap: wrap;
-  }
-
-  .dashRiskCat__stats {
-    width: 100%;
-    justify-content: flex-end;
-    padding-left: 1.85rem;
+@media (max-width: 900px) {
+  .dashRiskCat__grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1429,21 +1334,13 @@ html:not(.app-theme-dark) .dashRiskCat__sortHint {
   color: #64748b;
 }
 
-html:not(.app-theme-dark) .dashRiskCat__item {
+html:not(.app-theme-dark) .dashRiskCatCard {
   background: #f8fafc;
   border-color: #e2e8f0;
 }
 
-html:not(.app-theme-dark) .dashRiskCat__item:hover {
-  border-color: #cbd5e1;
-}
-
-html:not(.app-theme-dark) .dashRiskCat__row {
+html:not(.app-theme-dark) .dashRiskCat__name {
   color: var(--main-text-color, #1e293b);
-}
-
-html:not(.app-theme-dark) .dashRiskCat__row:hover {
-  background: #f1f5f9;
 }
 
 html:not(.app-theme-dark) .dashRiskCat__subMeta {
@@ -1454,16 +1351,8 @@ html:not(.app-theme-dark) .dashRiskCat__pct {
   color: #64748b;
 }
 
-html:not(.app-theme-dark) .dashRiskCat__countWrap {
+html:not(.app-theme-dark) .dashRiskCat__count {
   color: #0f172a;
-}
-
-html:not(.app-theme-dark) .dashRiskCat__linkIcon {
-  color: #475569;
-}
-
-html:not(.app-theme-dark) .dashRiskCat__chevron {
-  color: #64748b;
 }
 
 html:not(.app-theme-dark) .dashRiskCat__barTrack {
@@ -1474,12 +1363,11 @@ html:not(.app-theme-dark) .dashRiskCat__subList {
   border-top-color: #e2e8f0;
 }
 
-html:not(.app-theme-dark) .dashRiskCat__subBtn {
+html:not(.app-theme-dark) .dashRiskCat__subItem {
   color: #475569;
 }
 
-html:not(.app-theme-dark) .dashRiskCat__subBtn:hover {
-  background: #f1f5f9;
+html:not(.app-theme-dark) .dashRiskCat__subCount {
   color: #0f172a;
 }
 

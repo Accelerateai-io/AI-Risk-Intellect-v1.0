@@ -347,11 +347,10 @@ function typeBadgeClass(jobType: string): string {
 function buildMetrics(m: JobMetrics): Metric[] {
   return [
     { key: "total", label: "TOTAL JOBS", value: String(m.total), accent: "blue", Icon: ListChecks },
-    { key: "success", label: "SUCCESS RATE", value: `${m.successRate}%`, accent: "green", Icon: CheckCircle2 },
+    { key: "skipped", label: "SKIPPED", value: String(m.skipped), accent: "slate", Icon: SkipForward },
     { key: "pending", label: "PENDING QUEUE", value: String(m.pending), accent: "amber", Icon: Clock },
     { key: "failed", label: "FAILED JOBS", value: String(m.failed), accent: "red", Icon: XCircle },
-    { key: "running", label: "RUNNING NOW", value: String(m.running), accent: "slate", Icon: Zap },
-    { key: "completed24h", label: "24H COMPLETED", value: String(m.completed24h), accent: "slate", Icon: Activity },
+    { key: "success", label: "SUCCESS RATE", value: `${m.successRate}%`, accent: "green", Icon: CheckCircle2 },
     {
       key: "avgProc",
       label: "AVG PROCESSING",
@@ -362,7 +361,8 @@ function buildMetrics(m: JobMetrics): Metric[] {
       accent: "slate",
       Icon: Timer,
     },
-    { key: "skipped", label: "SKIPPED", value: String(m.skipped), accent: "slate", Icon: SkipForward },
+    { key: "running", label: "RUNNING NOW", value: String(m.running), accent: "slate", Icon: Zap },
+    { key: "completed24h", label: "24H COMPLETED", value: String(m.completed24h), accent: "slate", Icon: Activity },
   ];
 }
 

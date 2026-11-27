@@ -7,7 +7,6 @@ import {
   Briefcase,
   CalendarDays,
   CheckCircle2,
-  ChevronRight,
   Clock,
   ExternalLink,
   FileText,
@@ -16,7 +15,6 @@ import {
   Landmark,
   Layers,
   LineChart,
-  Link2,
   Network,
   RefreshCw,
   Shield,
@@ -363,7 +361,7 @@ function SectorIndustryPanel({
                       <li key={item.name} className="dashSectorList__item">
                         <span>{formatDisplayValue(item.name)}</span>
                         <span className="dashSectorList__itemCount">
-                          {item.count}
+                          {item.count.toLocaleString("en-US")}
                         </span>
                       </li>
                     ))}
@@ -463,7 +461,7 @@ function RiskSeverityDistributionCard({
             className="dashInsight__titleIcon dashInsight__titleIcon--amber"
             aria-hidden
           />
-          Risk severity distribution
+          Severity distribution
         </h3>
         <p className="dashInsight__confidence">
           Confidence:{" "}
@@ -495,18 +493,6 @@ function RiskSeverityDistributionCard({
                 </span>
                 <span className="dashSeverityLegend__pct">{row.pct}</span>
                 <span className="dashSeverityLegend__count">{row.count}</span>
-                <span
-                  className={
-                    row.trend === "up"
-                      ? "dashSeverityLegend__trend dashSeverityLegend__trend--up"
-                      : "dashSeverityLegend__trend dashSeverityLegend__trend--down"
-                  }
-                >
-                  {row.delta}{" "}
-                  <span className="dashSeverityLegend__trendPct">
-                    {row.deltaPct}
-                  </span>
-                </span>
               </li>
             ))}
           </ul>
@@ -515,19 +501,20 @@ function RiskSeverityDistributionCard({
             <span className="dashSeverityLegend__label">Total</span>
             <span className="dashSeverityLegend__pct">100%</span>
             <span className="dashSeverityLegend__count">{totalFormatted}</span>
-            <span
-              className={
-                severity.totalDelta >= 0
-                  ? "dashSeverityLegend__trend dashSeverityLegend__trend--up"
-                  : "dashSeverityLegend__trend dashSeverityLegend__trend--down"
-              }
-            >
-              {totalDeltaFormatted}{" "}
-              <span className="dashSeverityLegend__trendPct">
-                ({severity.totalDeltaPct})
-              </span>
-            </span>
           </div>
+          <p
+            className={
+              severity.totalDelta >= 0
+                ? "dashSeverityLegend__trend dashSeverityLegend__trend--up"
+                : "dashSeverityLegend__trend dashSeverityLegend__trend--down"
+            }
+          >
+            {totalDeltaFormatted}{" "}
+            <span className="dashSeverityLegend__trendPct">
+              ({severity.totalDeltaPct})
+            </span>
+            <span> vs the previous 7 days</span>
+          </p>
         </div>
       </div>
 
@@ -555,6 +542,10 @@ function RiskRatingDistributionCard({
 }) {
   const scoredFormatted = riskRating.scored.toLocaleString("en-US");
   const unscoredFormatted = riskRating.unscored.toLocaleString("en-US");
+  const donutGradient = useMemo(
+    () => buildSeverityDonutGradient(riskRating.rows, riskRating.scored),
+    [riskRating.rows, riskRating.scored],
+  );
 
   return (
     <article className="dashInsight dashInsight--severity">
@@ -566,7 +557,7 @@ function RiskRatingDistributionCard({
             className="dashInsight__titleIcon dashInsight__titleIcon--amber"
             aria-hidden
           />
-          Risk rating (Likelihood × Impact)
+          Rating (Likelihood × Impact)
         </h3>
         <p className="dashInsight__confidence">
           Scored:{" "}
@@ -575,7 +566,11 @@ function RiskRatingDistributionCard({
       </header>
 
       <div className="dashInsight__body dashInsight__body--severity">
-        <div className="dashDonut" aria-hidden>
+        <div
+          className="dashDonut"
+          style={{ background: donutGradient }}
+          aria-hidden
+        >
           <div className="dashDonut__hole" />
         </div>
 
@@ -595,12 +590,18 @@ function RiskRatingDistributionCard({
               </li>
             ))}
           </ul>
-          <div className="dashSeverityLegend__divider" />
-          <div className="dashSeverityLegend__row dashSeverityLegend__row--total">
-            <span className="dashSeverityLegend__label">Unscored</span>
-            <span className="dashSeverityLegend__pct">—</span>
-            <span className="dashSeverityLegend__count">{unscoredFormatted}</span>
-          </div>
+          {riskRating.unscored > 0 ? (
+            <>
+              <div className="dashSeverityLegend__divider" />
+              <div className="dashSeverityLegend__row dashSeverityLegend__row--total">
+                <span className="dashSeverityLegend__label">No rating yet</span>
+                <span className="dashSeverityLegend__pct">—</span>
+                <span className="dashSeverityLegend__count">
+                  {unscoredFormatted}
+                </span>
+              </div>
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -612,9 +613,7 @@ function RiskRatingDistributionCard({
           aria-hidden
         />
         <p>
-          Bands come from a FAIR-informed 5×5 matrix: likelihood (1–5) ×
-          impact (1–5), scored per entry during LLM analysis. Unscored entries
-          predate scoring and can be backfilled.
+          Bands are Likelihood (1–5) × Impact (1–5). A risk with no likelihood or impact is listed as “No rating yet.”
         </p>
       </footer>
     </article>
@@ -726,8 +725,6 @@ function RiskTaxonomyPanel({
 }: {
   taxonomy: DashboardApiStats["taxonomy"];
 }) {
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
-
   const countByKey = useMemo(
     () => new Map(taxonomy.map((t) => [t.key, t.count])),
     [taxonomy],
@@ -775,102 +772,77 @@ function RiskTaxonomyPanel({
         </p>
       </header>
 
-      <ul className="dashTaxonomy__list" role="list">
-        {rows.map((d) => {
-          const isActive = selectedKey === d.key;
-          return (
-            <li key={d.key} className="dashTaxonomy__item">
-              <button
-                type="button"
-                className={`dashTaxonomy__row${isActive ? " dashTaxonomy__row--active" : ""}`}
-                aria-pressed={isActive}
-                onClick={() => {
-                  const next = selectedKey === d.key ? null : d.key;
-                  setSelectedKey(next);
-                  if (next !== null) {
-                    toast.info(`Filtering by: ${d.label}`, {
-                      autoClose: 2200,
-                    });
-                  }
+      <ul className="dashTaxonomy__grid" role="list">
+        {rows.map((d) => (
+          <li key={d.key} className="dashTaxonomyCard">
+            <div className="dashTaxonomyCard__top">
+              <span
+                className="dashTaxonomy__dot"
+                style={{ background: d.color }}
+                aria-hidden
+              />
+              <span className="dashTaxonomyCard__order">
+                {String(d.order).padStart(2, "0")}
+              </span>
+            </div>
+            <h4 className="dashTaxonomyCard__name">{d.label}</h4>
+            <p className="dashTaxonomyCard__stats">
+              <span className="dashTaxonomy__count">
+                {d.count.toLocaleString("en-US")}
+              </span>
+              <span className="dashTaxonomy__pct">{d.pct.toFixed(1)}%</span>
+            </p>
+            <span className="dashTaxonomy__barTrack" aria-hidden>
+              <span
+                className="dashTaxonomy__barFill"
+                style={{
+                  width: `${Math.min(100, d.pct)}%`,
+                  background: d.color,
                 }}
-              >
-                <span
-                  className="dashTaxonomy__dot"
-                  style={{ background: d.color }}
-                  aria-hidden
-                />
-                <span className="dashTaxonomy__name">
-                  {d.order}. {d.label}
-                </span>
-                <span className="dashTaxonomy__barTrack" aria-hidden>
-                  <span
-                    className="dashTaxonomy__barFill"
-                    style={{
-                      width: `${Math.min(100, d.pct)}%`,
-                      background: d.color,
-                    }}
-                  />
-                </span>
-                <span className="dashTaxonomy__pct">{d.pct.toFixed(1)}%</span>
-                <span className="dashTaxonomy__count">{d.count}</span>
-              </button>
-            </li>
-          );
-        })}
+              />
+            </span>
+          </li>
+        ))}
       </ul>
 
       <footer className="dashTaxonomy__foot">
-        Click any domain to filter and view associated risks
+        Each card is one taxonomy domain. The bar is that domain’s share of the total above.
       </footer>
     </article>
   );
 }
 
-type RiskCategoryRow = {
-  key: string;
-  label: string;
-  dotColor: string;
-  subcategoryCount: number;
-  pct: number;
-  count: number;
-  subcategories: { key: string; label: string }[];
-};
-
-const RISK_CATEGORY_META: Omit<RiskCategoryRow, "pct" | "count">[] = [
+const RISK_CATEGORY_META = [
   {
     key: "technical",
     label: "Technical",
     dotColor: "#22d3ee",
-    subcategoryCount: 4,
     subcategories: [
-      { key: "t1", label: "System reliability" },
-      { key: "t2", label: "Data integrity" },
-      { key: "t3", label: "Model robustness" },
-      { key: "t4", label: "Infrastructure" },
+      { key: "security", label: "Security Risk" },
+      { key: "privacy", label: "Privacy Risk" },
+      { key: "performance", label: "Technical/Performance Risk" },
+      { key: "data", label: "Data Risk" },
     ],
   },
   {
     key: "operational",
     label: "Operational",
     dotColor: "#f97316",
-    subcategoryCount: 4,
     subcategories: [
-      { key: "o1", label: "Process controls" },
-      { key: "o2", label: "Human oversight" },
-      { key: "o3", label: "Incident response" },
-      { key: "o4", label: "Supply chain" },
+      { key: "compliance", label: "Compliance/Regulatory Risk" },
+      { key: "legal", label: "Legal/Liability Risk" },
+      { key: "vendor", label: "Third-Party/Vendor Risk" },
     ],
   },
   {
     key: "business",
     label: "Business",
     dotColor: "#a855f7",
-    subcategoryCount: 4,
     subcategories: [
-      { key: "b1", label: "Financial exposure" },
-      { key: "b2", label: "Reputation" },
-      { key: "b3", label: "Compliance" },
-      { key: "b4", label: "Strategic alignment" },
+      { key: "financial", label: "Business/Financial Risk" },
+      { key: "reputation", label: "Reputational Risk" },
+      { key: "ethical", label: "Ethical Risk" },
+      { key: "strategic", label: "Strategic Risk" },
     ],
   },
 ];
@@ -880,28 +852,27 @@ function TopRiskCategoriesPanel({
 }: {
   topCategories: DashboardApiStats["topCategories"];
 }) {
-  const [openKeys, setOpenKeys] = useState<Set<string>>(() => new Set());
-
   const categories = useMemo(() => {
     const byKey = new Map(topCategories.map((c) => [c.key, c]));
     return RISK_CATEGORY_META.map((meta) => {
       const live = byKey.get(meta.key);
+      const counts = new Map(
+        (live?.subcategories ?? []).map((sub) => [sub.key, sub.count]),
+      );
+      const subcategories = meta.subcategories.map((sub) => ({
+        ...sub,
+        count: counts.get(sub.key) ?? 0,
+      }));
+      const other = (live?.subcategories ?? []).find((sub) => sub.key === "other");
+      if (other && other.count > 0) subcategories.push(other);
       return {
         ...meta,
         count: live?.count ?? 0,
         pct: live?.pct ?? 0,
+        subcategories,
       };
     });
   }, [topCategories]);
-
-  const toggle = (key: string) => {
-    setOpenKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
 
   return (
     <article className="dashRiskCat" aria-labelledby="dash-risk-cat-title">
@@ -915,95 +886,63 @@ function TopRiskCategoriesPanel({
           />
           Top risk categories
         </h3>
-        <p className="dashRiskCat__sortHint">Sorted High → Low</p>
+        <p className="dashRiskCat__sortHint">Share of classified risks</p>
       </header>
 
-      <ul className="dashRiskCat__list" role="list">
-        {categories.map((cat) => {
-          const isOpen = openKeys.has(cat.key);
-          return (
-            <li key={cat.key} className="dashRiskCat__item">
-              <button
-                type="button"
-                className={`dashRiskCat__row${isOpen ? " dashRiskCat__row--open" : ""}`}
-                aria-expanded={isOpen}
-                onClick={() => toggle(cat.key)}
-              >
-                <span className="dashRiskCat__rowMain">
-                  <ChevronRight
-                    size={18}
-                    strokeWidth={2}
-                    className="dashRiskCat__chevron"
-                    aria-hidden
-                  />
-                  <span
-                    className="dashRiskCat__dot"
-                    style={{ background: cat.dotColor }}
-                    aria-hidden
-                  />
-                  <span className="dashRiskCat__textBlock">
-                    <span className="dashRiskCat__name">{cat.label}</span>
-                    <span className="dashRiskCat__subMeta">
-                      {cat.subcategoryCount} subcategories
-                    </span>
-                  </span>
-                </span>
-                <span className="dashRiskCat__stats">
-                  <span className="dashRiskCat__pct">{cat.pct}%</span>
-                  <span className="dashRiskCat__countWrap">
-                    <Link2
-                      size={14}
-                      strokeWidth={2}
-                      className="dashRiskCat__linkIcon"
+      <ul className="dashRiskCat__grid" role="list">
+        {categories.map((cat) => (
+          <li key={cat.key} className="dashRiskCatCard">
+            <div className="dashRiskCatCard__top">
+              <span
+                className="dashRiskCat__dot"
+                style={{ background: cat.dotColor }}
+                aria-hidden
+              />
+              <span className="dashRiskCat__pct">{cat.pct}%</span>
+            </div>
+            <h4 className="dashRiskCat__name">{cat.label}</h4>
+            <p className="dashRiskCatCard__stats">
+              <span className="dashRiskCat__count">
+                {cat.count.toLocaleString("en-US")}
+              </span>
+              <span className="dashRiskCat__subMeta">
+                {cat.subcategories.length} subcategories
+              </span>
+            </p>
+            <span className="dashRiskCat__barTrack" aria-hidden>
+              <span
+                className="dashRiskCat__barFill"
+                style={{
+                  width: `${Math.min(100, cat.pct)}%`,
+                  background: cat.dotColor,
+                }}
+              />
+            </span>
+            <ul className="dashRiskCat__subList" role="list">
+              {cat.subcategories.map((sub) => (
+                <li key={sub.key} className="dashRiskCat__subItem">
+                  <span className="dashRiskCat__subLabel">
+                    <span
+                      className="dashRiskCat__subDot"
+                      style={{ background: cat.dotColor }}
                       aria-hidden
                     />
-                    <span className="dashRiskCat__count">{cat.count}</span>
+                    {sub.label}
                   </span>
-                </span>
-              </button>
-              <div className="dashRiskCat__barRow" aria-hidden>
-                <div className="dashRiskCat__barTrack">
-                  <div
-                    className="dashRiskCat__barFill"
-                    style={{
-                      width: `${Math.min(100, cat.pct)}%`,
-                      background: cat.dotColor,
-                    }}
-                  />
-                </div>
-              </div>
-              {isOpen ? (
-                <ul className="dashRiskCat__subList" role="list">
-                  {cat.subcategories.map((sub) => (
-                    <li key={sub.key} className="dashRiskCat__subItem">
-                      <button
-                        type="button"
-                        className="dashRiskCat__subBtn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toast.info(`Filter: ${cat.label} → ${sub.label}`, {
-                            autoClose: 2200,
-                          });
-                        }}
-                      >
-                        <span
-                          className="dashRiskCat__subDot"
-                          style={{ background: cat.dotColor }}
-                          aria-hidden
-                        />
-                        {sub.label}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </li>
-          );
-        })}
+                  {sub.count > 0 ? (
+                    <span className="dashRiskCat__subCount">
+                      {sub.count.toLocaleString("en-US")}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
       </ul>
 
       <footer className="dashRiskCat__foot">
-        Click to expand/collapse categories. Click subcategories to filter.
+        Each card is one primary category. The bar is that category’s share of classified risks. Subcategory counts are the risks inside that category and add up to the card total.
       </footer>
     </article>
   );
@@ -1027,7 +966,7 @@ export function DashboardPage() {
         toast.success("Dashboard metrics refreshed.", { autoClose: 2200 });
       }
     } catch {
-      toast.error("Could not load dashboard metrics.");
+      if (!silent) toast.error("Could not load dashboard metrics.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -1038,7 +977,7 @@ export function DashboardPage() {
     void loadDashboard(true);
   }, [loadDashboard]);
 
-  usePolling(() => loadDashboard(true), 30_000, Boolean(data));
+  usePolling(() => loadDashboard(true), 10_000, Boolean(data));
 
   const handleRefresh = useCallback(() => {
     void loadDashboard(false);

@@ -297,6 +297,7 @@ export const JOB_SKIP_REASON_CODES = {
   NOT_AI: "NOT_AI",
   MERGED: "MERGED",
   RESEARCH: "RESEARCH",
+  EXTRACTION_QUALITY: "EXTRACTION_QUALITY",
 } as const;
 
 export type JobSkipReasonCode =
@@ -309,7 +310,7 @@ const NOT_AI_REASON_RE =
 // than N minutes without finishing") — that is a timeout outcome, not a fetch
 // failure, so it classifies as neither code.
 const FETCH_FAIL_REASON_RE =
-  /blocked automated access|paywall|subscription wall|fetch failed|access-denied|access denied|forbidden|returned an error|could not (?:fetch|reach)|did not respond|connection (?:timed out|refused|was reset)|cannot resolve hostname|ssl\/tls|\bHTTP \d{3}\b|not found|page not found|html text too small|pdf text too small|raw text too small|too little text|empty html|empty response body/i;
+  /blocked automated access|paywall|subscription wall|fetch failed|access-denied|access denied|forbidden|suspected cdn|security restriction|returned an error|could not (?:fetch|reach)|did not respond|connection (?:timed out|refused|was reset)|cannot resolve hostname|ssl\/tls|\bHTTP \d{3}\b|not found|page not found|html text too small|pdf text too small|raw text too small|too little text|empty html|empty response body/i;
 
 /**
  * Classify a human skip reason into a stable outcome code, or null when the
@@ -327,6 +328,9 @@ export function jobSkipReasonCode(
   }
   if (/^research paper source\b/i.test(text)) {
     return JOB_SKIP_REASON_CODES.RESEARCH;
+  }
+  if (/^extraction quality\b/i.test(text)) {
+    return JOB_SKIP_REASON_CODES.EXTRACTION_QUALITY;
   }
   if (NOT_AI_REASON_RE.test(text)) return JOB_SKIP_REASON_CODES.NOT_AI;
   if (FETCH_FAIL_REASON_RE.test(text)) return JOB_SKIP_REASON_CODES.FETCH_FAIL;

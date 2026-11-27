@@ -94,6 +94,22 @@ END $$`,
   `INSERT INTO "job_runtime_settings" ("id", "max_minutes")
 VALUES (1, 5)
 ON CONFLICT ("id") DO NOTHING`,
+  `CREATE TABLE IF NOT EXISTS "url_quarantine" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"url" varchar(2048) NOT NULL,
+	"title" text,
+	"extracted_text" text,
+	"quality_score" integer,
+	"validation" jsonb,
+	"reason" text NOT NULL,
+	"http_status" integer,
+	"response_meta" jsonb,
+	"source_type" varchar(16),
+	"status" varchar(32) NOT NULL,
+	"quarantined_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "url_quarantine_url_unique" UNIQUE("url")
+)`,
   `CREATE TABLE IF NOT EXISTS "worker_retry_targets" (
 	"job_id" integer PRIMARY KEY NOT NULL,
 	"url" varchar(2048) NOT NULL,

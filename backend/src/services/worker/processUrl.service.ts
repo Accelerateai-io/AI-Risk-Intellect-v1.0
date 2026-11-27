@@ -23,6 +23,11 @@ import {
   UrlFetchError,
 } from "../../utils/fetchUtils.js";
 import { parseArxivAbsId, resolveArxivSource } from "../../ingestion/arxiv.js";
+import {
+  extractionQuarantineReason,
+  readExtractionQuality,
+} from "../../ingestion/extractionQuality.js";
+import { recordQuarantine, releaseQuarantine } from "../../ingestion/quarantine.js";
 import { researchSourceSkipReason } from "../../ingestion/researchSources.js";
 import { getJobRunSignal } from "../jobs/jobTimeout.service.js";
 import {
@@ -156,10 +161,15 @@ export async function processUrlToDb(
     fetched = await fetchPageContentDetailed(url, 30_000, signal);
   }
   if (!fetched.ok) {
-    return {
-      outcome: "skipped",
-      reason: formatPageFetchSkipReason(fetched.reason),
-    };
+    const reason = formatPageFetchSkipReason(fetched.reason);
+    await recordQuarantine({
+      url,
+      title: options?.title,
+      reason,
+      status: "fetch_quarantine",
+      responseMeta: { reason: fetched.reason },
+    });
+    return { outcome: "skipped", reason };
   }
 
   const page = fetched.page;
@@ -184,6 +194,22 @@ export async function processUrlToDb(
 
       noteWebsiteExtractCompleted(result.text.trim().length);
 
+      const pdfQuality = readExtractionQuality(result.details);
+      const pdfQualityReason = extractionQuarantineReason(pdfQuality);
+      if (pdfQualityReason) {
+        await recordQuarantine({
+          url,
+          title,
+          extractedText: result.text,
+          qualityScore: pdfQuality?.score ?? null,
+          validation: pdfQuality,
+          reason: pdfQualityReason,
+          sourceType: "pdf",
+          status: "extraction_quarantine",
+        });
+        return { outcome: "skipped", reason: pdfQualityReason };
+      }
+
       const excludedAfterExtract = getExcludedNonAiTopicSkipReason({
         url,
         title: result.title || title,
@@ -202,6 +228,7 @@ export async function processUrlToDb(
       }
 
       noteFeedStoreStarted();
+      await releaseQuarantine(url);
       const article = await applyIngestToArticle(articleId, {
         text: result.text,
         html: null,
@@ -241,6 +268,7 @@ export async function processUrlToDb(
     const minTextBytes = 200;
 
     let text: string;
+    let htmlDetails: unknown;
     try {
       noteWebsiteExtractStarted();
       const extracted = await pythonIngestHtml(html, {
@@ -249,6 +277,7 @@ export async function processUrlToDb(
         skipAiCheck: true,
       });
       text = extracted.text;
+      htmlDetails = extracted.details;
     } catch (err) {
       if (err instanceof SkipIngest) {
         return { outcome: "skipped", reason: err.message };
@@ -257,6 +286,22 @@ export async function processUrlToDb(
     }
 
     noteWebsiteExtractCompleted(text.trim().length);
+
+    const htmlQuality = readExtractionQuality(htmlDetails);
+    const htmlQualityReason = extractionQuarantineReason(htmlQuality);
+    if (htmlQualityReason) {
+      await recordQuarantine({
+        url,
+        title: pageTitle,
+        extractedText: text,
+        qualityScore: htmlQuality?.score ?? null,
+        validation: htmlQuality,
+        reason: htmlQualityReason,
+        sourceType: "html",
+        status: "extraction_quarantine",
+      });
+      return { outcome: "skipped", reason: htmlQualityReason };
+    }
 
     const excludedAfterExtract = getExcludedNonAiTopicSkipReason({
       url,
@@ -288,6 +333,7 @@ export async function processUrlToDb(
     }
 
     noteFeedStoreStarted();
+    await releaseQuarantine(url);
     const article = await applyIngestToArticle(articleId, {
       text,
       html,

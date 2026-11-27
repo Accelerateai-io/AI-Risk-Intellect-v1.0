@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .extract_text import extract_from_pdf, extract_from_raw
+from .extraction_quality import score_extraction
 from .filters import (
     SkipIngest,
     detect_bot_block_page,
@@ -37,7 +38,8 @@ def prepare_pdf_ingest(
         raise SkipIngest(exclude_reason)
 
     language = require_detected_language(text)
-    details: dict[str, Any] = {"language": language}
+    quality = score_extraction(url=url, title=title, text=text)
+    details: dict[str, Any] = {"language": language, "extraction_quality": quality}
     return {"text": text, "title": title or UNTITLED_TITLE, "details": details}
 
 
@@ -70,7 +72,8 @@ def prepare_html_ingest(
         raise SkipIngest(exclude_reason)
 
     language = require_detected_language(text)
-    details: dict[str, Any] = {"language": language}
+    quality = score_extraction(url=url, title=title, text=text, html=html)
+    details: dict[str, Any] = {"language": language, "extraction_quality": quality}
     return {"text": text, "title": title or UNTITLED_TITLE, "details": details}
 
 

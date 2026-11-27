@@ -7,6 +7,7 @@ export * from "./ingestLinks/ingestLinks.js";
 export * from "./ingestLinks/ingestLinkItems.js";
 export * from "./jobs/jobs.js";
 export * from "./jobs/urlExecutionBlocks.js";
+export * from "./jobs/urlQuarantine.js";
 export * from "./jobs/workerRetryTargets.js";
 export * from "./jobs/jobRuntimeSettings.js";
 export * from "./riskMappings/riskMappings.js";
