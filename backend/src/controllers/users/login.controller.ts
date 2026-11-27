@@ -37,14 +37,29 @@ const REFRESH_COOKIE_NAME = "refresh_token";
 function refreshCookieOptions(req: Request, expiresAt?: Date): CookieOptions {
   const secure = env.COOKIE_SECURE || req.secure;
   const domain = env.COOKIE_DOMAIN?.trim();
+  // Same host as the dashboard (devairi.accelerateai.io). Lax is sent on
+  // same-site XHR. None is for a cross-site API and is dropped by browsers
+  // when Secure or the site partition does not match, which shows up as a
+  // 401 on POST /auth/refresh and then "Session expired".
+  // Path "/" so the cookie is sent wherever the deployed API is mounted.
   return {
     httpOnly: true,
     secure,
-    sameSite: secure ? "none" : "lax",
-    path: "/api/v1",
+    sameSite: "lax",
+    path: "/",
     ...(domain ? { domain } : {}),
     expires: expiresAt,
   };
+}
+
+function setRefreshCookie(
+  req: Request,
+  res: Response,
+  token: string,
+  expiresAt?: Date,
+): void {
+  res.clearCookie(REFRESH_COOKIE_NAME, { path: "/api/v1" });
+  res.cookie(REFRESH_COOKIE_NAME, token, refreshCookieOptions(req, expiresAt));
 }
 
 function clientMeta(req: Request) {
@@ -80,11 +95,7 @@ export async function inviteSetPasswordSubmit(
   const meta = clientMeta(req);
   const tokens = await issueTokenPair({ user, ...meta });
 
-  res.cookie(
-    REFRESH_COOKIE_NAME,
-    tokens.refreshToken,
-    refreshCookieOptions(req, tokens.refreshTokenExpiresAt),
-  );
+  setRefreshCookie(req, res, tokens.refreshToken, tokens.refreshTokenExpiresAt);
 
   res.status(200).json({
     user,
@@ -99,11 +110,7 @@ export async function register(req: Request, res: Response): Promise<void> {
   const meta = clientMeta(req);
   const tokens = await issueTokenPair({ user, ...meta });
 
-  res.cookie(
-    REFRESH_COOKIE_NAME,
-    tokens.refreshToken,
-    refreshCookieOptions(req, tokens.refreshTokenExpiresAt),
-  );
+  setRefreshCookie(req, res, tokens.refreshToken, tokens.refreshTokenExpiresAt);
 
   res.status(201).json({
     user,
@@ -118,11 +125,7 @@ export async function login(req: Request, res: Response): Promise<void> {
   const meta = clientMeta(req);
   const tokens = await issueTokenPair({ user, ...meta });
 
-  res.cookie(
-    REFRESH_COOKIE_NAME,
-    tokens.refreshToken,
-    refreshCookieOptions(req, tokens.refreshTokenExpiresAt),
-  );
+  setRefreshCookie(req, res, tokens.refreshToken, tokens.refreshTokenExpiresAt);
 
   res.status(200).json({
     user,
@@ -151,11 +154,7 @@ export async function resetPassword(
   const meta = clientMeta(req);
   const tokens = await issueTokenPair({ user, ...meta });
 
-  res.cookie(
-    REFRESH_COOKIE_NAME,
-    tokens.refreshToken,
-    refreshCookieOptions(req, tokens.refreshTokenExpiresAt),
-  );
+  setRefreshCookie(req, res, tokens.refreshToken, tokens.refreshTokenExpiresAt);
 
   res.status(200).json({
     user,
@@ -183,11 +182,7 @@ export async function refresh(req: Request, res: Response): Promise<void> {
     ...meta,
   });
 
-  res.cookie(
-    REFRESH_COOKIE_NAME,
-    tokens.refreshToken,
-    refreshCookieOptions(req, tokens.refreshTokenExpiresAt),
-  );
+  setRefreshCookie(req, res, tokens.refreshToken, tokens.refreshTokenExpiresAt);
 
   res.status(200).json({
     user,
@@ -205,6 +200,7 @@ export async function logout(req: Request, res: Response): Promise<void> {
   if (presented) {
     await revokeRefreshToken(presented);
   }
+  res.clearCookie(REFRESH_COOKIE_NAME, { path: "/api/v1" });
   res.clearCookie(REFRESH_COOKIE_NAME, refreshCookieOptions(req));
   res.status(204).end();
 }
@@ -239,11 +235,7 @@ export async function patchMe(req: Request, res: Response): Promise<void> {
   const meta = clientMeta(req);
   const tokens = await issueTokenPair({ user, ...meta });
 
-  res.cookie(
-    REFRESH_COOKIE_NAME,
-    tokens.refreshToken,
-    refreshCookieOptions(req, tokens.refreshTokenExpiresAt),
-  );
+  setRefreshCookie(req, res, tokens.refreshToken, tokens.refreshTokenExpiresAt);
 
   res.status(200).json({
     user,
@@ -269,11 +261,7 @@ export async function postMeChangePassword(
   const meta = clientMeta(req);
   const tokens = await issueTokenPair({ user, ...meta });
 
-  res.cookie(
-    REFRESH_COOKIE_NAME,
-    tokens.refreshToken,
-    refreshCookieOptions(req, tokens.refreshTokenExpiresAt),
-  );
+  setRefreshCookie(req, res, tokens.refreshToken, tokens.refreshTokenExpiresAt);
 
   res.status(200).json({
     user,

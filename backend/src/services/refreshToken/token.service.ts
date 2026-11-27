@@ -84,10 +84,16 @@ export async function rotateRefreshToken(args: {
   }
 
   if (existing.revoked || existing.tokenHash !== presentedHash) {
-    await db
-      .update(refreshTokens)
-      .set({ revoked: true })
-      .where(eq(refreshTokens.userId, payload.sub));
+    // Two tabs (or the dashboard's parallel calls) can present the same cookie
+    // while the first rotation is in flight. That is not theft. Revoking the
+    // whole family here is what signs the user out right after a deploy reload.
+    const rotatedJustNow = await replacementIsRecent(existing.replacedById);
+    if (!rotatedJustNow) {
+      await db
+        .update(refreshTokens)
+        .set({ revoked: true })
+        .where(eq(refreshTokens.userId, payload.sub));
+    }
     throw HttpError.unauthorized("Refresh token reuse detected");
   }
 
@@ -142,6 +148,21 @@ export async function revokeAllForUser(userId: string): Promise<void> {
     .update(refreshTokens)
     .set({ revoked: true })
     .where(eq(refreshTokens.userId, userId));
+}
+
+const ROTATION_GRACE_MS = 30_000;
+
+async function replacementIsRecent(
+  replacedById: string | null,
+): Promise<boolean> {
+  if (!replacedById) return false;
+  const [next] = await db
+    .select({ createdAt: refreshTokens.createdAt, revoked: refreshTokens.revoked })
+    .from(refreshTokens)
+    .where(eq(refreshTokens.id, replacedById))
+    .limit(1);
+  if (!next || next.revoked) return false;
+  return Date.now() - next.createdAt.getTime() < ROTATION_GRACE_MS;
 }
 
 function extractJti(refreshToken: string): string {
