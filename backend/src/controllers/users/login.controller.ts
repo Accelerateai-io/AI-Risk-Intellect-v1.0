@@ -163,32 +163,64 @@ export async function resetPassword(
   });
 }
 
+function refreshCookieValues(req: Request): string[] {
+  const header = req.headers.cookie ?? "";
+  const values: string[] = [];
+  for (const part of header.split(";")) {
+    const trimmed = part.trim();
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    if (trimmed.slice(0, eq) !== REFRESH_COOKIE_NAME) continue;
+    try {
+      const value = decodeURIComponent(trimmed.slice(eq + 1));
+      if (value) values.push(value);
+    } catch {
+      // ignore a malformed cookie and keep looking
+    }
+  }
+  const parsed = req.cookies?.[REFRESH_COOKIE_NAME];
+  if (typeof parsed === "string" && parsed && !values.includes(parsed)) {
+    values.push(parsed);
+  }
+  return values;
+}
+
 export async function refresh(req: Request, res: Response): Promise<void> {
-  const presented = req.cookies?.[REFRESH_COOKIE_NAME] as string | undefined;
-  if (!presented) {
+  const presentedTokens = refreshCookieValues(req);
+  if (presentedTokens.length === 0) {
     throw HttpError.unauthorized("Missing refresh token");
   }
 
   const meta = clientMeta(req);
-  const decodedSub = decodeSub(presented);
-  const user = await getUserById(decodedSub);
-  if (!user) {
-    throw HttpError.unauthorized("User no longer exists");
+  let lastError: unknown;
+  for (const presented of presentedTokens) {
+    try {
+      const decodedSub = decodeSub(presented);
+      const user = await getUserById(decodedSub);
+      if (!user) {
+        throw HttpError.unauthorized("User no longer exists");
+      }
+      const tokens = await rotateRefreshToken({
+        presentedToken: presented,
+        user,
+        ...meta,
+        revokeFamily: false,
+      });
+      setRefreshCookie(req, res, tokens.refreshToken, tokens.refreshTokenExpiresAt);
+      res.status(200).json({
+        user,
+        accessToken: tokens.accessToken,
+        expiresIn: env.ACCESS_TOKEN_TTL,
+      });
+      return;
+    } catch (err) {
+      lastError = err;
+    }
   }
 
-  const tokens = await rotateRefreshToken({
-    presentedToken: presented,
-    user,
-    ...meta,
-  });
-
-  setRefreshCookie(req, res, tokens.refreshToken, tokens.refreshTokenExpiresAt);
-
-  res.status(200).json({
-    user,
-    accessToken: tokens.accessToken,
-    expiresIn: env.ACCESS_TOKEN_TTL,
-  });
+  throw lastError instanceof Error
+    ? lastError
+    : HttpError.unauthorized("Invalid or expired refresh token");
 }
 
 export async function logout(req: Request, res: Response): Promise<void> {

@@ -62,6 +62,8 @@ export async function rotateRefreshToken(args: {
   user: IssueTokensArgs["user"];
   userAgent?: string | null;
   ipAddress?: string | null;
+  /** When false, a stale cookie does not revoke the user's other sessions. */
+  revokeFamily?: boolean;
 }): Promise<TokenPair> {
   let payload;
   try {
@@ -84,11 +86,18 @@ export async function rotateRefreshToken(args: {
   }
 
   if (existing.revoked || existing.tokenHash !== presentedHash) {
-    // Two tabs (or the dashboard's parallel calls) can present the same cookie
-    // while the first rotation is in flight. That is not theft. Revoking the
-    // whole family here is what signs the user out right after a deploy reload.
+    // The Admin page fires many calls together. They present the same cookie
+    // while the first rotation is in flight. Issue a new pair for that burst
+    // instead of returning 401, which the client treats as "Session expired".
     const rotatedJustNow = await replacementIsRecent(existing.replacedById);
-    if (!rotatedJustNow) {
+    if (rotatedJustNow) {
+      return issueTokenPair({
+        user: args.user,
+        userAgent: args.userAgent,
+        ipAddress: args.ipAddress,
+      });
+    }
+    if (args.revokeFamily !== false) {
       await db
         .update(refreshTokens)
         .set({ revoked: true })
